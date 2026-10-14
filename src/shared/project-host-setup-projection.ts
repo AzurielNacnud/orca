@@ -7,6 +7,7 @@ import { normalizeGitHubRemoteHost } from './git-remote-host-alias'
 import { githubRepoIdentityKey, isDefaultGitHubHost } from './github/repository-identity-key'
 import type { Project, ProjectHostSetup, ProjectProviderIdentity } from './project-types'
 import type { Repo } from './repo-types'
+import { getSameHostOutclaimedRepos } from './project-same-host-claim'
 
 /**
  * A projection-local draft. `project` is always freshly built by `createProjectFromRepo`, never a
@@ -130,12 +131,6 @@ export function isHostLocalProjectId(projectId: string): boolean {
 
 export function getProjectIdForProviderIdentity(identity: ProjectProviderIdentity): string {
   return `github:${githubRepoIdentityKey(identity)}`
-}
-
-function getProjectId(
-  repo: Pick<Repo, 'id' | 'upstream' | 'repoIcon' | 'gitRemoteIdentity'>
-): string {
-  return getProjectIdentityKey(repo)
 }
 
 function isGitHubRemoteHost(host: string): boolean {
@@ -313,8 +308,12 @@ export function projectHostSetupProjectionFromRepos(
   const projectById = new Map<string, ProjectAccumulator>()
   const setups: ProjectHostSetup[] = []
 
-  for (const repo of repos) {
-    const projectId = getProjectId(repo)
+  const remoteProjectIds = repos.map(getProjectIdentityKey)
+  const outclaimed = getSameHostOutclaimedRepos(repos, remoteProjectIds)
+  for (const [index, repo] of repos.entries()) {
+    const projectId = outclaimed.has(repo)
+      ? `${HOST_LOCAL_PROJECT_ID_PREFIX}${repo.id}`
+      : remoteProjectIds[index]
     const existing = projectById.get(projectId)
     if (existing) {
       mergeProjectRepo(existing, repo)

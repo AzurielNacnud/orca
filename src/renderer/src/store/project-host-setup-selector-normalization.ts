@@ -1,9 +1,6 @@
 import type { Project, ProjectHostSetup } from '../../../shared/project-types'
 import type { Repo } from '../../../shared/repo-types'
-import {
-  getProjectIdentityKey,
-  type ProjectHostSetupProjection
-} from '../../../shared/project-host-setup-projection'
+import type { ProjectHostSetupProjection } from '../../../shared/project-host-setup-projection'
 
 export type NormalizedProjectHostSetupProjection = ProjectHostSetupProjection & {
   changed: boolean
@@ -17,6 +14,11 @@ export function normalizeHydratedProjectHostSetupProjection(
 ): NormalizedProjectHostSetupProjection {
   const repoById = new Map(repos.map((repo) => [repo.id, repo]))
   const derivedProjectIds = new Set(derived.projects.map((project) => project.id))
+  // Why the derived setup, not the repo's own remote key: whether a repo keeps the shared id
+  // depends on its same-host siblings, which only the whole-catalog projection sees.
+  const derivedProjectIdBySetupHost = new Map(
+    derived.setups.map((setup) => [`${setup.repoId}\u0000${setup.hostId}`, setup.projectId])
+  )
   const projectIdByHydratedProjectId = new Map<string, string>()
   let changed = false
   const normalizedSetups = setups.map((setup) => {
@@ -24,7 +26,12 @@ export function normalizeHydratedProjectHostSetupProjection(
     if (!repo) {
       return setup
     }
-    const projectId = getProjectIdentityKey(repo)
+    const projectId =
+      derivedProjectIdBySetupHost.get(`${repo.id}\u0000${setup.hostId}`) ??
+      derived.setups.find((candidate) => candidate.repoId === repo.id)?.projectId
+    if (!projectId) {
+      return setup
+    }
     if (projectId === setup.projectId || projectId === `repo:${repo.id}`) {
       return setup
     }
