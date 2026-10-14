@@ -1,6 +1,10 @@
 import type { Project, ProjectHostSetup } from '../../../shared/project-types'
 import type { Repo } from '../../../shared/repo-types'
-import type { ProjectHostSetupProjection } from '../../../shared/project-host-setup-projection'
+import {
+  getProjectIdentityKey,
+  isHostLocalProjectId,
+  type ProjectHostSetupProjection
+} from '../../../shared/project-host-setup-projection'
 
 export type NormalizedProjectHostSetupProjection = ProjectHostSetupProjection & {
   changed: boolean
@@ -32,11 +36,16 @@ export function normalizeHydratedProjectHostSetupProjection(
     if (!projectId) {
       return setup
     }
-    if (projectId === setup.projectId || projectId === `repo:${repo.id}`) {
+    // Why: a host-local id from a repo with no known remote means this client can't name the
+    // project yet; a host-local id for a repo with a remote means a same-surface sibling claimed it.
+    if (projectId === setup.projectId || isHostLocalProjectId(getProjectIdentityKey(repo))) {
       return setup
     }
     changed = true
-    projectIdByHydratedProjectId.set(setup.projectId, projectId)
+    // Why: an outclaimed checkout leaves its old project live for the claimant; only rename dead ids.
+    if (!derivedProjectIds.has(setup.projectId)) {
+      projectIdByHydratedProjectId.set(setup.projectId, projectId)
+    }
     return { ...setup, projectId }
   })
   const normalizedProjects = projects.flatMap((project) => {

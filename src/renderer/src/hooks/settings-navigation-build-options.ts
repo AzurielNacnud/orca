@@ -1,4 +1,3 @@
-import type { ProjectGroupingModel } from '@/components/sidebar/worktree-list/grouping/project-grouping'
 import type { Repo } from '../../../shared/repo-types'
 
 export type SettingsNavigationBuildOptions = {
@@ -14,5 +13,4 @@ export type SettingsNavigationBuildOptions = {
   isDev: boolean
   isLinearConnected: boolean
   repos: readonly Repo[]
-  projectGrouping?: ProjectGroupingModel
 }

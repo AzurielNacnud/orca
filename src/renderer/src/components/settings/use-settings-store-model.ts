@@ -3,7 +3,6 @@ import type { OrcaHooks } from '../../../../shared/orca-yaml-hook-types'
 import type { ProjectHostSetup } from '../../../../shared/project-types'
 import { DEFAULT_APP_FONT_FAMILY } from '../../../../shared/constants'
 import { useAppStore } from '../../store'
-import { useProjectHostSetupProjection } from '@/store/selectors'
 import { useSystemPrefersDark } from '@/components/terminal-pane/use-system-prefers-dark'
 import { isMacUserAgent, isWindowsUserAgent } from '@/components/terminal-pane/pane-helpers'
 import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
@@ -64,16 +63,8 @@ export function useSettingsStoreModel() {
   const runtimeEnvironments = useAppStore((s) => s.runtimeEnvironments)
   const runtimeEnvironmentCatalogHydrated = useAppStore((s) => s.runtimeEnvironmentCatalogHydrated)
 
-  const projectHostSetupProjection = useProjectHostSetupProjection()
   // Why: same inputs as nav metadata so both lists agree — the source of truth for the pane list.
-  const settingsProjectList = useMemo(
-    () =>
-      buildSettingsProjectList(repos, {
-        projects: projectHostSetupProjection.projects,
-        projectHostSetups: projectHostSetupProjection.setups
-      }),
-    [repos, projectHostSetupProjection]
-  )
+  const settingsProjectList = useMemo(() => buildSettingsProjectList(repos), [repos])
   const repoIdToRepresentative = useMemo(
     () => buildRepoIdToRepresentative(settingsProjectList),
     [settingsProjectList]

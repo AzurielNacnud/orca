@@ -7,7 +7,7 @@ import { normalizeGitHubRemoteHost } from './git-remote-host-alias'
 import { githubRepoIdentityKey, isDefaultGitHubHost } from './github/repository-identity-key'
 import type { Project, ProjectHostSetup, ProjectProviderIdentity } from './project-types'
 import type { Repo } from './repo-types'
-import { getSameHostOutclaimedRepos } from './project-same-host-claim'
+import { getOutclaimedProjectSetups } from './project-checkout-claim'
 
 /**
  * A projection-local draft. `project` is always freshly built by `createProjectFromRepo`, never a
@@ -308,22 +308,24 @@ export function projectHostSetupProjectionFromRepos(
   const projectById = new Map<string, ProjectAccumulator>()
   const setups: ProjectHostSetup[] = []
 
-  const remoteProjectIds = repos.map(getProjectIdentityKey)
-  const outclaimed = getSameHostOutclaimedRepos(repos, remoteProjectIds)
+  // Why normalize here: a repo row is untrusted persisted/wire data too, and these
+  // constructors copy repo.path / repo.id straight onto fields consumers call .trim() on.
+  const remoteSetups = repos.map((repo) =>
+    normalizeProjectHostSetupRow(createSetupFromRepo(repo, getProjectIdentityKey(repo)))
+  )
+  const outclaimed = getOutclaimedProjectSetups(remoteSetups)
   for (const [index, repo] of repos.entries()) {
-    const projectId = outclaimed.has(repo)
-      ? `${HOST_LOCAL_PROJECT_ID_PREFIX}${repo.id}`
-      : remoteProjectIds[index]
-    const existing = projectById.get(projectId)
+    const remoteSetup = remoteSetups[index]
+    const setup = outclaimed.has(remoteSetup)
+      ? { ...remoteSetup, projectId: `${HOST_LOCAL_PROJECT_ID_PREFIX}${repo.id}` }
+      : remoteSetup
+    const existing = projectById.get(setup.projectId)
     if (existing) {
       mergeProjectRepo(existing, repo)
     } else {
-      const project = createProjectFromRepo(repo, projectId)
-      projectById.set(projectId, { project, sourceRepoIds: new Set(project.sourceRepoIds) })
+      const project = createProjectFromRepo(repo, setup.projectId)
+      projectById.set(setup.projectId, { project, sourceRepoIds: new Set(project.sourceRepoIds) })
     }
-    // Why normalize here: a repo row is untrusted persisted/wire data too, and these
-    // constructors copy repo.path / repo.id straight onto fields consumers call .trim() on.
-    const setup = normalizeProjectHostSetupRow(createSetupFromRepo(repo, projectId))
     setups.push(setup)
   }
 

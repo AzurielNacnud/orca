@@ -11,6 +11,7 @@ import {
   buildAiVaultSessionProjectById
 } from './ai-vault-session-projects'
 import { groupAiVaultSessions } from '../../../../shared/ai-vault-session-filters'
+import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
 
 const baseSession: AiVaultSession = {
   id: 'claude:1',
@@ -44,6 +45,50 @@ describe('toAiVaultProjectKey', () => {
 })
 
 describe('buildAiVaultProjectContext', () => {
+  // #28589: an imported folder whose copied .git/config points at another checkout's remote.
+  it("keeps a same-host folder that shares a remote out of the other checkout's project", () => {
+    const remote = {
+      canonicalKey: 'github.com/bennyoooo/open-social',
+      remoteName: 'origin',
+      remoteUrl: 'https://github.com/Bennyoooo/open-social.git'
+    }
+    const openSocial = makeRepo({
+      id: 'open-social',
+      displayName: 'open-social',
+      path: '/Users/benny/orca/open-social',
+      addedAt: 100,
+      gitRemoteIdentity: remote
+    })
+    const niw = makeRepo({
+      id: 'niw',
+      displayName: 'niw',
+      path: '/Users/benny/orca/projects/niw',
+      addedAt: 200,
+      gitRemoteIdentity: remote
+    })
+    const niwSession = makeSession({ id: 'claude:niw', cwd: niw.path })
+    const openSocialSession = makeSession({ id: 'claude:open-social', cwd: openSocial.path })
+
+    const context = buildAiVaultProjectContext({
+      repos: [niw, openSocial],
+      worktrees: [],
+      projectHostSetupProjection: projectHostSetupProjectionFromRepos([niw, openSocial]),
+      activeRepo: niw,
+      activeWorktree: null,
+      sessions: [niwSession, openSocialSession]
+    })
+
+    expect(context.activeProjectKey).toBe('repo:niw')
+    expect(context.sessionProjectById.get(niwSession.id)).toMatchObject({
+      key: 'repo:niw',
+      label: 'niw'
+    })
+    expect(context.sessionProjectById.get(openSocialSession.id)).toMatchObject({
+      key: 'project:github:bennyoooo/open-social',
+      label: 'open-social'
+    })
+  })
+
   it('uses durable worktree project ids before repo fallback', () => {
     const repo = makeRepo({ id: 'repo-1', displayName: 'Legacy Repo', path: '/Users/ada/orca' })
     const project = makeProject({ id: 'project-1', displayName: 'Canonical Orca' })
