@@ -185,9 +185,9 @@ export function resolveSettingsTargetRepoId(
 }
 
 /**
- * Removes a Settings entry's setup on every host it exists on. Sequential so each host's teardown +
- * projection recompute don't interleave; setups without a repo row
- * (planned/not-set-up hosts) have nothing to remove.
+ * Removes a Settings entry's setup on every host it exists on. Sequential so
+ * each host's teardown + projection recompute don't interleave; setups without
+ * a repo row (planned/not-set-up hosts) have nothing to remove.
  */
 export async function removeSettingsProjectFromAllHosts(
   setups: readonly ProjectHostSetup[],

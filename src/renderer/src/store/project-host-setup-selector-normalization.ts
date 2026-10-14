@@ -19,10 +19,15 @@ export function normalizeHydratedProjectHostSetupProjection(
   const repoById = new Map(repos.map((repo) => [repo.id, repo]))
   const derivedProjectIds = new Set(derived.projects.map((project) => project.id))
   // Why the derived setup, not the repo's own remote key: whether a repo keeps the shared id
-  // depends on its same-host siblings, which only the whole-catalog projection sees.
-  const derivedProjectIdBySetupHost = new Map(
-    derived.setups.map((setup) => [`${setup.repoId}\u0000${setup.hostId}`, setup.projectId])
-  )
+  // depends on its same-surface siblings, which only the whole-catalog projection sees.
+  const derivedProjectIdByRepoHost = new Map<string, string>()
+  const derivedProjectIdByRepo = new Map<string, string>()
+  for (const setup of derived.setups) {
+    derivedProjectIdByRepoHost.set(`${setup.repoId}\u0000${setup.hostId}`, setup.projectId)
+    if (!derivedProjectIdByRepo.has(setup.repoId)) {
+      derivedProjectIdByRepo.set(setup.repoId, setup.projectId)
+    }
+  }
   const projectIdByHydratedProjectId = new Map<string, string>()
   let changed = false
   const normalizedSetups = setups.map((setup) => {
@@ -31,8 +36,8 @@ export function normalizeHydratedProjectHostSetupProjection(
       return setup
     }
     const projectId =
-      derivedProjectIdBySetupHost.get(`${repo.id}\u0000${setup.hostId}`) ??
-      derived.setups.find((candidate) => candidate.repoId === repo.id)?.projectId
+      derivedProjectIdByRepoHost.get(`${repo.id}\u0000${setup.hostId}`) ??
+      derivedProjectIdByRepo.get(repo.id)
     if (!projectId) {
       return setup
     }
