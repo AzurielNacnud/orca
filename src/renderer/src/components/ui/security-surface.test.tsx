@@ -8,6 +8,7 @@ import { SecuritySurface } from './security-surface'
 
 // Every dialog that asks the user to trust, approve, run or remove code. A new one belongs here.
 const TRUST_DIALOGS = [
+  'browser-extension-install-dialog.tsx',
   'sidebar/OrcaYamlTrustDialog.tsx',
   'editor/IpynbViewer.tsx',
   'settings/PluginConsentDialog.tsx',
