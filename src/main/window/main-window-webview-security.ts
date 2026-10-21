@@ -23,10 +23,7 @@ import { isDocPreviewSession } from '../browser/doc-preview-protocol'
 import { registerHostFrameNavigationGuard } from './host-frame-navigation-guard'
 import { installPrivilegedWindowNavigationPolicy } from './privileged-window-navigation'
 import { parseChromeExtensionUrl } from '../../shared/browser-extension-url'
-import {
-  getBrowserExtensionProfileForPartition,
-  getBrowserExtensionSessionForProfile
-} from '../browser/extensions/browser-extension-session-loader'
+import { getBrowserExtensionSessionForProfile } from '../browser/extensions/browser-extension-session-loader'
 
 /**
  * Why a separate admission rule: `normalizeBrowserNavigationUrl` answers only for
@@ -118,11 +115,11 @@ export function installMainWindowWebviewSecurity(mainWindow: BrowserWindow): voi
     // insurance — if that ever changes, the guest would read this app's browser-host id.
     delete webPreferences.additionalArguments
     webPreferences.nodeIntegration = false
-    // Why subframes in extension profiles: a framed extension page needs Orca's extension preload.
-    // Sandboxed and without Node, the flag only runs the same preloads per frame; the close guard
-    // keeps to the top frame and the extension preload acts only in chrome-extension:// frames.
-    webPreferences.nodeIntegrationInSubFrames =
-      isProfilePartition && getBrowserExtensionProfileForPartition(partition) !== null
+    // Why every local profile: a framed extension page needs Orca's extension preload, and
+    // extensions can be switched on after the tab opens. Sandboxed and without Node, the flag only
+    // runs the same preloads per frame; the close guard keeps to the top frame and the extension
+    // preload, registered only while extensions run, acts only in chrome-extension:// frames.
+    webPreferences.nodeIntegrationInSubFrames = isProfilePartition
     webPreferences.enableBlinkFeatures = ''
     webPreferences.disableBlinkFeatures = ''
     webPreferences.webSecurity = true
