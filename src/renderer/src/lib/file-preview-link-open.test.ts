@@ -1,0 +1,190 @@
+import type * as BrowserFocusModule from '@/components/browser-pane/host-guest/browser-focus'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { createStoreCascadesMockApi } from '@/store/slices/store-cascades-test-harness'
+import { makeTabGroup, makeUnifiedTab } from '@/store/slices/store-test-helpers'
+import {
+  createBrowserLinkTestStore,
+  WORKSPACE,
+  type BrowserLinkTestStore
+} from './browser-link-open-test-harness'
+import { openFileInBrowserTab } from './file-preview'
+import { captureLinkOpenIntent } from './link-open-intent'
+import {
+  buildDocPreviewGrantRequest,
+  ensureDocPreviewGrant,
+  releaseDocPreviewGrant
+} from './doc-preview-grants'
+import type { BrowserOpenOutcome } from './browser-link-destination'
+
+const mocks = vi.hoisted(() => ({ getState: vi.fn(), mint: vi.fn(), revoke: vi.fn() }))
+vi.mock('@/store', () => ({ useAppStore: { getState: () => mocks.getState() } }))
+vi.mock('@/components/browser-pane/host-guest/browser-focus', async (importOriginal) => ({
+  ...(await importOriginal<typeof BrowserFocusModule>()),
+  requestBrowserFocus: vi.fn()
+}))
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() }
+}))
+let store: BrowserLinkTestStore
+const grants: string[] = []
+beforeEach(() => {
+  createStoreCascadesMockApi()
+  Object.defineProperty(window.api, 'docPreview', {
+    value: { mintGrant: mocks.mint, revokeGrant: mocks.revoke },
+    configurable: true
+  })
+  mocks.mint.mockReset().mockImplementation(async (request: { browserPageId: string }) => ({
+    grantId: `grant-${request.browserPageId}`,
+    url: `orca-preview://grant-${request.browserPageId}/`
+  }))
+  mocks.revoke.mockReset().mockResolvedValue(undefined)
+  store = createBrowserLinkTestStore()
+  mocks.getState.mockImplementation(() => store.getState())
+})
+afterEach(() => {
+  for (const id of grants.splice(0)) {
+    releaseDocPreviewGrant(id)
+  }
+})
+
+it('SSH documents duplicate only the source page and retain independent grants without a website-browser capability', async () => {
+  const host = 'ssh:ssh-test'
+  store.setState((state) => ({
+    repos: state.repos.map((repo) => ({
+      ...repo,
+      connectionId: 'ssh-test',
+      executionHostId: host
+    })),
+    worktreesByRepo: {
+      repo1: state.worktreesByRepo.repo1!.map((worktree) => ({ ...worktree, hostId: host }))
+    },
+    activeWorkspaceExecutionHostId: host,
+    unifiedTabsByWorktree: {
+      [WORKSPACE]: state.unifiedTabsByWorktree[WORKSPACE]!.map((tab) => ({
+        ...tab,
+        executionHostId: host
+      }))
+    },
+    runtimeStatusByEnvironmentId: new Map()
+  }))
+  const docLocation = {
+    kind: 'workspace-doc' as const,
+    worktreeId: WORKSPACE,
+    filePath: '/repo/doc.html'
+  }
+  const original = store.getState().createBrowserTab(WORKSPACE, '', {
+    targetGroupId: 'a',
+    executionHostId: host,
+    browserRuntimeEnvironmentId: null,
+    docLocation,
+    activate: false
+  })
+  let outcome: BrowserOpenOutcome | undefined
+  const plan = openFileInBrowserTab({
+    filePath: docLocation.filePath,
+    worktreeId: WORKSPACE,
+    linkContext: { linkIntent: captureLinkOpenIntent(store.getState(), WORKSPACE, 'source') },
+    onLinkOutcome: (value) => {
+      outcome = value
+    }
+  })
+  expect(plan.status).toBe('doc-preview')
+  expect(outcome).toMatchObject({
+    status: 'opened',
+    result: { groupId: 'b', executionHostId: host }
+  })
+  if (outcome?.status !== 'opened' || !original.activePageId) {
+    throw new Error('Expected preview pages')
+  }
+  const duplicate = outcome.result
+  expect(duplicate.browserPageId).not.toBe(original.activePageId)
+  const location = buildDocPreviewGrantRequest(store.getState(), WORKSPACE, docLocation.filePath)
+  if (!location) {
+    throw new Error('Expected grant owner')
+  }
+  const ids = [original.activePageId, duplicate.browserPageId]
+  grants.push(...ids)
+  const [first, second] = await Promise.all(ids.map((id) => ensureDocPreviewGrant(id, location)))
+  expect(first.grantId).not.toBe(second.grantId)
+  store.getState().closeBrowserTab(original.id)
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(mocks.revoke).toHaveBeenCalledExactlyOnceWith(first.grantId)
+  expect(await ensureDocPreviewGrant(duplicate.browserPageId, location)).toBe(second)
+  expect(mocks.mint).toHaveBeenCalledTimes(2)
+})
+
+it('a folder workspace uses its own layout and activates its browser without Git metadata', () => {
+  const folder = 'folder:folder-1'
+  store.setState({
+    folderWorkspaces: [
+      {
+        id: 'folder-1',
+        projectGroupId: 'group',
+        name: 'Folder',
+        folderPath: '/folder',
+        executionHostId: 'local',
+        linkedTask: null,
+        comment: '',
+        isArchived: false,
+        isUnread: false,
+        isPinned: false,
+        sortOrder: 0,
+        lastActivityAt: 0,
+        createdAt: 0,
+        updatedAt: 0
+      }
+    ],
+    groupsByWorktree: {
+      [folder]: ['left', 'right'].map((id) =>
+        makeTabGroup({
+          id,
+          worktreeId: folder,
+          activeTabId: id === 'left' ? 'chat' : 'terminal',
+          tabOrder: [id === 'left' ? 'chat' : 'terminal']
+        })
+      )
+    },
+    unifiedTabsByWorktree: {
+      [folder]: [
+        makeUnifiedTab({
+          id: 'chat',
+          contentType: 'agent-session',
+          worktreeId: folder,
+          groupId: 'left',
+          executionHostId: 'local'
+        }),
+        makeUnifiedTab({
+          id: 'terminal',
+          worktreeId: folder,
+          groupId: 'right',
+          executionHostId: 'local'
+        })
+      ]
+    },
+    activeGroupIdByWorktree: { [folder]: 'left' },
+    layoutByWorktree: {
+      [folder]: {
+        type: 'split',
+        direction: 'horizontal',
+        first: { type: 'leaf', groupId: 'left' },
+        second: { type: 'leaf', groupId: 'right' }
+      }
+    },
+    worktreesByRepo: {}
+  })
+  const outcome = vi.fn()
+  openFileInBrowserTab({
+    filePath: '/folder/report.html',
+    worktreeId: folder,
+    linkContext: { linkIntent: captureLinkOpenIntent(store.getState(), folder, 'chat') },
+    onLinkOutcome: outcome
+  })
+  expect(outcome).toHaveBeenCalledWith(
+    expect.objectContaining({
+      status: 'opened',
+      result: expect.objectContaining({ worktreeId: folder, groupId: 'right' })
+    })
+  )
+  expect(store.getState().activeGroupIdByWorktree[folder]).toBe('right')
+})

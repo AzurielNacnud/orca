@@ -1,3 +1,5 @@
+import { openPlannedFileBrowserLink } from './file-preview-link-open'
+import type { BrowserLinkOpenContext, BrowserOpenOutcome } from './browser-link-destination'
 import { toast } from 'sonner'
 import { absolutePathToFileUri } from '@/components/editor/markdown-internal-links'
 import { getClientCreationActionPolicy } from '@/lib/client-creation-action-policy'
@@ -37,6 +39,18 @@ function pairedOutsideWorktreeMessage(): string {
   )
 }
 
+function getLocalFilePreviewPlan(
+  state: AppState,
+  worktreeId: string,
+  filePath: string
+): WorkspaceFilePreviewPlan {
+  const availability = getClientCreationActionPolicy(state, worktreeId)['managed-browser']
+  if (availability.state !== 'enabled') {
+    return { status: 'unsupported', message: availability.reason, reason: 'no-channel' }
+  }
+  return { status: 'browser-tab', url: absolutePathToFileUri(filePath), title: basename(filePath) || filePath }
+}
+
 /**
  * How a previewable document should be rendered.
  *
@@ -54,8 +68,12 @@ export type WorkspaceFilePreviewPlan =
 export function getWorkspaceFilePreviewPlan(
   state: AppState,
   worktreeId: string,
-  filePath: string
+  filePath: string,
+  clientLocal = false
 ): WorkspaceFilePreviewPlan {
+  if (clientLocal) {
+    return getLocalFilePreviewPlan(state, worktreeId, filePath)
+  }
   // Why: a twin reads as "no server" below, which would open this machine's copy of the path.
   if (isTwinWorkspace(state, worktreeId)) {
     return {
@@ -188,10 +206,42 @@ export function openFileInBrowserTab(params: {
   filePath: string
   worktreeId: string
   targetGroupId?: string
+  clientLocal?: boolean
+  linkContext?: BrowserLinkOpenContext
+  onLinkOutcome?: (outcome: BrowserOpenOutcome) => void
 }): WorkspaceFilePreviewPlan {
   const state = useAppStore.getState()
-  const plan = getWorkspaceFilePreviewPlan(state, params.worktreeId, params.filePath)
+  const plan = getWorkspaceFilePreviewPlan(
+    state,
+    params.worktreeId,
+    params.filePath,
+    params.clientLocal
+  )
   if (plan.status === 'unsupported') {
+    params.onLinkOutcome?.({ status: 'unsupported' })
+    return plan
+  }
+  if (params.linkContext) {
+    const outcome = openPlannedFileBrowserLink(
+      state,
+      params,
+      plan,
+      params.linkContext,
+      (current) => {
+        const currentPlan = getWorkspaceFilePreviewPlan(
+          current,
+          params.worktreeId,
+          params.filePath,
+          params.clientLocal
+        )
+        return (
+          currentPlan.status === plan.status &&
+          (currentPlan.status !== 'browser-tab' ||
+            (plan.status === 'browser-tab' && currentPlan.url === plan.url))
+        )
+      }
+    )
+    params.onLinkOutcome?.(outcome)
     return plan
   }
   if (plan.status === 'doc-preview') {
@@ -202,7 +252,8 @@ export function openFileInBrowserTab(params: {
   state.createBrowserTab(params.worktreeId, plan.url, {
     title: plan.title,
     ...(params.targetGroupId ? { targetGroupId: params.targetGroupId } : {}),
-    activate: true
+    activate: true,
+    ...(params.clientLocal ? { browserRuntimeEnvironmentId: null } : {})
   })
   return plan
 }

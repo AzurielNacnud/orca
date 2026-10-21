@@ -46,6 +46,7 @@ export function createBrowserTabActions(
 > {
   return {
     createBrowserTab: (worktreeId, url, options) => {
+      options?.validateLinkPlacement?.(get())
       assertManagedBrowserMaterializationAllowed(get(), options?.browserRuntimeEnvironmentId)
       const workspaceId = createBrowserUuid()
       const browserPageId = options?.browserPageId
@@ -65,7 +66,11 @@ export function createBrowserTabActions(
         browserPageId,
         options?.docLocation
       )
-      if (!options?.browserRuntimeEnvironmentId && !options?.docLocation) {
+      if (
+        !options?.browserRuntimeEnvironmentId &&
+        !options?.docLocation &&
+        !options?.validateLinkPlacement
+      ) {
         admitBrowserPageMount(page.id)
       }
       // Why: with no explicit profile, Settings decides, so the profile scope applies to every way a tab opens.
@@ -91,17 +96,20 @@ export function createBrowserTabActions(
       )
 
       const drawHere = (): void => {
-        set((s) => ({
-          browserTabsByWorktree: {
-            ...s.browserTabsByWorktree,
-            [worktreeId]: [...(s.browserTabsByWorktree[worktreeId] ?? []), browserTab]
-          },
-          browserPagesByWorkspace: {
-            ...s.browserPagesByWorkspace,
-            [workspaceId]: [page]
-          },
-          ...browserTabOpenView(s, worktreeId, browserTab, page, options)
-        }))
+        set((s) => {
+          options?.validateLinkPlacement?.(s)
+          return {
+            browserTabsByWorktree: {
+              ...s.browserTabsByWorktree,
+              [worktreeId]: [...(s.browserTabsByWorktree[worktreeId] ?? []), browserTab]
+            },
+            browserPagesByWorkspace: {
+              ...s.browserPagesByWorkspace,
+              [workspaceId]: [page]
+            },
+            ...browserTabOpenView(s, worktreeId, browserTab, page, options)
+          }
+        })
 
         const state = get()
         const alreadyHasUnifiedTab = (state.unifiedTabsByWorktree[worktreeId] ?? []).some(
@@ -109,20 +117,38 @@ export function createBrowserTabActions(
         )
         if (!alreadyHasUnifiedTab) {
           const shouldActivate = options?.activate ?? true
-          const created = state.createUnifiedTab(worktreeId, 'browser', {
-            entityId: workspaceId,
-            label: browserTab.title,
-            targetGroupId: options?.targetGroupId,
-            ...(options?.split ? { split: options.split } : {}),
-            ...(options?.afterTabId ? { afterTabId: options.afterTabId } : {}),
-            // Why no routing-host default: a substituted host would disown the wrapper from its worktree.
-            ...(options?.executionHostId ? { executionHostId: options.executionHostId } : {}),
-            activate: shouldActivate
-          })
+          let created
+          try {
+            created = state.createUnifiedTab(worktreeId, 'browser', {
+              ...(options?.validateLinkPlacement
+                ? { validatePlacement: options.validateLinkPlacement }
+                : {}),
+              entityId: workspaceId,
+              label: browserTab.title,
+              targetGroupId: options?.targetGroupId,
+              ...(options?.split ? { split: options.split } : {}),
+              ...(options?.afterTabId ? { afterTabId: options.afterTabId } : {}),
+              // Why no routing-host default: a substituted host would disown the wrapper from its worktree.
+              ...(options?.executionHostId ? { executionHostId: options.executionHostId } : {}),
+              activate: shouldActivate
+            })
+          } catch (error) {
+            if (options?.validateLinkPlacement) {
+              get().closeBrowserTab(workspaceId, { reason: 'cleanup' })
+            }
+            throw error
+          }
           // Why: unified creation already selected the tab and recorded the visit; only the group moves.
           if (shouldActivate && created) {
             get().focusGroup(worktreeId, created.groupId)
           }
+        }
+        if (
+          options?.validateLinkPlacement &&
+          !options.browserRuntimeEnvironmentId &&
+          !options.docLocation
+        ) {
+          admitBrowserPageMount(page.id)
         }
       }
       // Switch point: main opens the tab under these ids and its frame draws it.

@@ -1,3 +1,5 @@
+import { openRoutedHttpLink } from '@/lib/http-link-destinations'
+import * as browserLinkOpen from './terminal-file-link-browser-open'
 import { describe, expect, it, vi } from 'vitest'
 import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
 import { openDetectedFilePath } from './terminal-link-handlers'
@@ -187,10 +189,32 @@ describe('terminal file links carry their source tab', () => {
     storeState.settings = { openLinksInApp: true }
     seedSourceTab()
 
+    const browserOpen = vi
+      .spyOn(browserLinkOpen, 'openResolvedHtmlFileInBrowser')
+      .mockReturnValueOnce({
+        status: 'opened',
+        result: {
+          worktreeId: 'wt-1',
+          executionHostId: 'local',
+          browserWorkspaceId: 'browser',
+          browserPageId: 'page',
+          unifiedTabId: 'wrapper',
+          groupId: 'group-a'
+        }
+      })
     openDetectedFilePath('/tmp/report.html', null, null, sourceDeps)
     await flushAsyncWork()
 
-    expect(createBrowserTabMock).toHaveBeenCalledTimes(1)
+    expect(browserOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filePath: '/tmp/report.html',
+        worktreeId: 'wt-1',
+        linkContext: expect.objectContaining({
+          linkIntent: expect.objectContaining({ sourceTabId: 'unified-term' })
+        })
+      })
+    )
+    browserOpen.mockRestore()
     expect(toastErrorMock).not.toHaveBeenCalled()
   })
 })
@@ -211,6 +235,16 @@ describe('terminal file link reveals target the opened view', () => {
       column: 3
     })
     expect(reveal.canApply?.()).toBe(true)
+  })
+
+  it('invalidates an editor line reveal when a browser link is activated', async () => {
+    setPlatform('Macintosh')
+    openDetectedFilePath('/tmp/src/a.ts', 12, 3, deps)
+    await flushAsyncWork()
+    await flushDoubleRaf()
+    const reveal = lastReveal()
+    openRoutedHttpLink('https://example.com/', { worktreeId: 'wt-1', forceDestination: 'orca' })
+    expect(reveal.canApply?.()).toBe(false)
   })
 
   it('invalidates a published reveal when a newer click has no line', async () => {
