@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { canonicalizeCapabilitySet, type PluginCapability } from './plugin-capabilities'
+import { canonicalizeCapabilitySet, type PluginCapability } from '../plugin-capabilities'
 import { fingerprintPluginConsent } from './plugin-consent-fingerprint'
 import {
   getPluginActivationState,
@@ -11,7 +11,7 @@ import {
   parsePluginLockfile,
   serializePluginLockfile,
   type PluginLockfile
-} from './plugin-install-lockfile'
+} from '../plugin-install-lockfile'
 
 const workspaceRead: PluginCapability = { kind: 'workspace:read' }
 const storage: PluginCapability = { kind: 'storage' }

@@ -5,7 +5,7 @@
  * `plugin-host-runtime.ts`; this file only wires the fork IPC channel.
  */
 import { createPluginWorkerRuntime } from './plugin-host-runtime'
-import type { PluginWorkerChildMessage } from '../../../shared/plugins/plugin-host-protocol'
+import type { PluginWorkerChildMessage } from '../../../shared/plugins/workers/plugin-host-protocol'
 
 function sendToParent(message: PluginWorkerChildMessage): void {
   process.send?.(message)

@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { PLUGIN_EVENT_NAMES } from './plugin-manifest'
-import type { PluginCapabilityKind } from './plugin-capabilities'
+import { PLUGIN_EVENT_NAMES } from '../manifest/plugin-manifest'
+import type { PluginCapabilityKind } from '../plugin-capabilities'
 
 /**
  * Host API v0 — the separately-versioned public facade plugins call. Every

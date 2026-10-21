@@ -1,4 +1,4 @@
-import { isQualifiedPluginKey } from './plugin-manifest'
+import { isQualifiedPluginKey } from '../manifest/plugin-manifest'
 
 /**
  * Consent + enablement state derivation. Consent is recorded against the
