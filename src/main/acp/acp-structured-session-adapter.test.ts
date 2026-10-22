@@ -237,32 +237,52 @@ describe('ACP structured session adapter: turns', () => {
     ])
   })
 
-  it('runs a message with no choices on the model the agent moved to before Orca wrote any', async () => {
-    // As OpenCode 2: session/new answers before its catalog loads, then reports the configured model.
-    const rig = await openAcpAdapterRig()
-    await rig.acquire()
-    rig.child().agent.notify('session/update', {
-      sessionId: PROVIDER_SESSION,
-      update: {
-        sessionUpdate: 'config_option_update',
-        configOptions: GROK_CONFIG_OPTIONS.map((option) =>
-          option.id === 'model' ? { ...option, currentValue: 'grok-4.6' } : option
-        )
+  it.each([
+    ['no choice', {}],
+    ['an effort choice', { effort: 'low' }]
+  ])(
+    'runs a message with %s on the model the agent moved to before Orca wrote one',
+    async (_name, executionOptions: { effort?: string }) => {
+      // As OpenCode 2: session/new answers before its catalog loads, then reports the configured model.
+      const rig = await openAcpAdapterRig()
+      await rig.acquire()
+      if (executionOptions.effort) {
+        await rig.adapter.setOption({
+          sessionId: SESSION,
+          key: 'effort',
+          value: executionOptions.effort,
+          fence: 1
+        })
       }
-    })
-    await waitFor(() =>
-      expect(rig.lifecycle.map((event) => event.type)).toContain('options-reported')
-    )
-    await rig.adapter.dispatch({
-      sessionId: SESSION,
-      fence: 1,
-      clientMessageId: 'unchosen-send',
-      body: hello,
-      executionOptions: {}
-    })
-    await rig.frame('session/prompt')
-    expect(rig.sent('session/set_config_option')).toEqual([])
-  })
+      rig.child().agent.notify('session/update', {
+        sessionId: PROVIDER_SESSION,
+        update: {
+          sessionUpdate: 'config_option_update',
+          configOptions: GROK_CONFIG_OPTIONS.map((option) =>
+            option.id === 'model'
+              ? { ...option, currentValue: 'grok-4.6' }
+              : { ...option, currentValue: executionOptions.effort ?? option.currentValue }
+          )
+        }
+      })
+      await waitFor(() =>
+        expect(rig.lifecycle.map((event) => event.type)).toContain('options-reported')
+      )
+      await rig.adapter.dispatch({
+        sessionId: SESSION,
+        fence: 1,
+        clientMessageId: 'unchosen-send',
+        body: hello,
+        executionOptions
+      })
+      await rig.frame('session/prompt')
+      expect(rig.sent('session/set_config_option').map((frame) => frame.params)).toEqual(
+        executionOptions.effort
+          ? [{ sessionId: PROVIDER_SESSION, configId: 'reasoning_effort', value: 'low' }]
+          : []
+      )
+    }
+  )
 
   it("sends Grok's prompt identity only to an agent whose dialect echoes it", async () => {
     const rig = await openAcpAdapterRig({

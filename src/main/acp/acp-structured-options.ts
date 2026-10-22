@@ -76,10 +76,6 @@ export class AcpStructuredOptions {
     this.configOptions = response.configOptions ?? []
     this.models = response.models ?? null
     this.resolvesConfig = origin === 'new'
-    this.adoptOwnChoice()
-  }
-
-  private adoptOwnChoice(): void {
     this.initialChoice = this.reported()
     this.currentProof = new Set(Object.keys(this.initialChoice))
   }
@@ -96,12 +92,30 @@ export class AcpStructuredOptions {
   adoptConfigOptions(configOptions: SessionConfigOption[] | null | undefined): void {
     if (configOptions) {
       this.configOptions = configOptions
-      // Until Orca writes a choice, a later report is still the agent's own (OpenCode's start
-      // answers before its catalog loads).
-      if (!this.picked.has('model') && !this.picked.has('effort')) {
-        this.adoptOwnChoice()
+      this.adoptOwnChoice()
+    }
+  }
+
+  /** Until Orca writes a key, a later report is still the agent's own (OpenCode's start answers
+   *  before its catalog loads); an effort belongs to its model, so it stops with either write. */
+  private adoptOwnChoice(): void {
+    if (this.picked.has('model')) {
+      return
+    }
+    const reported = this.reported()
+    const own = this.picked.has('effort') ? ['model'] : ['model', 'effort']
+    const choice: Record<string, string> = { ...this.initialChoice }
+    for (const key of own) {
+      const value = reported[key]
+      if (value === undefined) {
+        delete choice[key]
+        this.currentProof.delete(key)
+      } else {
+        choice[key] = value
+        this.currentProof.add(key)
       }
     }
+    this.initialChoice = choice
   }
 
   adoptModel(modelId: string): void {
