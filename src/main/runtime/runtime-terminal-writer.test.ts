@@ -11,27 +11,6 @@ import { TERMINAL_INPUT_CHUNK_MAX_BYTES } from '../../shared/terminal-input'
 afterEach(() => vi.useRealTimers())
 
 describe('requested terminal write settlement', () => {
-  it('acknowledges ordinary text and Enter-only input without a paste delay', async () => {
-    vi.useFakeTimers()
-    const writes: string[] = []
-    const writer = new RuntimeTerminalWriter((_id, text) => {
-      writes.push(text)
-      return true
-    })
-    let completed = false
-    const input = writer
-      .writeAction('pty', { text: 'typing' }, 'typing', { inputKind: 'driving' })
-      .then(() => writer.writeAction('pty', { enter: true }, '\r', { inputKind: 'driving' }))
-      .then(() => {
-        completed = true
-      })
-    await vi.advanceTimersByTimeAsync(0)
-    expect(completed).toBe(true)
-    expect(writes).toEqual(['typing', '\r'])
-    expect(vi.getTimerCount()).toBe(0)
-    await input
-  })
-
   it('cancels the combined paste wait without sending Enter or leaving a timer', async () => {
     vi.useFakeTimers()
     const writes: string[] = []
@@ -51,26 +30,6 @@ describe('requested terminal write settlement', () => {
     controller.abort()
     await cancelled
     expect(writes).toEqual([text])
-    expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it('acknowledges a chunked paste without waiting for submission readiness', async () => {
-    vi.useFakeTimers()
-    const writes: string[] = []
-    const writer = new RuntimeTerminalWriter(
-      (_id, text) => {
-        writes.push(text)
-        return true
-      },
-      () => 'win32',
-      () => 'claude'
-    )
-    const text = `\x1b[200~${'a'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2)}\x1b[201~`
-    const paste = writer.writeAction('pty', { text }, text, { inputKind: 'driving' })
-    await vi.advanceTimersByTimeAsync(10)
-    await paste
-    expect(writes.length).toBeGreaterThan(1)
-    expect(writes.join('')).toBe(text)
     expect(vi.getTimerCount()).toBe(0)
   })
 

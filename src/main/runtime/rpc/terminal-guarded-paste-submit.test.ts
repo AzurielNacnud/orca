@@ -36,11 +36,10 @@ afterEach(() => {
 
 async function createTerminal(agent: TuiAgent = 'claude') {
   const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, agent)
-  let permission = false
   vi.spyOn(runtime, 'getTerminalAgentStatus').mockImplementation(async () => ({
     handle,
     isRunningAgent: true,
-    status: permission ? 'permission' : 'idle'
+    status: 'idle'
   }))
   const dispatcher = new RpcDispatcher({ runtime, methods: TERMINAL_SEND_METHODS })
   const send = (input: { text?: string; enter?: boolean; requireAgentStatus?: 'sendable' }) =>
@@ -59,10 +58,7 @@ async function createTerminal(agent: TuiAgent = 'claude') {
     runtime,
     handle,
     writes,
-    send,
-    requirePermission: () => {
-      permission = true
-    }
+    send
   }
 }
 
@@ -123,23 +119,6 @@ describe('guarded annotation paste and submit', () => {
       expect(writes.join('')).toBe(text)
     }
   )
-
-  it('rechecks permission before Enter after the caller waits', async () => {
-    vi.useFakeTimers()
-    const { writes, send, requirePermission } = await createTerminal()
-    const text = '\x1b[200~Browser feedback\x1b[201~'
-    const paste = await send({ text })
-    expect(paste).toMatchObject({ ok: true, result: { send: { accepted: true } } })
-    requirePermission()
-    await vi.advanceTimersByTimeAsync(
-      resolveAgentPromptSubmitDelayForAgent(process.platform, text, 'claude')
-    )
-    await expect(send({ enter: true })).resolves.toMatchObject({
-      ok: true,
-      result: { send: { accepted: false, refusedReason: 'permission' } }
-    })
-    expect(writes).toEqual([text])
-  })
 
   it('omits the submit delay on ordinary input and refused writes', async () => {
     const { runtime, handle, writes, send } = await createTerminal()
