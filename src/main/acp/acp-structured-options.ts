@@ -11,7 +11,6 @@ import type {
   AgentSessionSlashCommand
 } from '../../shared/agent-session-wire'
 import type { AcpStructuredConnection } from './acp-structured-connection'
-import type { AcpLaunchSpec } from './acp-launch-specs'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import {
   unpickedSessionConfiguredChoice,
@@ -228,13 +227,11 @@ export class AcpStructuredOptions {
   }
 }
 
-/** Images go only where the agent's row offers them and its start advertised them. */
+/** Images go only to an agent whose start advertised them. */
 export async function acpSessionAcceptsImages(session: {
-  spec: Pick<AcpLaunchSpec, 'imagePrompts'>
   connection: Pick<AcpStructuredConnection, 'initialize'>
 }): Promise<boolean> {
   return (
-    session.spec.imagePrompts === true &&
     (await session.connection.initialize()).agentCapabilities?.promptCapabilities?.image === true
   )
 }

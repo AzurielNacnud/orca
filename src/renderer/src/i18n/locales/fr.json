@@ -14595,6 +14595,7 @@
             "sourceActionsUnavailable": "La source de la transcription n'est pas disponible."
           },
           "AiVaultScanProgressStrip": {
+            "agentChecked": "{{agent}} : {{settled}} sur {{total}} éléments potentiels de l’historique vérifiés",
             "fileCount_one": "{{value0}} fichier",
             "fileCount_other": "{{value0}} fichiers",
             "databaseCount_one": "{{value0}} base de données",
@@ -18591,6 +18592,8 @@
         "settleEarlierMessage": "Attendez que votre message précédent soit transmis, ou renvoyez-le.",
         "queueTooLarge": "Trop de texte est en attente dans la file.",
         "shrinkQueue": "Supprimez un message de la file, ou attendez qu'un message soit transmis, puis réessayez.",
+        "messageTooLarge": "Il dépasse la limite de 256 Ko par message.",
+        "shortenMessage": "Raccourcissez-le ou divisez-le, puis renvoyez-le.",
         "optionRejected": "L'agent n'a pas accepté ce réglage.",
         "goalsUnsupported": "Cet agent ne prend pas en charge les objectifs.",
         "agentRefused": "L'agent l'a refusé.",
@@ -18649,6 +18652,10 @@
         "uploadingFile": "Envoi de {{name}}…",
         "removeAttachment": "Retirer la pièce jointe",
         "pastedImageLabel": "Image collée",
+        "pastedTextLabel": "Texte collé",
+        "pasteNotSavedLabel": "Collage non enregistré",
+        "pasteNotSaved": "Ce collage n'a pas été enregistré. Collez-le à nouveau ou retirez-le.",
+        "pastedTextTooLarge": "Ce collage ferait dépasser à votre message la limite de 256 Ko par message. Raccourcissez-le, puis collez-le à nouveau.",
         "draftNotSaved": "Ce brouillon n'a pas encore pu être enregistré. Orca continue d'essayer.",
         "imageNotBroughtBack": "L'image {{name}} n'a pas pu être récupérée avec ce brouillon. Joignez-la à nouveau ou retirez-la.",
         "pastedImageNotBroughtBack": "Cette image collée n'a pas pu être récupérée avec ce brouillon. Retirez-la, puis collez-la à nouveau si vous en avez encore besoin.",

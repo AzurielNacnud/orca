@@ -45,18 +45,17 @@ function holdNextWrite(disk: FakeEditorDisk): () => void {
   return release
 }
 
-// Views of one record, as the sharing switch produces them; built by hand until it lands.
+// Views of one record in two workspaces, through the real record middleware and identity index.
 describe('editor save queue: one autosave timer per record across its views', () => {
   let disk: FakeEditorDisk
   let store: ReturnType<typeof createEditorStore>
   let queue: EditorSaveQueue
 
+  // The record middleware puts views of one file on one record by their identity.
   const share = (views: OpenFile[]): void => {
-    store.setState({
-      openFiles: views,
-      editorBufferIdOf: Object.fromEntries(views.map((view) => [view.id, 'rec'])),
-      editorBufferViews: { rec: views.map((view) => view.id) }
-    })
+    store.setState({ openFiles: views })
+    const recordIds = new Set(views.map((open) => store.getState().editorBufferIdOf[open.id]))
+    expect(recordIds.size).toBe(1)
   }
   const type = (viewId: string, text: string): void => {
     store.getState().setEditorDraft(viewId, text)

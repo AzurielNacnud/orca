@@ -58,15 +58,15 @@ export function getEditorModelOwnerKey(
   file: OpenFile,
   state: WorktreeOperationRouteState & Partial<EditorBufferViewIndex>
 ): string {
-  const recordId = state.editorBufferIdOf?.[file.id]
-  // Why: a detached record keeps its own text, so it must never share a model with the file's other record.
-  if (recordId !== undefined && isDetachedEditorBufferId(recordId)) {
-    return JSON.stringify(['detached', recordId])
-  }
   const owner = resolveEditorModelOwner(file, state)
   // Unresolved owners must not borrow another host's retained text.
-  return (
+  const ownerKey =
     resolvedEditorModelOwnerKey(owner) ??
     JSON.stringify([owner.environmentId, 'unresolved', file.worktreeId, file.id])
-  )
+  const recordId = state.editorBufferIdOf?.[file.id]
+  // Why: a detached record keeps its own text, so it must never share a model with the file's
+  // other record; the host owner stays in the key so two hosts' detached models stay apart too.
+  return recordId !== undefined && isDetachedEditorBufferId(recordId)
+    ? JSON.stringify(['detached', recordId, ownerKey])
+    : ownerKey
 }

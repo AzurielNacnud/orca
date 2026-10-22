@@ -7,7 +7,7 @@ import { useAppStore } from '@/store'
 import type { TabSplitDirection } from '@/store/slices/tabs'
 import { sendLayoutCommandToOwner } from '@/runtime/layout-owner-command'
 import type { WindowLayoutCommand } from '@/runtime/layout-apply-send'
-import { isPaneColumnSplitDropNoOp } from '@/store/slices/pane-column-split-drop-no-op'
+import { isPaneColumnSplitDropNoOp } from '../../../../shared/workspace-layout/pane-column-split-drop-no-op'
 import { mirrorWebRuntimeTabMove } from '../tab-bar/web-runtime-tab-move-mirror'
 import {
   expectMovedTabSelection,
@@ -39,8 +39,8 @@ export function dropTabThroughLayoutOwner(worktreeId: string, drop: TabDrop): bo
   const sent = sendLayoutCommandToOwner(worktreeId, command, {
     // The frame the answer waits for showed the move and the selection; with no stream, the
     // reconnect's snapshot will.
-    apply: () => {
-      if (layoutFramesFlowing()) {
+    apply: (_result, origin) => {
+      if (layoutFramesFlowing(origin.framesKey)) {
         forget()
       }
     },

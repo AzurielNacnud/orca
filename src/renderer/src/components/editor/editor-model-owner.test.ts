@@ -168,5 +168,15 @@ describe('editor model ownership', () => {
         editorBufferIdOf: { other: detachedEditorBufferId('other') }
       })
     )
+    // The host owner stays in the key: one detached record id on two hosts gets two models.
+    const remote = file({ runtimeEnvironmentId: 'env' })
+    expect(getEditorModelOwnerKey(remote, detached)).not.toBe(
+      getEditorModelOwnerKey(file(), detached)
+    )
+    expect(JSON.parse(getEditorModelOwnerKey(remote, detached))).toEqual([
+      'detached',
+      detachedEditorBufferId('file'),
+      getEditorModelOwnerKey(remote, localState)
+    ])
   })
 })

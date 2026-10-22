@@ -14482,6 +14482,7 @@
             "sourceActionsUnavailable": "La fuente de la transcripción no está disponible."
           },
           "AiVaultScanProgressStrip": {
+            "agentChecked": "{{agent}}: {{settled}} de {{total}} candidatos del historial comprobados",
             "fileCount_one": "{{value0}} archivo",
             "fileCount_other": "{{value0}} archivos",
             "databaseCount_one": "{{value0}} base de datos",
@@ -18482,6 +18483,8 @@
         "settleEarlierMessage": "Espere a que se entregue su mensaje anterior o vuelva a intentarlo.",
         "queueTooLarge": "Hay demasiado texto esperando en la cola.",
         "shrinkQueue": "Elimine un mensaje de la cola o espere a que se entregue uno y vuelva a intentarlo.",
+        "messageTooLarge": "Supera el límite de 256 KB por mensaje.",
+        "shortenMessage": "Acórtelo o divídalo y vuelva a enviarlo.",
         "optionRejected": "El agente no aceptó este ajuste.",
         "goalsUnsupported": "Este agente no admite objetivos.",
         "agentRefused": "El agente lo rechazó.",
@@ -18524,6 +18527,10 @@
         "uploadingFile": "Subiendo {{name}}…",
         "removeAttachment": "Quitar archivo adjunto",
         "pastedImageLabel": "Imagen pegada",
+        "pastedTextLabel": "Texto pegado",
+        "pasteNotSavedLabel": "Pegado no guardado",
+        "pasteNotSaved": "Este pegado no se guardó. Vuelve a pegarlo o quítalo.",
+        "pastedTextTooLarge": "Este pegado haría que su mensaje superara el límite de 256 KB por mensaje. Acórtelo y vuelva a pegarlo.",
         "copyImage": "Copiar imagen",
         "copyImageFailed": "No se pudo copiar la imagen",
         "copyImageTooLarge": "La imagen es demasiado grande para copiarla.",

@@ -16,7 +16,7 @@ export type EditorBufferJoin = 'rekey' | 'attach' | 'adopt' | 'merge' | 'detach'
 export type EditorBufferJoinOnto = Exclude<EditorBufferJoin, 'rekey'>
 
 // Why the draft counts: a clean-flagged tab can still hold a real unsaved draft (Markdown whitespace).
-function isDirtySide(side: EditorBufferJoinSide): boolean {
+export function isDirtyEditorBufferSide(side: EditorBufferJoinSide): boolean {
   return side.record.isDirty || side.draft !== undefined
 }
 
@@ -24,10 +24,10 @@ function joinOnto(
   target: EditorBufferJoinSide,
   joining: EditorBufferJoinSide
 ): EditorBufferJoinOnto {
-  if (!isDirtySide(joining)) {
+  if (!isDirtyEditorBufferSide(joining)) {
     return 'attach'
   }
-  if (!isDirtySide(target)) {
+  if (!isDirtyEditorBufferSide(target)) {
     return 'adopt'
   }
   // Why every field: a merge must not drop either side's conflict or owner-migration pause, and an
@@ -56,7 +56,9 @@ export function decideEditorBufferRejoin(
   detached: EditorBufferJoinSide,
   partner: EditorBufferJoinSide
 ): EditorBufferJoinOnto | null {
-  return isDirtySide(detached) && isDirtySide(partner) ? null : joinOnto(partner, detached)
+  return isDirtyEditorBufferSide(detached) && isDirtyEditorBufferSide(partner)
+    ? null
+    : joinOnto(partner, detached)
 }
 
 /** The record and draft the joined record holds; null when the sides stay apart. */
