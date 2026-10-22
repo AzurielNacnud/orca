@@ -93,7 +93,6 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
   const complete = async (operation: PaneSpawnOperation): Promise<PtySpawnOutcome> => {
     ctx.paneSpawnOperation = operation
     ctx.args.paneSpawnOperation = operation
-    adapter.beforeExecute?.()
     const runtime = ctx.deps.runtime
     const acquire = runtime?.acquireWorktreeTerminalSpawn
     ctx.releaseWorktreeSpawn = acquire
@@ -115,6 +114,7 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
             throw error
           })
       : undefined
+    adapter.beforeExecute?.()
     await executePtySpawn(ctx, adapter.facts())
     const outcome = finish(await adapter.commit())
     // Runtime hidden P2 follows the awaited prompt-intent wrapper and never an exited result.

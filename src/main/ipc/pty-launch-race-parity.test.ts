@@ -2,7 +2,6 @@ import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import type { TerminalCreateOptions } from '../runtime/runtime-terminal-contracts'
 import { spawnInAdmittedPane } from '../runtime/runtime-pane-admission'
 import { registerPtyHandlers } from './pty/register-handlers'
-import { createPaneBindingStore } from './pty-launch-race-test-fixture'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { launchWorkspaceId } from '../../shared/launch-parity-window-request.test-fixture'
 import { POSIX_PATH } from '../../shared/launch-parity-window-cases.test-fixture'
@@ -24,6 +23,7 @@ import { WORKTREE_TERMINALS_SLEEPING_ERROR } from '../runtime/worktree-terminals
 import { RestoredPaneStarter } from '../runtime/terminal/recovery/restored-pane-start'
 import {
   LAUNCH_RACE_LANES,
+  createPaneBindingStore,
   createLaunchRaceRuntime,
   gatedClaudeAuth,
   launchRacePane,
