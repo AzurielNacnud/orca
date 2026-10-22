@@ -1,5 +1,7 @@
 import type { BrowserPageZoomDirection } from '../../shared/browser-page-zoom'
 import type { ResolveRenderer } from './browser-guest-renderer-target'
+import { isAgentInjectingInput } from './agent-input-injection'
+import { resolveGuestMouseHistoryDirection } from './browser-guest-mouse-history'
 
 const CONTROL_MODIFIERS = new Set(['control', 'ctrl'])
 const MAC_COMMAND_MODIFIERS = new Set(['meta', 'command', 'cmd'])
@@ -81,6 +83,18 @@ export function setupGuestMouseWheelZoomForwarding(args: {
     onViewportWheelConsumed
   } = args
   const handler = (event: Electron.Event, mouse: Electron.MouseInputEvent): void => {
+    // Why here: this is the guest's one before-mouse-event listener, so side buttons share its lifetime.
+    const historyDirection = resolveGuestMouseHistoryDirection(mouse)
+    if (historyDirection) {
+      // Why: agent tools press X1/X2 as real page input; that must not also run Orca's history step.
+      if (!isAgentInjectingInput(guest)) {
+        resolveRenderer(browserTabId)?.send('ui:browserHistoryNavigate', {
+          browserPageId: browserTabId,
+          direction: historyDirection
+        })
+      }
+      return
+    }
     const direction = resolveGuestMouseWheelZoomDirection(mouse)
     if (direction) {
       // Focused guest wheel events do not reach renderer DOM handlers.

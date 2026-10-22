@@ -564,7 +564,9 @@ describe('setupGuestShortcutForwarding', () => {
     const secondDownPreventDefault = triggerBeforeInput(modifierInput)
 
     expect(secondDownPreventDefault).toHaveBeenCalledTimes(1)
-    expect(rendererSendMock).toHaveBeenCalledWith('ui:newBrowserTab')
+    expect(rendererSendMock).toHaveBeenCalledWith('ui:browserPageTabShortcut', {
+      doubleTapModifier: 'Shift'
+    })
   })
 
   it('resets guest double-tap detection on blur', () => {

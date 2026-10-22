@@ -506,6 +506,8 @@ describe('ClientHostedBrowserPagePane address bar parity', () => {
 
   it('still hands focus to the guest when the tab opens on a real page', () => {
     const { webview, focus, setUrl } = createWebview()
+    // Why: the attach is mocked, so place the guest where the real attach would put it.
+    document.body.appendChild(webview)
     setUrl('https://remote.internal/path')
     mocks.attach.mockReturnValue(retainedAttachment(webview))
 
@@ -530,6 +532,8 @@ describe('ClientHostedBrowserPagePane address bar parity', () => {
 
   it('gives the guest focus back after the palette hands the address bar a turn', () => {
     const { webview, focus, setUrl } = createWebview()
+    // Why: the attach is mocked, so place the guest where the real attach would put it.
+    document.body.appendChild(webview)
     setUrl('https://remote.internal/path')
     mocks.attach.mockReturnValue(retainedAttachment(webview))
     const renderPane = (isActive: boolean): React.JSX.Element => (
@@ -654,8 +658,10 @@ function createWebview(): {
   const webview = document.createElement('webview') as Electron.WebviewTag
   let url = 'about:blank'
   let title = 'New Tab'
-  const focus = vi.fn()
-  const blur = vi.fn()
+  // Why: a real <webview> becomes activeElement when focused; focus code checks for that.
+  webview.tabIndex = -1
+  const focus = vi.fn(() => HTMLElement.prototype.focus.call(webview))
+  const blur = vi.fn(() => HTMLElement.prototype.blur.call(webview))
   Object.assign(webview, {
     getURL: vi.fn(() => url),
     getTitle: vi.fn(() => title),

@@ -164,6 +164,35 @@ describe('useBrowserPageChromeFocus', () => {
     expect(document.activeElement).toBe(guest())
   })
 
+  it('hands the page the keyboard when its tab is switched to (#20533)', () => {
+    const view = render(<ChromeHarness isActive={false} />)
+    act(() => addressBar().focus())
+
+    view.rerender(<ChromeHarness isActive />)
+
+    expect(document.activeElement).toBe(guest())
+  })
+
+  it('leaves the keyboard alone when a page activates in a split the user is not in', () => {
+    const view = render(<ChromeHarness isActive={false} />)
+    act(() => addressBar().focus())
+
+    view.rerender(<ChromeHarness isActive chromeShortcutScope="inactive" />)
+    act(() => flushFrames())
+
+    expect(document.activeElement).toBe(addressBar())
+  })
+
+  it('focuses a page whose guest attaches a frame after the tab activates', () => {
+    const view = render(<ChromeHarness isActive={false} hasGuest={false} />)
+
+    view.rerender(<ChromeHarness isActive hasGuest={false} />)
+    view.rerender(<ChromeHarness isActive />)
+    act(() => flushFrames())
+
+    expect(document.activeElement).toBe(guest())
+  })
+
   it('ignores a pending request while the pane is not the active surface', () => {
     queuePendingAddressBarFocus()
 

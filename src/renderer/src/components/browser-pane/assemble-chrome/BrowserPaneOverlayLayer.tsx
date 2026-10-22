@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useEffect, useMemo } from 'react'
 import { registerBrowserOverlaySlotViewport } from '../host-guest/browser-page-viewport'
 import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '../../../store'
@@ -174,6 +174,33 @@ const BrowserPaneOverlayLayer = memo(function BrowserPaneOverlayLayer({
     }
     return entries
   }, [groupActiveTabById, unifiedTabs])
+
+  // Why: a <webview> taking focus fires only a non-bubbling 'focus' in this document, never the
+  // focusin the slot's onFocusCapture needs, so a click into a page left its split inactive (#22144).
+  useEffect(() => {
+    if (!isWorktreeActive) {
+      return
+    }
+    const handlePageFocus = (event: FocusEvent): void => {
+      const target = event.target
+      if (!(target instanceof HTMLElement) || target.tagName !== 'WEBVIEW') {
+        return
+      }
+      // Why: a client-hosted guest sits in a body-level host outside its slot, stamped with its page id.
+      const clientPageId = target.closest<HTMLElement>('[data-browser-client-page-id]')?.dataset
+        .browserClientPageId
+      const browserTabId = clientPageId
+        ? browserTabs.find((tab) => tab.id === clientPageId || tab.pageIds?.includes(clientPageId))
+            ?.id
+        : target.closest<HTMLElement>('[data-browser-overlay-tab-id]')?.dataset.browserOverlayTabId
+      const groupId = browserTabId ? assignments.get(browserTabId)?.groupId : undefined
+      if (groupId) {
+        focusOwningGroup(groupId)
+      }
+    }
+    document.addEventListener('focus', handlePageFocus, true)
+    return () => document.removeEventListener('focus', handlePageFocus, true)
+  }, [assignments, browserTabs, focusOwningGroup, isWorktreeActive])
 
   return (
     <>
