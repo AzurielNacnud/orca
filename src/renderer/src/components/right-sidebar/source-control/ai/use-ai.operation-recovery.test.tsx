@@ -47,6 +47,7 @@ function controllerParams(
     commitError: null,
     pushRecoveryPrompt: null,
     updateSettings: vi.fn(),
+    updateSettingsOrThrow: vi.fn().mockResolvedValue(undefined),
     updateRepo: vi.fn(),
     openSettingsTarget: vi.fn(),
     openSettingsPage: vi.fn(),
