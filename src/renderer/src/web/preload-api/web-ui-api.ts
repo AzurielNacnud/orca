@@ -246,6 +246,7 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
     onReloadBrowserPage: () => noopUnsubscribe,
     onBrowserHistoryNavigate: () => noopUnsubscribe,
     onBrowserPageSwipe: () => noopUnsubscribe,
+    onBrowserPagePointerDown: () => noopUnsubscribe,
     onZoomBrowserPage: () => noopUnsubscribe,
     onHardReloadBrowserPage: () => noopUnsubscribe,
     onCloseActiveTab: () => noopUnsubscribe,

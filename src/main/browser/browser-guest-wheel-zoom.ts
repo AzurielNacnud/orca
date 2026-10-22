@@ -83,16 +83,25 @@ export function setupGuestMouseWheelZoomForwarding(args: {
     onViewportWheelConsumed
   } = args
   const handler = (event: Electron.Event, mouse: Electron.MouseInputEvent): void => {
-    // Why here: this is the guest's one before-mouse-event listener, so side buttons share its lifetime.
+    // Why here: this is the guest's one before-mouse-event listener, so presses share its lifetime.
+    // Agent tools click and press X1/X2 as real page input; neither may move the user's split or history.
+    if ((mouse.type === 'mouseDown' || mouse.type === 'mouseUp') && isAgentInjectingInput(guest)) {
+      return
+    }
+    if (mouse.type === 'mouseDown') {
+      // Why: a click into a page reaches the embedder as no reliable DOM focus event, so its split
+      // never became active (#22144); the press itself is the signal.
+      resolveRenderer(browserTabId)?.send('ui:browserPagePointerDown', {
+        browserPageId: browserTabId
+      })
+      return
+    }
     const historyDirection = resolveGuestMouseHistoryDirection(mouse)
     if (historyDirection) {
-      // Why: agent tools press X1/X2 as real page input; that must not also run Orca's history step.
-      if (!isAgentInjectingInput(guest)) {
-        resolveRenderer(browserTabId)?.send('ui:browserHistoryNavigate', {
-          browserPageId: browserTabId,
-          direction: historyDirection
-        })
-      }
+      resolveRenderer(browserTabId)?.send('ui:browserHistoryNavigate', {
+        browserPageId: browserTabId,
+        direction: historyDirection
+      })
       return
     }
     const direction = resolveGuestMouseWheelZoomDirection(mouse)

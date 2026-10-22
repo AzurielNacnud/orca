@@ -144,6 +144,7 @@ export type UiCommandEventApi = {
     callback: (command: BrowserHistoryNavigateCommand) => void
   ) => () => void
   onBrowserPageSwipe: (callback: (swipe: BrowserPageSwipe) => void) => () => void
+  onBrowserPagePointerDown: (callback: (target: BrowserPageCommandTarget) => void) => () => void
   onZoomBrowserPage: (callback: (command: BrowserPageZoomCommand) => void) => () => void
   onScrollBrowserPage?: (
     callback: (event: { browserPageId: string; deltaX: number; deltaY: number }) => void

@@ -20,7 +20,8 @@ const mocks = vi.hoisted(() => ({
   automationVisiblePageIds: new Set<string>(),
   mobileDrivenPageIds: new Set<string>(),
   remotelyViewedPageIds: new Set<string>(),
-  focusGroup: vi.fn()
+  focusGroup: vi.fn(),
+  pagePointerDown: null as ((target: { browserPageId: string }) => void) | null
 }))
 
 vi.mock('../../../store', () => ({
@@ -94,10 +95,20 @@ describe('BrowserPaneOverlayLayer', () => {
     mocks.remotelyViewedPageIds.clear()
     mocks.focusGroup.mockClear()
     mocks.state = createState()
+    mocks.pagePointerDown = null
+    vi.stubGlobal('api', {
+      ui: {
+        onBrowserPagePointerDown: (listener: (target: { browserPageId: string }) => void) => {
+          mocks.pagePointerDown = listener
+          return () => {}
+        }
+      }
+    })
   })
 
   afterEach(() => {
     cleanup()
+    vi.unstubAllGlobals()
     // The row store is module-level, so a leftover row would render an extra pane in every
     // sibling test.
     clearClientHostedBrowserRowSelection()
@@ -465,7 +476,7 @@ describe('BrowserPaneOverlayLayer', () => {
   // whichever webview the group was showing. Both siblings are absolutely positioned onto the same
   // anchor, so the only thing putting it on top is being last — a reorder is invisible to every
   // other assertion here and would bury it under a guest.
-  it('makes the split of a page that takes focus the active one (#22144)', () => {
+  it('makes the split of a page clicked into the active one (#22144)', () => {
     const state = createState()
     const [tabA, tabB] = state.unifiedTabsByWorktree['wt-1']
     state.unifiedTabsByWorktree = { 'wt-1': [tabA, { ...tabB, groupId: 'group-2' }] }
@@ -475,27 +486,14 @@ describe('BrowserPaneOverlayLayer', () => {
         { id: 'group-2', worktreeId: 'wt-1', activeTabId: tabB.id, tabOrder: [tabB.id] }
       ]
     }
-    state.activeGroupIdByWorktree = { 'wt-1': 'group-2' }
+    state.activeGroupIdByWorktree = { 'wt-1': 'group-1' }
     mocks.state = state
-    const view = render(<BrowserPaneOverlayLayer worktreeId="wt-1" isWorktreeActive />)
-    // Why: a guest taking focus fires only a non-bubbling 'focus' on the <webview> in this document.
-    const focusPage = (host: Element): void => {
-      const webview = document.createElement('webview')
-      webview.tabIndex = -1
-      host.appendChild(webview)
-      act(() => webview.focus())
-    }
+    render(<BrowserPaneOverlayLayer worktreeId="wt-1" isWorktreeActive />)
 
-    focusPage(view.container.querySelector('[data-browser-overlay-tab-id="browser-a"]')!)
-    expect(mocks.focusGroup).toHaveBeenLastCalledWith('wt-1', 'group-1')
+    // Main reports the press by page id, which is how both local and client-hosted guests register.
+    act(() => mocks.pagePointerDown?.({ browserPageId: 'page-b' }))
 
-    // A client-hosted guest lives in a body-level host stamped with its page id.
-    const clientHost = document.createElement('div')
-    clientHost.dataset.browserClientPageId = 'page-b'
-    document.body.appendChild(clientHost)
-    focusPage(clientHost)
-    expect(mocks.focusGroup).toHaveBeenLastCalledWith('wt-1', 'group-2')
-    clientHost.remove()
+    expect(mocks.focusGroup).toHaveBeenCalledWith('wt-1', 'group-2')
   })
 
   it('renders the client-hosted host-row pane after every browser slot', () => {

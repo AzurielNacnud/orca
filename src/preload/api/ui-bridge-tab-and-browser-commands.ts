@@ -85,6 +85,14 @@ export const uiTabAndBrowserCommandsApi = {
     ipcRenderer.on('ui:browserHistoryNavigate', listener)
     return () => ipcRenderer.removeListener('ui:browserHistoryNavigate', listener)
   },
+  onBrowserPagePointerDown: (
+    callback: (target: BrowserPageCommandTarget) => void
+  ): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, target: BrowserPageCommandTarget) =>
+      callback(target)
+    ipcRenderer.on('ui:browserPagePointerDown', listener)
+    return () => ipcRenderer.removeListener('ui:browserPagePointerDown', listener)
+  },
   onBrowserPageSwipe: (callback: (swipe: BrowserPageSwipe) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, swipe: BrowserPageSwipe) => callback(swipe)
     ipcRenderer.on('ui:browserPageSwipe', listener)

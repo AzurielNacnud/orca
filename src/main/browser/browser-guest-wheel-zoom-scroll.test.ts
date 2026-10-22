@@ -56,21 +56,22 @@ describe('guest before-mouse-event forwarding', () => {
     return mouse
   }
 
-  it('steps page history on a side-button release and leaves the button to the page too', () => {
-    trigger(false, sideButton('mouseDown', 'back'))
-    expect(rendererSend).not.toHaveBeenCalled()
+  it('reports a press into the page and steps history on a side-button release', () => {
+    expect(trigger(false, sideButton('mouseDown', 'back'))).not.toHaveBeenCalled()
     expect(trigger(false, sideButton('mouseUp', 'back'))).not.toHaveBeenCalled()
     trigger(false, sideButton('mouseUp', 'forward'))
 
     expect(rendererSend.mock.calls).toEqual([
+      ['ui:browserPagePointerDown', { browserPageId: 'tab-1' }],
       ['ui:browserHistoryNavigate', { browserPageId: 'tab-1', direction: 'back' }],
       ['ui:browserHistoryNavigate', { browserPageId: 'tab-1', direction: 'forward' }]
     ])
   })
 
-  it('leaves side buttons an agent presses to the page alone', () => {
+  it('leaves presses an agent makes in the page to the page alone', () => {
     agentInjection.active = true
     try {
+      trigger(false, sideButton('mouseDown', 'left'))
       trigger(false, sideButton('mouseUp', 'back'))
     } finally {
       agentInjection.active = false
