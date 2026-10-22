@@ -4,7 +4,7 @@
  * refused here whoever makes it.
  */
 
-import { ConnectorStart } from '../../../../shared/rpc-contract/connector-params'
+import { ConnectorSend, ConnectorStart } from '../../../../shared/rpc-contract/connector-params'
 import {
   runtimeConversationHost,
   type ExternalConversationSeam
@@ -39,5 +39,17 @@ export const CONNECTOR_METHODS = [
         input
       )
     }
+  }),
+  defineMethod({
+    name: 'connector.send',
+    permission: 'workspace',
+    params: ConnectorSend,
+    handler: async ({ source, externalId, deliveryId, text }, context) =>
+      requireSeam(context.runtime).send(
+        runtimeConversationHost(context.runtime),
+        { source, externalId },
+        deliveryId,
+        text
+      )
   })
 ]

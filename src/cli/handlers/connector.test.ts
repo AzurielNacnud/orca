@@ -13,13 +13,13 @@ function refusingClient(code: string) {
 describe('orca connector', () => {
   it('passes the host’s connectors_disabled refusal through, with no local flag check', async () => {
     await expect(
-      callConnector(refusingClient('connectors_disabled'), 'connector.start', {})
+      callConnector(refusingClient('connectors_disabled'), 'connector.send', {})
     ).rejects.toMatchObject({ code: 'connectors_disabled' })
   })
 
   it('names the update instead of surfacing method_not_found from an older host', async () => {
     await expect(
-      callConnector(refusingClient('method_not_found'), 'connector.start', {})
+      callConnector(refusingClient('method_not_found'), 'connector.send', {})
     ).rejects.toThrow('Update Orca on the host')
   })
 

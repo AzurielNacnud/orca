@@ -16,3 +16,8 @@ export const ConnectorStart = z.object({
   target: AgentLaunchFields.shape.target,
   prompt: z.string().min(1, 'Missing prompt')
 })
+
+export const ConnectorSend = z.object({
+  ...ConnectorDelivery,
+  text: z.string().min(1, 'Missing text')
+})

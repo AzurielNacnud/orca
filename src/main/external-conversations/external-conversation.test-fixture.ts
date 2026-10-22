@@ -2,10 +2,12 @@ import { vi } from 'vitest'
 import type { AgentLaunchResult } from '../../shared/agent-launch-intent'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { Repo } from '../../shared/repo-types'
+import type { RuntimeTerminalSend } from '../../shared/runtime-terminal-send-contract'
 import type { HostWorktreeTarget } from '../../shared/worktree/host-qualified-identity'
 import type { AgentPaneWorkspace } from '../agent-hooks/agent-transition-detector'
 import type { AgentLaunchPublishedSurface } from '../agent-launch/agent-launch-execution'
 import type { ExternalConversationLinkStore } from './external-conversation-links'
+import type { FollowUpTerminal } from './external-conversation-send'
 import type { ConversationLauncher } from './external-conversation-start'
 
 export const WORKTREE = 'repo-1::/work/a'
@@ -113,4 +115,98 @@ export function fakeLauncher(
   )
   const launcher: ConversationLauncher = { launch, paneWorkspace: async () => workspace }
   return { launcher, launch }
+}
+
+type WriteOptions = {
+  beforeWrite?: (ptyId: string) => unknown
+  signal?: AbortSignal
+  onPermission?: 'refuse' | 'wait'
+  expectedBinding?: { ptyId: string; processIncarnation: string }
+}
+
+/**
+ * A terminal whose prompt writer keeps the shared writer's order: hold while blocked (under
+ * `wait`), then the binding fence, the guard, the signal, and the write.
+ */
+export function fakeTerminal() {
+  const state: { ptyId: string | null; incarnation: number; blocked: boolean } = {
+    ptyId: 'pty-1',
+    incarnation: 1,
+    blocked: false
+  }
+  const current = (): string =>
+    `inc-${state.ptyId}${state.incarnation > 1 ? `-${state.incarnation}` : ''}`
+  const writes: string[] = []
+  const waiters = new Set<(error?: Error) => void>()
+  const hold = (signal: AbortSignal | undefined): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const settle = (error?: Error): void => {
+        waiters.delete(settle)
+        signal?.removeEventListener('abort', onAbort)
+        if (error) {
+          reject(error)
+        } else {
+          resolve()
+        }
+      }
+      const onAbort = (): void => settle(new Error('request_aborted'))
+      signal?.addEventListener('abort', onAbort)
+      waiters.add(settle)
+    })
+  const sendTerminalAgentPrompt = vi.fn(
+    async (handle: string, prompt: string, options: WriteOptions): Promise<RuntimeTerminalSend> => {
+      if (state.blocked) {
+        if (options.onPermission !== 'wait') {
+          throw new Error('agent_prompt_blocked')
+        }
+        await hold(options.signal)
+      }
+      const expected = options.expectedBinding
+      if (
+        expected &&
+        (expected.ptyId !== state.ptyId || expected.processIncarnation !== current())
+      ) {
+        throw new Error('terminal_handle_stale')
+      }
+      await options.beforeWrite?.(state.ptyId ?? '')
+      if (options.signal?.aborted) {
+        throw new Error('request_aborted')
+      }
+      writes.push(prompt)
+      return { handle, accepted: true, bytesWritten: 1 }
+    }
+  )
+  const terminal = {
+    getTerminalHandleForPaneKey: (paneKey: string) =>
+      paneKey === PANE && state.ptyId ? 'term-1' : null,
+    getTerminalPromptRequestBinding: () => {
+      if (!state.ptyId) {
+        throw new Error('terminal_not_writable')
+      }
+      return { ptyId: state.ptyId, processIncarnation: current(), generation: 1 }
+    },
+    sendTerminalAgentPrompt,
+    readLaunchedAgentForeground: vi.fn(async () => 'agent' as const),
+    subscribeToTerminalData: () => () => {}
+  } satisfies FollowUpTerminal
+  return {
+    terminal,
+    state,
+    writes,
+    sendTerminalAgentPrompt,
+    /** Holds waiting on the approval. */
+    held: () => waiters.size,
+    answer() {
+      state.blocked = false
+      ;[...waiters].forEach((settle) => settle())
+    },
+    exit() {
+      state.ptyId = null
+      ;[...waiters].forEach((settle) => settle(new Error('terminal_not_writable')))
+    },
+    /** A new process in the same pane and PTY id; `answer` then hands held writes to it. */
+    replace() {
+      state.incarnation += 1
+    }
+  }
 }

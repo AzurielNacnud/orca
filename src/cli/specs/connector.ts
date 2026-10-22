@@ -27,5 +27,16 @@ export const CONNECTOR_COMMAND_SPECS: CommandSpec[] = [
       ...CONNECTOR_NOTES,
       '--worktree starts in an existing workspace; --project-group creates a folder workspace in that folder project.'
     ]
+  },
+  {
+    path: ['connector', 'send'],
+    hidden: true,
+    summary: 'Send a follow-up into a dev connector conversation',
+    usage: 'orca connector send --conversation <id> --delivery-id <id> --text <text> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'conversation', 'delivery-id', 'text'],
+    notes: [
+      ...CONNECTOR_NOTES,
+      'Held while the agent is asking for permission, and sent once it is answered.'
+    ]
   }
 ]

@@ -72,5 +72,12 @@ export const CONNECTOR_HANDLERS: Record<string, CommandHandler> = {
       target
     })
     printResult(result, json, (value) => formatConnectorStart(value.initial))
+  },
+  'connector send': async ({ flags, client, json }) => {
+    const result = await callConnector<ConnectorDelivery>(client, 'connector.send', {
+      ...conversationParams(flags),
+      text: getRequiredStringFlag(flags, 'text')
+    })
+    printResult(result, json, formatDelivery)
   }
 }

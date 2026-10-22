@@ -1,4 +1,5 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import type { RuntimeWorktreeLifecycleEvent } from '../runtime/orca-runtime-core'
 import type { DeliveryReceiptDb } from './external-conversation-delivery-receipts'
 import type { ExternalConversationLinkStore } from './external-conversation-links'
 import { ExternalConversationSeam } from './external-conversation-seam'
@@ -19,7 +20,10 @@ export type ExternalConversationStore = ExternalConversationLinkStore & {
  */
 export function installExternalConversations(
   store: ExternalConversationStore | null,
-  runtime: { getOrchestrationDb: () => DeliveryReceiptDb }
+  runtime: {
+    getOrchestrationDb: () => DeliveryReceiptDb
+    onWorktreeLifecycle: (listener: (event: RuntimeWorktreeLifecycleEvent) => void) => () => void
+  }
 ): { current(): ExternalConversationSeam | null } {
   if (!store) {
     return { current: () => null }
@@ -33,7 +37,13 @@ export function installExternalConversations(
       seam = new ExternalConversationSeam({
         store,
         readSettings: () => store.getSettings(),
-        receiptDb: () => runtime.getOrchestrationDb()
+        receiptDb: () => runtime.getOrchestrationDb(),
+        onWorkspaceRemoved: (listener) =>
+          runtime.onWorktreeLifecycle((event) => {
+            if (event.kind === 'removed') {
+              listener(event.worktreeId)
+            }
+          })
       })
     } else if (!enabled && seam) {
       seam.dispose('connectors_disabled')

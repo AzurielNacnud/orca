@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import type { RuntimeWorktreeLifecycleEvent } from '../runtime/orca-runtime-core'
 import { OrchestrationDb } from '../runtime/orchestration/db/orchestration-db'
 import { installExternalConversations } from './external-conversations-install'
 import { fakeLinkStore } from './external-conversation.test-fixture'
@@ -27,7 +28,17 @@ function fakeStore(initial: Partial<GlobalSettings>) {
 
 function runtime() {
   const db = new OrchestrationDb(':memory:')
-  return { getOrchestrationDb: vi.fn(() => db) }
+  const lifecycle = new Set<(event: RuntimeWorktreeLifecycleEvent) => void>()
+  return {
+    lifecycle,
+    getOrchestrationDb: vi.fn(() => db),
+    onWorktreeLifecycle: (listener: (event: RuntimeWorktreeLifecycleEvent) => void) => {
+      lifecycle.add(listener)
+      return () => {
+        lifecycle.delete(listener)
+      }
+    }
+  }
 }
 
 describe('installExternalConversations', () => {
@@ -41,6 +52,7 @@ describe('installExternalConversations', () => {
     update({ experimentalConnectors: false })
     expect(connectors.current()).toBeNull()
     expect(host.getOrchestrationDb).not.toHaveBeenCalled()
+    expect(host.lifecycle.size).toBe(0)
   })
 
   it('builds the seam on first use when the setting is already on', () => {
@@ -51,11 +63,13 @@ describe('installExternalConversations', () => {
 
   it('disposes on disable without another call, and builds one fresh seam on re-enable', () => {
     const { store, listeners, update } = fakeStore({ experimentalConnectors: true })
-    const connectors = installExternalConversations(store, runtime())
+    const host = runtime()
+    const connectors = installExternalConversations(store, host)
     const first = connectors.current()
 
     update({ experimentalConnectors: false })
     expect(first?.signal.reason).toBe('connectors_disabled')
+    expect(host.lifecycle.size).toBe(0)
     expect(connectors.current()).toBeNull()
 
     update({ experimentalConnectors: true })
@@ -63,6 +77,7 @@ describe('installExternalConversations', () => {
     expect(second).not.toBe(first)
     expect(second?.signal.aborted).toBe(false)
     expect(listeners.size).toBe(1)
+    expect(host.lifecycle.size).toBe(1)
   })
 
   it('keeps the seam through unrelated settings changes', () => {

@@ -180,13 +180,17 @@ function buildMarkdownMenuTemplate(
 }
 
 function buildNativeEditMenuTemplate(
+  params: Electron.ContextMenuParams,
   webContents: EditableContextMenuWebContents
 ): Electron.MenuItemConstructorOptions[] {
   return [
     { role: 'cut' },
     { role: 'copy' },
     editableContextPasteItem('Paste', webContents),
-    editableContextPasteItem('Paste as plain text', webContents, { plainTextOnly: true }),
+    // Why: a plain-text contenteditable (the chat composer) already pastes text literally and takes no text-only mode.
+    ...(params.formControlType !== 'none'
+      ? [editableContextPasteItem('Paste as plain text', webContents, { plainTextOnly: true })]
+      : []),
     { role: 'selectAll' }
   ]
 }
@@ -194,14 +198,14 @@ function buildNativeEditMenuTemplate(
 export function buildEditableContextMenuTemplate(
   params: Electron.ContextMenuParams,
   webContents: EditableContextMenuWebContents,
-  options?: { tableTarget?: RichMarkdownContextMenuTableTarget | null }
+  options?: { tableTarget?: RichMarkdownContextMenuTableTarget | null; plainText?: boolean }
 ): Electron.MenuItemConstructorOptions[] {
   if (!params.isEditable) {
     return []
   }
 
   const suggestions = params.dictionarySuggestions.slice(0, 5)
-  const isRichMarkdownSurface = params.formControlType === 'none'
+  const isRichMarkdownSurface = params.formControlType === 'none' && options?.plainText !== true
   const template: Electron.MenuItemConstructorOptions[] = suggestions.map((suggestion) => ({
     label: suggestion,
     click: () => webContents.replaceMisspelling(suggestion)
@@ -229,7 +233,7 @@ export function buildEditableContextMenuTemplate(
           { x: params.x, y: params.y },
           options?.tableTarget ?? null
         )
-      : buildNativeEditMenuTemplate(webContents))
+      : buildNativeEditMenuTemplate(params, webContents))
   )
 
   return template
