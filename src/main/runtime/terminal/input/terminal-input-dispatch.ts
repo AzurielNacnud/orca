@@ -7,7 +7,6 @@ import { wrapTerminalBracketedPasteText } from '../../../../shared/terminal-brac
 import { PROVEN_ABSENT_LEAF_PTY_TTL_MS } from '../../orca-runtime-core'
 import { pruneExpiredProvenAbsentLeafPtyVerdicts } from '../../proven-absent-leaf-pty-verdicts'
 import type { RuntimeTerminalSend } from '../../../../shared/runtime-types'
-import type { TerminalInputKind } from '../../../../shared/terminal-input-kind'
 import type {
   RuntimeAgentPromptWriteOptions,
   TerminalHandleRecord
@@ -138,14 +137,8 @@ export abstract class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntim
       enter?: boolean
       interrupt?: boolean
     },
-    options: {
-      signal?: AbortSignal
-      beforeWrite?: (ptyId: string) => void | Promise<void>
-      reserveWrite?: (ptyId: string) => void
-      afterWrite?: (ptyId: string) => void | Promise<void>
-      suffixFailureError?: string
-      inputKind: TerminalInputKind
-      requireWriteSettlement?: true
+    options: RuntimeTerminalWriteOptions & {
+      includeSubmitDelay?: true
     }
   ): Promise<RuntimeTerminalSend> {
     // Switch point: a saved pane main holds with no terminal yet starts first (once, shared).
@@ -157,36 +150,20 @@ export abstract class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntim
       return { ...(await this.sendTerminal(target, action, options)), handle }
     }
     const pty = this.getLivePtyForHandle(handle)
+    let ptyId: string
     if (pty) {
       if (!pty.pty.connected) {
         throw new Error('terminal_not_writable')
       }
-      const payload = buildTerminalSendPayload(action)
-      if (payload === null) {
-        throw new Error('invalid_terminal_send')
+      ptyId = pty.pty.ptyId
+    } else {
+      const { leaf } = this.getLiveLeafForHandle(handle)
+      if (!leaf.writable || !leaf.ptyId) {
+        throw new Error('terminal_not_writable')
       }
-      await assertTerminalInputWithinLimitWithYield(action.text)
-      const writeSettlement = await this.writeTerminalAction(
-        pty.pty.ptyId,
-        action,
-        payload,
-        options
-      )
-      return {
-        handle,
-        accepted: !writeSettlement || writeSettlement.outcome === 'accepted',
-        ...(writeSettlement ? { writeSettlement } : {}),
-        bytesWritten:
-          !writeSettlement || writeSettlement.outcome === 'accepted'
-            ? Buffer.byteLength(payload, 'utf8')
-            : 0
-      }
+      ptyId = leaf.ptyId
     }
 
-    const { leaf } = this.getLiveLeafForHandle(handle)
-    if (!leaf.writable || !leaf.ptyId) {
-      throw new Error('terminal_not_writable')
-    }
     const payload = buildTerminalSendPayload(action)
     if (payload === null) {
       throw new Error('invalid_terminal_send')
@@ -196,20 +173,22 @@ export abstract class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntim
     // a prior process's ptyId — and provider writes to unknown ids are accepted
     // no-ops. Only controller-proven absence rejects; unknown proceeds (a
     // restored daemon session takes writes before its pane remounts).
-    if (await this.isLeafPtyProvenAbsent(leaf.ptyId)) {
+    if (!pty && (await this.isLeafPtyProvenAbsent(ptyId))) {
       throw new Error('terminal_not_writable')
     }
 
-    const writeSettlement = await this.writeTerminalAction(leaf.ptyId, action, payload, options)
-
+    const writeSettlement = await this.writeTerminalAction(ptyId, action, payload, options)
+    const accepted = !writeSettlement || writeSettlement.outcome === 'accepted'
+    const submitText =
+      options.includeSubmitDelay && !action.enter && !action.interrupt ? action.text : undefined
     return {
       handle,
-      accepted: !writeSettlement || writeSettlement.outcome === 'accepted',
+      accepted,
       ...(writeSettlement ? { writeSettlement } : {}),
-      bytesWritten:
-        !writeSettlement || writeSettlement.outcome === 'accepted'
-          ? Buffer.byteLength(payload, 'utf8')
-          : 0
+      bytesWritten: accepted ? Buffer.byteLength(payload, 'utf8') : 0,
+      ...(accepted && submitText
+        ? { submitDelayMs: this.terminalWriter.getSubmitDelayMs(ptyId, submitText) }
+        : {})
     }
   }
 

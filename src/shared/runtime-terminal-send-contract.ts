@@ -4,6 +4,8 @@ export type RuntimeTerminalSend = {
   handle: string
   accepted: boolean
   bytesWritten: number
+  /** Wait after this acknowledgment before a separate Enter; older hosts omit it. */
+  submitDelayMs?: number
   refusedReason?: 'no-agent' | 'permission'
   prompt?: RuntimeTerminalPromptDelivery
   writeSettlement?: WriteSettlement
