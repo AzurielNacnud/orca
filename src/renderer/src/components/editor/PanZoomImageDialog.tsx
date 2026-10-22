@@ -26,7 +26,7 @@ import {
 
 type PanZoomImageDialogProps = Omit<
   React.ComponentProps<typeof DialogContent>,
-  'children' | 'className' | 'showCloseButton' | 'onOpenAutoFocus' | 'onCloseAutoFocus' | 'size'
+  'children' | 'className' | 'showCloseButton' | 'onOpenAutoFocus' | 'size'
 > & {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -40,7 +40,6 @@ type PanZoomImageDialogProps = Omit<
   /** Shown instead of the image while it has no source or after it fails to load. */
   fallback?: React.ReactNode
   toolbarActions?: React.ReactNode
-  restoreFocus?: () => boolean
 }
 
 function ToolbarButton({
@@ -73,7 +72,7 @@ export function PanZoomImageDialog({
   background,
   fallback,
   toolbarActions,
-  restoreFocus,
+  onCloseAutoFocus,
   ...contentProps
 }: PanZoomImageDialogProps): React.JSX.Element {
   const openerRef = useRef<Element | null>(null)
@@ -94,13 +93,16 @@ export function PanZoomImageDialog({
           }
         }}
         onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event)
+          if (event.defaultPrevented) {
+            return
+          }
           event.preventDefault()
           const opener = openerRef.current
           // Why: a modal that replaced this one owns focus now.
           if (
             opener instanceof HTMLElement &&
             opener.isConnected &&
-            (restoreFocus?.() ?? true) &&
             useAppStore.getState().activeModal === 'none'
           ) {
             opener.focus({ preventScroll: true })
@@ -314,48 +316,47 @@ function PanZoomImageCanvas({
           <div className="flex size-full items-center justify-center">{fallback}</div>
         )}
       </div>
-      {showTitle ? (
-        <span
-          aria-hidden
-          className={cn(
-            'absolute top-3 left-3 truncate rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground shadow-xs',
-            toolbarActions ? 'max-w-[calc(100%-13rem)]' : 'max-w-[calc(100%-10rem)]'
-          )}
-        >
-          {title}
-        </span>
-      ) : null}
       {/* Why: the dialog opens from surfaces outside the app's tooltip provider. */}
       <TooltipProvider>
-        <div className="absolute top-3 right-3 flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5 shadow-xs">
-          <ToolbarButton
-            label={translate('auto.components.editor.PanZoomImageDialog.zoomOut', 'Zoom out')}
-            disabled={!view || view.zoom <= MIN_IMAGE_VIEWER_ZOOM}
-            onClick={() => stepZoom(1 / IMAGE_VIEWER_ZOOM_STEP)}
-          >
-            <ZoomOut />
-          </ToolbarButton>
-          <ToolbarButton
-            label={translate('auto.components.editor.PanZoomImageDialog.zoomIn', 'Zoom in')}
-            disabled={!view || !geometry || view.zoom >= getMaxPanZoom(geometry.fitScale)}
-            onClick={() => stepZoom(IMAGE_VIEWER_ZOOM_STEP)}
-          >
-            <ZoomIn />
-          </ToolbarButton>
-          <ToolbarButton
-            label={translate('auto.components.editor.PanZoomImageDialog.fit', 'Fit to screen')}
-            disabled={manualView === null}
-            onClick={() => setManualView(null)}
-          >
-            <Maximize />
-          </ToolbarButton>
-          {toolbarActions}
-          <ToolbarButton
-            label={translate('auto.components.editor.PanZoomImageDialog.close', 'Close')}
-            onClick={onClose}
-          >
-            <X />
-          </ToolbarButton>
+        <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start gap-3">
+          {showTitle ? (
+            <span
+              aria-hidden
+              className="min-w-0 truncate rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground shadow-xs"
+            >
+              {title}
+            </span>
+          ) : null}
+          <div className="pointer-events-auto ml-auto flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-background p-0.5 shadow-xs">
+            <ToolbarButton
+              label={translate('auto.components.editor.PanZoomImageDialog.zoomOut', 'Zoom out')}
+              disabled={!view || view.zoom <= MIN_IMAGE_VIEWER_ZOOM}
+              onClick={() => stepZoom(1 / IMAGE_VIEWER_ZOOM_STEP)}
+            >
+              <ZoomOut />
+            </ToolbarButton>
+            <ToolbarButton
+              label={translate('auto.components.editor.PanZoomImageDialog.zoomIn', 'Zoom in')}
+              disabled={!view || !geometry || view.zoom >= getMaxPanZoom(geometry.fitScale)}
+              onClick={() => stepZoom(IMAGE_VIEWER_ZOOM_STEP)}
+            >
+              <ZoomIn />
+            </ToolbarButton>
+            <ToolbarButton
+              label={translate('auto.components.editor.PanZoomImageDialog.fit', 'Fit to screen')}
+              disabled={manualView === null}
+              onClick={() => setManualView(null)}
+            >
+              <Maximize />
+            </ToolbarButton>
+            {toolbarActions}
+            <ToolbarButton
+              label={translate('auto.components.editor.PanZoomImageDialog.close', 'Close')}
+              onClick={onClose}
+            >
+              <X />
+            </ToolbarButton>
+          </div>
         </div>
       </TooltipProvider>
     </>

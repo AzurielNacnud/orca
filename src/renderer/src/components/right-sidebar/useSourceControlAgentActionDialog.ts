@@ -37,6 +37,7 @@ export function useSourceControlAgentActionDialog({
   promptDelivery = 'submit-after-ready',
   launchPlatform,
   launchSource,
+  recoveryContext,
   savedAgentId,
   onSaveAgentDefault,
   onLaunchAccepted,
@@ -113,8 +114,10 @@ export function useSourceControlAgentActionDialog({
     repoId,
     ...(repo ? { executionHostId: getRepoExecutionHostId(repo) } : {})
   })
-  const { deliveryPlan, resetDeliveryPlan, isStarting, handleStart } =
+  const { deliveryPlan, resetDeliveryPlan, cancelStart, isStarting, handleStart } =
     useSourceControlAgentActionStart({
+      open,
+      connectionId,
       selectedAgent,
       commandInput,
       trimmedCommandInput,
@@ -135,6 +138,7 @@ export function useSourceControlAgentActionDialog({
       // label aligned with the real remote launch (no `orca-ide` rename).
       isRemote: typeof connectionId === 'string',
       launchSource,
+      recoveryContext,
       connectionUnavailable,
       detectedAgents,
       launchChoice: selection.choice,
@@ -201,7 +205,12 @@ export function useSourceControlAgentActionDialog({
   )
 
   return {
-    handleOpenChange: onOpenChange,
+    handleOpenChange: (nextOpen) => {
+      if (!nextOpen) {
+        cancelStart()
+      }
+      onOpenChange(nextOpen)
+    },
     agentScopeNote,
     agentOptions: choice.agentOptions,
     selectedAgent,

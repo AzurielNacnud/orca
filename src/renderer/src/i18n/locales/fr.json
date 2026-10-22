@@ -128,7 +128,7 @@
   "settings": {
     "chat": {
       "permissionsTitle": "Autorisations pour les nouveaux chats",
-      "permissionsDescription": "S’applique uniquement aux nouveaux chats. Les agents ouverts dans un terminal utilisent Paramètres → Agents → Autorisations des agents.",
+      "permissionsDescription": "Uniquement pour les nouveaux chats. Les paramètres par défaut propres à chaque agent se trouvent dans Paramètres → Agents.",
       "description": "Choisissez l’apparence et le comportement des chats.",
       "names": {
         "title": "Noms des chats",
@@ -12793,7 +12793,7 @@
           "reassurance": "S’exécute sur chaque hôte, accessible via votre propre connexion SSH. Votre code et vos fichiers restent où ils sont. Seule la liste des projets, onglets et terminaux d’Orca passe sur l’hôte."
         },
         "sshHostServer": {
-          "sourceChanged": "Une version plus ancienne d’Orca a modifié les projets de cet hôte. Déplacez ces modifications vers le serveur Orca de cet hôte, ou conservez la version du serveur, pour vous reconnecter.",
+          "sourceChanged": "Cet ordinateur contient des projets ou dossiers de cet hôte que son serveur Orca n’a pas encore, souvent ajoutés par une version plus ancienne d’Orca. Déplacez-les vers le serveur Orca de cet hôte, ou conservez la version du serveur, pour vous reconnecter.",
           "deploying": "Configuration d’Orca sur {{host}}…",
           "converting": "Passage à Orca sur {{host}}…",
           "connecting": "Connexion à Orca sur {{host}}…",
@@ -12979,7 +12979,7 @@
         "SshRestoreRemovedHosts": {
           "title": "Restaurer les hôtes supprimés ?",
           "description": "Les hôtes de ~/.ssh/config supprimés dans Orca réapparaissent dans les réglages et dans tous les sélecteurs d’hôte.",
-          "none": "Aucun hôte de ~/.ssh/config supprimé.",
+          "none": "Aucun hôte de ~/.ssh/config supprimé dans Orca n’est disponible pour la restauration.",
           "confirm": "Restaurer"
         },
         "SshTargetList": {
@@ -14610,12 +14610,13 @@
             "sourceActionsUnavailable": "La source de la transcription n'est pas disponible."
           },
           "AiVaultScanProgressStrip": {
+            "agentChecked": "{{agent}} : {{settled}} sur {{total}} éléments potentiels de l’historique vérifiés",
             "fileCount_one": "{{value0}} fichier",
             "fileCount_other": "{{value0}} fichiers",
             "databaseCount_one": "{{value0}} base de données",
             "databaseCount_other": "{{value0}} bases de données",
             "scanning": "Analyse de {{value0}}",
-            "reading": "Lecture de {{value0}} fichiers",
+            "checking": "Vérification {{value0}}",
             "scanned": "{{value0}} analysés"
           }
         }
@@ -16409,17 +16410,20 @@
             }
           }
         },
+        "staleViewEdit": {
+          "rejected": "Votre saisie récente dans cette vue a été abandonnée, car le fichier a été modifié dans une autre vue."
+        },
         "richMarkdownLargeTextPaste": {
           "tooLarge": "Le collage est trop volumineux.",
           "stopped": "La grosse pâte s'est arrêtée avant d'avoir fini.",
           "cancelled": "Gros collage annulé car sa cible d'origine a changé."
         },
         "ExternalFileChangeBanner": {
-          "7c41e90d12": "This file changed on disk while you have unsaved edits. Overwrite replaces the newer disk content.",
+          "7c41e90d12": "Ce fichier a changé sur le disque alors que vous avez des modifications non enregistrées. L’écrasement remplace le contenu plus récent sur le disque.",
           "3fa2b8d417": "Recharger depuis le disque",
           "a95d02c644": "Garder mes modifications",
-          "overwrite": "Overwrite",
-          "keepHint": "Keeps your version. Your next save replaces the version on disk.",
+          "overwrite": "Écraser",
+          "keepHint": "Conservez votre version. Le prochain enregistrement remplacera la version sur le disque.",
           "5c02de9b31": "Rechargé depuis le disque",
           "d1e830fa22": "Annuler",
           "90b2ce7d43": "Comparer"
@@ -16460,10 +16464,10 @@
               }
             },
             "stale": {
-              "notice": "This file changed on disk since your edits. Use the banner to compare, reload, or overwrite."
+              "notice": "Ce fichier a changé sur le disque depuis vos modifications. Utilisez le bandeau pour comparer, recharger ou écraser."
             },
             "sectionStale": {
-              "notice": "This file changed on disk since this section loaded."
+              "notice": "Ce fichier a changé sur le disque depuis le chargement de cette section."
             }
           }
         },
@@ -18603,6 +18607,8 @@
         "settleEarlierMessage": "Attendez que votre message précédent soit transmis, ou renvoyez-le.",
         "queueTooLarge": "Trop de texte est en attente dans la file.",
         "shrinkQueue": "Supprimez un message de la file, ou attendez qu'un message soit transmis, puis réessayez.",
+        "messageTooLarge": "Il dépasse la limite de 256 Ko par message.",
+        "shortenMessage": "Raccourcissez-le ou divisez-le, puis renvoyez-le.",
         "optionRejected": "L'agent n'a pas accepté ce réglage.",
         "goalsUnsupported": "Cet agent ne prend pas en charge les objectifs.",
         "agentRefused": "L'agent l'a refusé.",
@@ -18661,6 +18667,10 @@
         "uploadingFile": "Envoi de {{name}}…",
         "removeAttachment": "Retirer la pièce jointe",
         "pastedImageLabel": "Image collée",
+        "pastedTextLabel": "Texte collé",
+        "pasteNotSavedLabel": "Collage non enregistré",
+        "pasteNotSaved": "Ce collage n'a pas été enregistré. Collez-le à nouveau ou retirez-le.",
+        "pastedTextTooLarge": "Ce collage ferait dépasser à votre message la limite de 256 Ko par message. Raccourcissez-le, puis collez-le à nouveau.",
         "draftNotSaved": "Ce brouillon n'a pas encore pu être enregistré. Orca continue d'essayer.",
         "imageNotBroughtBack": "L'image {{name}} n'a pas pu être récupérée avec ce brouillon. Joignez-la à nouveau ou retirez-la.",
         "pastedImageNotBroughtBack": "Cette image collée n'a pas pu être récupérée avec ce brouillon. Retirez-la, puis collez-la à nouveau si vous en avez encore besoin.",
@@ -19146,7 +19156,7 @@
       "thought": "A réfléchi",
       "thoughtForDuration": "A réfléchi pendant {{duration}}",
       "structuredSessionHostDeclined": "{{value0}} ouvert dans un terminal",
-      "structuredSessionHostDeclinedDescription": "Ce serveur ne peut pas exécuter de discussion {{value0}} dans cet espace de travail.",
+      "structuredSessionHostDeclinedDescription": "Cet espace de travail ne peut pas exécuter de discussion {{value0}}.",
       "structuredSessionHostUnreachable": "Impossible de joindre {{value0}}",
       "structuredSessionHostUnreachableDescription": "Orca n'a pas ouvert de discussion {{value0}}. Vérifiez la connexion au serveur et réessayez.",
       "hostOutage": {
@@ -19966,8 +19976,12 @@
       "status": "PR #{{number}} non lié"
     },
     "discard": {
+      "deleteUntrackedFileDescription": "Cela supprimera définitivement ce fichier non suivi. Cette action est irréversible.",
+      "deleteUntrackedFilesDescription": "Cela supprimera définitivement ces {{count}} fichiers non suivis. Cette action est irréversible.",
       "restoreStagedVersionDescription": "Cela restaurera la dernière version intermédiaire et annulera la suppression. Cela ne peut pas être annulé.",
-      "unstagedChangesDescription": "Cela annulera les modifications non planifiées apportées à ce fichier. Cela ne peut pas être annulé."
+      "unstagedChangesDescription": "Cela annulera les modifications non planifiées apportées à ce fichier. Cela ne peut pas être annulé.",
+      "unstagedSelectionIncludingUntrackedDescription": "Cela annulera les modifications non indexées et supprimera définitivement tous les fichiers non suivis de cette sélection. Cette action est irréversible.",
+      "unstagedFilesIncludingUntrackedDescription": "Cela annulera les modifications non indexées et supprimera définitivement tous les fichiers non suivis parmi ces {{count}} fichiers. Cette action est irréversible."
     }
   },
   "agentsSidebarIntro": {
@@ -20647,6 +20661,27 @@
       "waitingAriaLabel": "Mise à jour en attente d'autres instances Orca. Cliquez pour développer.",
       "preparingLabel": "Préparation de la mise à jour",
       "preparingAriaLabel": "Préparation de la mise à jour. Cliquez pour développer."
+    }
+  },
+  "onboarding": {
+    "language": {
+      "back": "Langues",
+      "requestPrompt": "Quelle langue aimeriez-vous voir prise en charge par Orca ?",
+      "requestSuccess": "Demande de langue enregistrée. Vous pouvez poursuivre la configuration.",
+      "requestError": "Impossible d’enregistrer votre demande. Réessayez.",
+      "retry": "Réessayer",
+      "requestAction": "Demander une langue",
+      "title": "Langue d’affichage",
+      "device": "Langue du système : {{language}}",
+      "unsupported": "Langue du système : {{language}}. Cette langue n’est pas encore prise en charge.",
+      "unknown": "La langue du système n’a pas pu être détectée. Choisissez une langue ci-dessous.",
+      "loadError": "Impossible de charger cette langue. Réessayez.",
+      "saveError": "Impossible d’enregistrer votre préférence de langue. Réessayez.",
+      "other": "Autre langue…",
+      "settingsError": "Impossible de charger vos paramètres.",
+      "loadingSettings": "Chargement des paramètres…",
+      "loading": "Chargement de la langue…",
+      "saving": "Enregistrement de la langue…"
     }
   }
 }

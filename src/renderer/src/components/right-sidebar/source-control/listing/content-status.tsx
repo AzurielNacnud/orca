@@ -14,7 +14,7 @@ export function SourceControlContentStatus({
   unresolvedConflictCount,
   conflictOperation,
   sourceControlAiActionsVisible,
-  isResolvingWithAI = false,
+  isRecoveryBusy,
   isAbortingOperation,
   onAbortOperation,
   onResolveWithAi,
@@ -35,7 +35,7 @@ export function SourceControlContentStatus({
   unresolvedConflictCount: number
   conflictOperation: GitConflictOperation
   sourceControlAiActionsVisible: boolean
-  isResolvingWithAI?: boolean
+  isRecoveryBusy: boolean
   isAbortingOperation: boolean
   onAbortOperation: (operation: GitConflictOperation) => void
   onResolveWithAi: () => void
@@ -61,7 +61,7 @@ export function SourceControlContentStatus({
             conflictOperation={conflictOperation}
             unresolvedCount={unresolvedConflictCount}
             sourceControlAiActionsVisible={sourceControlAiActionsVisible}
-            isResolvingWithAI={isResolvingWithAI}
+            isRecoveryBusy={isRecoveryBusy}
             isAbortingOperation={isAbortingOperation}
             onAbortOperation={onAbortOperation}
             onResolveWithAI={onResolveWithAi}
@@ -74,8 +74,11 @@ export function SourceControlContentStatus({
         <div className="px-3 pb-2">
           <OperationBanner
             conflictOperation={conflictOperation}
+            isRecoveryBusy={isRecoveryBusy}
             isAbortingOperation={isAbortingOperation}
             onAbortOperation={onAbortOperation}
+            sourceControlAiActionsVisible={sourceControlAiActionsVisible}
+            onResolveWithAI={onResolveWithAi}
           />
         </div>
       )}

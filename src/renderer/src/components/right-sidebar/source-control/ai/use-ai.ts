@@ -1,7 +1,6 @@
 import { useSavedSourceControlActionStart } from '../../use-saved-source-control-action-start'
 import type { SourceControlAgentActionDialogProps } from '../../SourceControlAgentActionDialog'
 import { useCallback, useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { getRuntimeGitScope } from '@/runtime/runtime-git-client-context'
 import { getCommitMessageModelDiscoveryHostKeyForScope } from '../../../../../../shared/commit-message-host-key'
@@ -19,7 +18,6 @@ import type {
   SourceControlTextActionId
 } from '../../../../../../shared/source-control-ai-actions'
 import type { SourceControlAiWriteTarget } from '../../../../../../shared/source-control-ai-recipe-save'
-import { buildResolveConflictsPrompt } from './prompts'
 import {
   saveSourceControlAiActionRecipeForTarget,
   saveSourceControlTextGenerationDefaults
@@ -27,6 +25,8 @@ import {
 import type { SourceControlAiControllerParams } from './controller-types'
 import { openSourceControlAiSettingsTarget } from '../../source-control-ai-settings-navigation'
 import { useSourceControlRecoveryAi } from './use-recovery-ai'
+import { useConflictRecoveryComposer } from './use-conflict-recovery-composer'
+import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 
 export function getSourceControlAiControllerDiscoveryHostKey(
@@ -64,7 +64,6 @@ export function useSourceControlAi({
   const [resolveConflictsEditor, setResolveConflictsEditor] = useState<
     Partial<SourceControlAgentActionDialogProps>
   >({})
-  const [resolveConflictsComposerOpen, setResolveConflictsComposerOpen] = useState(false)
   const [commitGenerationDialogOpen, setCommitGenerationDialogOpen] = useState(false)
   const [pullRequestGenerationDialogOpen, setPullRequestGenerationDialogOpen] = useState(false)
 
@@ -156,71 +155,59 @@ export function useSourceControlAi({
     })
   }, [activeRepo, openSettingsPage, openSettingsTarget])
 
-  const resolveConflictsPrompt = useMemo(
-    () =>
-      buildResolveConflictsPrompt({
-        conflictOperation,
-        entries: unresolvedConflicts,
-        worktreePath
-      }),
-    [conflictOperation, unresolvedConflicts, worktreePath]
-  )
-  const handleResolveConflictsWithAI = useCallback((): void => {
-    if (!activeWorktreeId) {
-      return
-    }
-    if (unresolvedConflicts.length === 0) {
-      toast.message(
-        translate(
-          'auto.components.right.sidebar.use.source.control.ai.cfafa92509',
-          'No unresolved conflicts to send.'
-        )
-      )
-      return
-    }
-    const editor = {
-      initialRecipe: getLaunchActionRecipe('resolveConflicts'),
-      baseCommandInput: resolveConflictsPrompt,
-      worktreeId: activeWorktreeId,
-      groupId: activeGroupId,
-      connectionId: activeConnectionId,
-      repoId: activeRepo?.id,
-      launchPlatform: activeSourceControlLaunchPlatform
-    }
-    void savedStart.start({
-      recipe: editor.initialRecipe,
-      basePrompt: resolveConflictsPrompt,
-      ...editor,
-      actionId: 'resolveConflicts',
-      settings,
-      repo: activeRepo,
-      promptDelivery: 'submit-after-ready',
-      launchSource: 'conflict_resolution',
-      onClose: () => {},
-      onLaunched: () =>
-        toast.success(
-          translate(
-            'auto.components.right.sidebar.SourceControl.e48caaf0dd',
-            'Started an AI agent for the conflicts.'
-          )
-        ),
-      onFallback: () => {
-        setResolveConflictsEditor(editor)
-        setResolveConflictsComposerOpen(true)
-      }
-    })
-  }, [
-    activeWorktreeId,
-    unresolvedConflicts.length,
-    getLaunchActionRecipe,
+  const {
     resolveConflictsPrompt,
-    activeGroupId,
+    resolveConflictsComposerOpen,
+    isCheckingRecoveryAdmission,
+    resolveConflictsRecoveryContext,
+    setResolveConflictsComposerOpen,
+    handleResolveConflictsWithAI
+  } = useConflictRecoveryComposer({
+    target,
+    activeWorktreeId,
     activeConnectionId,
-    activeRepo,
-    activeSourceControlLaunchPlatform,
-    settings,
-    savedStart
-  ])
+    conflictOperation,
+    unresolvedConflicts,
+    worktreePath,
+    onAdmitted: async (recoveryContext, signal) => {
+      const editor = {
+        initialRecipe: getLaunchActionRecipe('resolveConflicts'),
+        recoveryContext,
+        baseCommandInput: resolveConflictsPrompt,
+        worktreeId: activeWorktreeId,
+        groupId: activeGroupId,
+        connectionId: activeConnectionId,
+        repoId: activeRepo?.id,
+        launchPlatform: activeSourceControlLaunchPlatform
+      }
+      await savedStart.start({
+        recipe: editor.initialRecipe,
+        basePrompt: resolveConflictsPrompt,
+        ...editor,
+        actionId: 'resolveConflicts',
+        settings,
+        repo: activeRepo,
+        promptDelivery: 'submit-after-ready',
+        launchSource: 'conflict_resolution',
+        signal,
+        onClose: () => {},
+        onLaunched: () =>
+          toast.success(
+            translate(
+              'auto.components.right.sidebar.SourceControl.e48caaf0dd',
+              'Started an AI agent for the conflicts.'
+            )
+          ),
+        onFallback: () => {
+          if (signal.aborted) {
+            return
+          }
+          setResolveConflictsEditor(editor)
+          setResolveConflictsComposerOpen(true)
+        }
+      })
+    }
+  })
 
   const {
     isLaunchingCommitFailureAgent,
@@ -280,6 +267,8 @@ export function useSourceControlAi({
 
   return {
     sourceControlAiDiscoveryHostKey,
+    isCheckingRecoveryAdmission,
+    resolveConflictsRecoveryContext,
     sourceControlAiActionsVisible,
     resolvedCommitMessageAi,
     resolvedPrCreationDefaults,

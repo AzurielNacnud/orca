@@ -22,7 +22,11 @@ export default function NativeChatView(props: NativeChatViewProps): React.JSX.El
           tabId={props.tabId}
         >
           <NativeChatFileLinkExistenceProvider tabId={props.tabId}>
-            <NativeChatMarkdownImageOwnerProvider tabId={props.tabId} isVisible={props.isVisible}>
+            <NativeChatMarkdownImageOwnerProvider
+              tabId={props.tabId}
+              isVisible={props.isVisible}
+              sessionId={props.sessionId}
+            >
               <NativeChatStructuredSession {...props} />
             </NativeChatMarkdownImageOwnerProvider>
           </NativeChatFileLinkExistenceProvider>
@@ -62,7 +66,7 @@ function NativeChatBridgeView({
       {(resolution) => (
         <NativeChatFileLinkExistenceProvider tabId={terminalTabId}>
           <NativeChatMarkdownImageOwnerProvider
-            key={resolution.sessionId}
+            sessionId={resolution.sessionId}
             tabId={terminalTabId}
             isVisible={isVisible}
           >

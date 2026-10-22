@@ -24,7 +24,7 @@
   "settings": {
     "chat": {
       "permissionsTitle": "새 채팅의 권한",
-      "permissionsDescription": "새 채팅에만 적용됩니다. 터미널에서 여는 에이전트는 설정 → 에이전트 → 에이전트 권한을 사용합니다.",
+      "permissionsDescription": "새 채팅에만 적용됩니다. 에이전트별 기본값은 설정 → 에이전트에 있습니다.",
       "description": "채팅의 모양과 동작 방식을 선택하세요.",
       "names": {
         "title": "채팅 이름",
@@ -12685,7 +12685,7 @@
           "reassurance": "각 호스트에서 실행되며 사용자 본인의 SSH 연결로 접속합니다. 코드와 파일은 지금 있는 곳에 그대로 있습니다. 호스트로 옮겨지는 것은 Orca의 프로젝트, 탭, 터미널 목록뿐입니다."
         },
         "sshHostServer": {
-          "sourceChanged": "이전 버전의 Orca가 이 호스트의 프로젝트를 변경했습니다. 다시 연결하려면 해당 변경 사항을 이 호스트의 Orca 서버로 이동하거나 서버 버전을 유지하세요.",
+          "sourceChanged": "이 컴퓨터에 이 호스트의 Orca 서버에 아직 없는 프로젝트나 폴더가 있습니다. 대개 이전 버전의 Orca에서 추가된 것입니다. 다시 연결하려면 이를 이 호스트의 Orca 서버로 이동하거나 서버 버전을 유지하세요.",
           "deploying": "{{host}}에 Orca 설정 중…",
           "converting": "{{host}}의 Orca로 옮기는 중…",
           "connecting": "{{host}}의 Orca에 연결 중…",
@@ -12871,7 +12871,7 @@
         "SshRestoreRemovedHosts": {
           "title": "제거한 호스트를 복원할까요?",
           "description": "Orca에서 제거한 ~/.ssh/config 호스트가 설정과 모든 호스트 선택 목록에 다시 표시됩니다.",
-          "none": "~/.ssh/config에서 제거한 호스트가 없습니다.",
+          "none": "Orca에서 제거한 ~/.ssh/config 호스트 중 복원할 수 있는 호스트가 없습니다.",
           "confirm": "복원"
         },
         "SshTargetList": {
@@ -14502,12 +14502,13 @@
             "sourceActionsUnavailable": "스크립트 소스를 사용할 수 없습니다."
           },
           "AiVaultScanProgressStrip": {
+            "agentChecked": "{{agent}}: 기록 후보 {{total}}개 중 {{settled}}개 확인됨",
             "fileCount_one": "파일 {{value0}}개",
             "fileCount_other": "파일 {{value0}}개",
             "databaseCount_one": "데이터베이스 {{value0}}개",
             "databaseCount_other": "데이터베이스 {{value0}}개",
             "scanning": "{{value0}} 스캔 중",
-            "reading": "파일 {{value0}}개 읽는 중",
+            "checking": "확인 중 {{value0}}",
             "scanned": "{{value0}} 스캔함"
           }
         }
@@ -16307,6 +16308,9 @@
             }
           }
         },
+        "staleViewEdit": {
+          "rejected": "파일이 다른 보기에서 변경되어 이 보기에서 최근에 입력한 내용이 삭제되었습니다."
+        },
         "richMarkdownLargeTextPaste": {
           "tooLarge": "붙여넣기 내용이 너무 큽니다.",
           "stopped": "큰 페이스트는 완성되기 전에 멈췄습니다.",
@@ -16321,11 +16325,11 @@
           "copy": "복사 작업"
         },
         "ExternalFileChangeBanner": {
-          "7c41e90d12": "This file changed on disk while you have unsaved edits. Overwrite replaces the newer disk content.",
+          "7c41e90d12": "저장하지 않은 편집 내용이 있는 동안 디스크의 파일이 변경되었습니다. 덮어쓰면 디스크의 최신 내용이 대체됩니다.",
           "3fa2b8d417": "디스크에서 다시 로드",
           "a95d02c644": "편집 내용 유지",
-          "overwrite": "Overwrite",
-          "keepHint": "Keeps your version. Your next save replaces the version on disk.",
+          "overwrite": "덮어쓰기",
+          "keepHint": "편집 중인 버전을 유지합니다. 다음에 저장하면 디스크의 버전이 대체됩니다.",
           "5c02de9b31": "디스크에서 다시 로드됨",
           "d1e830fa22": "실행 취소",
           "90b2ce7d43": "비교"
@@ -16366,10 +16370,10 @@
               }
             },
             "stale": {
-              "notice": "This file changed on disk since your edits. Use the banner to compare, reload, or overwrite."
+              "notice": "편집한 이후 디스크의 파일이 변경되었습니다. 배너에서 비교하거나 다시 로드하거나 덮어쓰세요."
             },
             "sectionStale": {
-              "notice": "This file changed on disk since this section loaded."
+              "notice": "이 섹션을 불러온 이후 디스크의 파일이 변경되었습니다."
             }
           }
         },
@@ -18534,6 +18538,8 @@
         "settleEarlierMessage": "앞서 보낸 메시지가 전달될 때까지 기다리거나 다시 시도하세요.",
         "queueTooLarge": "대기열에 기다리는 텍스트가 너무 많습니다.",
         "shrinkQueue": "대기 중인 메시지를 삭제하거나 전달될 때까지 기다린 후 다시 시도하세요.",
+        "messageTooLarge": "메시지 하나의 한도인 256KB를 초과합니다.",
+        "shortenMessage": "줄이거나 나눈 다음 다시 보내세요.",
         "optionRejected": "에이전트가 이 설정을 받아들이지 않았습니다.",
         "goalsUnsupported": "이 에이전트는 목표를 지원하지 않습니다.",
         "agentRefused": "에이전트가 이를 거부했습니다.",
@@ -18576,6 +18582,10 @@
         "uploadingFile": "{{name}} 업로드 중…",
         "removeAttachment": "첨부파일 삭제",
         "pastedImageLabel": "붙여넣은 이미지",
+        "pastedTextLabel": "붙여넣은 텍스트",
+        "pasteNotSavedLabel": "붙여넣기 저장 안 됨",
+        "pasteNotSaved": "이 붙여넣기는 저장되지 않았습니다. 다시 붙여넣거나 제거하세요.",
+        "pastedTextTooLarge": "이 붙여넣기로 메시지가 메시지당 한도인 256KB를 초과합니다. 줄인 다음 다시 붙여넣으세요.",
         "draftNotSaved": "이 초안을 아직 저장하지 못했습니다. Orca가 계속 다시 시도합니다.",
         "imageNotBroughtBack": "{{name}}을(를) 이 초안과 함께 복원하지 못했습니다. 다시 첨부하거나 제거하세요.",
         "pastedImageNotBroughtBack": "이 붙여넣은 이미지를 이 초안과 함께 복원하지 못했습니다. 제거한 후 필요하면 다시 붙여넣으세요.",
@@ -19077,7 +19087,7 @@
       "thought": "생각함",
       "thoughtForDuration": "{{duration}} 동안 생각함",
       "structuredSessionHostDeclined": "{{value0}}을(를) 터미널에서 열었습니다",
-      "structuredSessionHostDeclinedDescription": "이 서버는 이 워크스페이스에서 {{value0}} 채팅을 실행할 수 없습니다.",
+      "structuredSessionHostDeclinedDescription": "이 워크스페이스에서는 {{value0}} 채팅을 실행할 수 없습니다.",
       "structuredSessionHostUnreachable": "{{value0}}에 연결할 수 없습니다",
       "structuredSessionHostUnreachableDescription": "Orca가 {{value0}} 채팅을 열지 않았습니다. 서버 연결을 확인하고 다시 시도하세요.",
       "hostOutage": {
@@ -19981,8 +19991,12 @@
       "status": "PR #{{number}} 연결 해제됨"
     },
     "discard": {
+      "deleteUntrackedFileDescription": "이 추적되지 않는 파일은 영구적으로 삭제됩니다. 이 작업은 취소할 수 없습니다.",
+      "deleteUntrackedFilesDescription": "이 {{count}}개의 추적되지 않는 파일은 영구적으로 삭제됩니다. 이 작업은 취소할 수 없습니다.",
       "restoreStagedVersionDescription": "이렇게 하면 마지막 단계 버전이 복원되고 삭제가 취소됩니다. 이 작업은 취소할 수 없습니다.",
-      "unstagedChangesDescription": "이렇게 하면 단계가 지정되지 않은 변경 사항이 이 파일로 되돌아갑니다. 이 작업은 취소할 수 없습니다."
+      "unstagedChangesDescription": "이렇게 하면 단계가 지정되지 않은 변경 사항이 이 파일로 되돌아갑니다. 이 작업은 취소할 수 없습니다.",
+      "unstagedSelectionIncludingUntrackedDescription": "스테이징되지 않은 변경 사항을 되돌리고 이 선택 항목의 추적되지 않는 파일을 영구적으로 삭제합니다. 이 작업은 취소할 수 없습니다.",
+      "unstagedFilesIncludingUntrackedDescription": "스테이징되지 않은 변경 사항을 되돌리고 이 {{count}}개 파일 중 추적되지 않는 파일을 영구적으로 삭제합니다. 이 작업은 취소할 수 없습니다."
     }
   },
   "rendererRecovery": {
@@ -20647,6 +20661,27 @@
       "waitingAriaLabel": "다른 Orca 인스턴스를 기다리는 업데이트입니다. 클릭하여 펼치세요.",
       "preparingLabel": "업데이트 준비 중",
       "preparingAriaLabel": "업데이트 준비 중입니다. 클릭하여 펼치세요."
+    }
+  },
+  "onboarding": {
+    "language": {
+      "back": "언어",
+      "requestPrompt": "Orca에서 어떤 언어를 지원하면 좋을까요?",
+      "requestSuccess": "언어 요청이 기록되었습니다. 설정을 계속할 수 있습니다.",
+      "requestError": "요청을 기록하지 못했습니다. 다시 시도하세요.",
+      "retry": "다시 시도",
+      "requestAction": "언어 지원 요청",
+      "title": "표시 언어",
+      "device": "시스템 언어: {{language}}",
+      "unsupported": "시스템 언어: {{language}}. 이 언어는 아직 지원되지 않습니다.",
+      "unknown": "시스템 언어를 감지하지 못했습니다. 아래에서 언어를 선택하세요.",
+      "loadError": "이 언어를 불러오지 못했습니다. 다시 시도하세요.",
+      "saveError": "언어 설정을 저장하지 못했습니다. 다시 시도하세요.",
+      "other": "다른 언어…",
+      "settingsError": "설정을 불러오지 못했습니다.",
+      "loadingSettings": "설정 불러오는 중…",
+      "loading": "언어 불러오는 중…",
+      "saving": "언어 저장 중…"
     }
   }
 }
