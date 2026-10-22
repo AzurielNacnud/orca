@@ -16599,16 +16599,16 @@
                 "addQuickCommand": "添加快捷命令",
                 "newQuickCommand": "新的快捷命令",
                 "splitChatRight": "拆分聊天权限",
-                "moveChatRight": "向右移动聊天",
+                "newChatRight": "在右侧新建聊天",
                 "chatPaneRight": "聊天窗格右侧",
                 "splitChatDown": "拆分聊天",
-                "moveChatDown": "下移聊天",
+                "newChatBelow": "在下方新建聊天",
                 "chatPaneBelow": "下面的聊天窗格"
               },
               "splitChatRight": "右侧拆分聊天",
-              "splitChatRightDescription": "在右侧的拆分窗格中打开活动聊天。",
+              "splitChatRightDescription": "在右侧的拆分窗格中打开新聊天。",
               "splitChatDown": "拆分聊天",
-              "splitChatDownDescription": "在下面的拆分窗格中打开活动聊天。"
+              "splitChatDownDescription": "在下面的拆分窗格中打开新聊天。"
             }
           },
           "palette": {

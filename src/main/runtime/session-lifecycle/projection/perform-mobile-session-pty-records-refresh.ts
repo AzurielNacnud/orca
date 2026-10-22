@@ -18,6 +18,7 @@ import { navigationTargetsHost } from '../../../../shared/runtime-navigation'
 import { isAutomaticTabActivation } from '../../../../shared/tab-activation-intent'
 import { isWorktreeTerminalsSleepingError } from '../../worktree-terminals-sleeping-error'
 
+import { paneHoldsSession } from '../../terminal/surface/main-terminal-surfaces'
 export abstract class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRuntimeWithRestoredPaneStart {
   protected abstract buildResolvedWorktreeFromId(
     ...args: Parameters<WorkspaceSelectors['buildResolvedWorktreeFromId']>
@@ -283,5 +284,13 @@ export abstract class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh exten
       navigation,
       opts.clientNavigationId
     )
+  }
+
+  /** Whether a pane may still hold an agent session: a terminal of it not proven exited, or none. */
+  protected paneHoldsSession(paneKey: string): boolean {
+    const panePtyIds = [...this.ptysById.values()].flatMap((pty) =>
+      this.paneOfPty(pty).paneKey === paneKey ? [pty.ptyId] : []
+    )
+    return paneHoldsSession(this, paneKey, panePtyIds, (ptyId) => this.isPtyKnownExited(ptyId))
   }
 }

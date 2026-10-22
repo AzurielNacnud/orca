@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { committingSpawn, registerBoundPty } from '../bind-first-pane.test-fixture'
 import {
   MOCK_GIT_WORKTREES,
   OrcaRuntimeService,
@@ -161,7 +162,7 @@ describe('OrcaRuntimeService', () => {
       const spawn = vi.fn().mockResolvedValue({ id: 'pty-materialized' })
       const runtime = new OrcaRuntimeService(store)
       runtime.setPtyController({
-        spawn,
+        spawn: committingSpawn(runtime, spawn),
         write: () => true,
         kill: () => true,
         getForegroundProcess: async () => null
@@ -465,7 +466,7 @@ describe('OrcaRuntimeService', () => {
       })
 
       // The renderer's PTY spawn registers with the tab binding (as the pty IPC layer now does) after the shell-only snapshot.
-      runtime.registerPty('pty-alive', TEST_WORKTREE_ID, null, {
+      registerBoundPty(runtime, 'pty-alive', TEST_WORKTREE_ID, null, {
         tabId: 'tab-alive',
         leafId
       })
@@ -499,7 +500,7 @@ describe('OrcaRuntimeService', () => {
       // Why: spawn and tabCreate reply are independent IPC channels; here the PTY registers before the reply, so the pre-wait check resolves it.
       const webContents = { send: vi.fn() }
       const send = vi.fn((_channel: string, payload: { requestId: string }) => {
-        runtime.registerPty('pty-early', TEST_WORKTREE_ID, null, {
+        registerBoundPty(runtime, 'pty-early', TEST_WORKTREE_ID, null, {
           tabId: 'tab-early',
           leafId
         })
@@ -568,7 +569,7 @@ describe('OrcaRuntimeService', () => {
       const send = vi.fn((_channel: string, payload: { requestId: string }) => {
         // Why: the pane spawned before its startup queue landed (the #7587
         // renderer-stall class), so no spawn command is recorded for the PTY.
-        runtime.registerPty('pty-bare', TEST_WORKTREE_ID, null, { tabId: 'tab-bare', leafId })
+        registerBoundPty(runtime, 'pty-bare', TEST_WORKTREE_ID, null, { tabId: 'tab-bare', leafId })
         ipcMain.emit(
           'terminal:tabCreateReply',
           { sender: webContents },

@@ -232,11 +232,7 @@ export abstract class OrcaRuntimeWithApplyMobileSessionTabNavigation extends Orc
     )
     // Why: only a proven exit clears a holder; an unverifiable PTY (dropped SSH relay) or one not
     // yet hydrated after a restart may still be writing the transcript.
-    const ptys = [...this.ptysById.values()]
-    const holderPaneKeys = [...otherPaneKeys].filter((paneKey) => {
-      const panePtys = ptys.filter((pty) => pty.paneKey === paneKey)
-      return panePtys.length === 0 || panePtys.some((pty) => !this.isPtyKnownExited(pty.ptyId))
-    })
+    const holderPaneKeys = [...otherPaneKeys].filter((paneKey) => this.paneHoldsSession(paneKey))
     if (holderPaneKeys.length === 0) {
       return false
     }

@@ -4,7 +4,7 @@ import {
   normalizeJiraFavouriteFilters,
   parseJiraFavouriteFilterList
 } from './jira-favourite-filters'
-import { JiraFavouriteFilterParams } from './rpc-contract/jira-favourite-filter-params'
+import { JiraFavouriteFilterParams } from '../rpc-contract/jira-favourite-filter-params'
 
 const filter = { id: '123', name: 'My work', jql: 'assignee = currentUser()' }
 

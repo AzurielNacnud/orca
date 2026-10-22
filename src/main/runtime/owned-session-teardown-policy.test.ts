@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { spawnWorktreeTarget } from '../../shared/worktree/host-qualified-identity'
 import type { RuntimeClientEvent } from '../../shared/runtime-client-events'
 import type { RuntimeNotifier } from './runtime-notifier-contract'
+import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../shared/layout-owner-switch'
 import type { AgentBrowserBridge } from '../browser/agent-browser-bridge'
 import {
   OWNED_SESSION_KINDS,
@@ -112,6 +113,12 @@ describe('owned-session teardown policy', () => {
 
     await runtime.sleepManagedWorktree(`id:${TEST_WORKTREE_ID}`)
 
+    if (ORCA_LAYOUT_OWNER_IS_MAIN) {
+      // Switch-on variant (ruled behaviour): main sleeps a workspace whose panes it lists itself.
+      expect(sleepWorktree).not.toHaveBeenCalled()
+      expect(sleepPhases()[0]).toBe('started')
+      return
+    }
     expect(sleepWorktree).toHaveBeenCalledWith(TEST_WORKTREE_ID)
     expect(sleepPhases()).toEqual([])
   })

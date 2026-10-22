@@ -16594,16 +16594,16 @@
                 "addQuickCommand": "agregar comando rápido",
                 "newQuickCommand": "nuevo comando rápido",
                 "splitChatRight": "dividir chat a la derecha",
-                "moveChatRight": "mover chat a la derecha",
+                "newChatRight": "nuevo chat a la derecha",
                 "chatPaneRight": "panel de chat a la derecha",
                 "splitChatDown": "dividir chat abajo",
-                "moveChatDown": "mover chat abajo",
+                "newChatBelow": "nuevo chat abajo",
                 "chatPaneBelow": "panel de chat abajo"
               },
               "splitChatRight": "Dividir chat a la derecha",
-              "splitChatRightDescription": "Abre el chat activo en un panel dividido a la derecha.",
+              "splitChatRightDescription": "Abre un chat nuevo en un panel dividido a la derecha.",
               "splitChatDown": "Dividir chat abajo",
-              "splitChatDownDescription": "Abre el chat activo en un panel dividido abajo."
+              "splitChatDownDescription": "Abre un chat nuevo en un panel dividido abajo."
             }
           },
           "palette": {
