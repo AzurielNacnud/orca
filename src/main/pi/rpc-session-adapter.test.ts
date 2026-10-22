@@ -224,7 +224,7 @@ describe('Pi RPC session ownership and delivery', () => {
           },
           executionOptions: { model }
         })
-      ).resolves.toEqual({ state: 'admitted' })
+      ).resolves.toMatchObject({ state: 'admitted', ranOptions: { model } })
     }
     // Back on the opening model, its opening effort is restored; elsewhere Pi keeps its own.
     expect(h.connection.requests.filter((command) => command.startsWith('set_'))).toEqual([
