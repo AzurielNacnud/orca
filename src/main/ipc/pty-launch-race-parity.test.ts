@@ -1,4 +1,5 @@
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
+import type { TerminalCreateOptions } from '../runtime/runtime-terminal-contracts'
 import { spawnInAdmittedPane } from '../runtime/runtime-pane-admission'
 import { registerPtyHandlers } from './pty/register-handlers'
 import { createPaneBindingStore } from './pty-launch-race-test-fixture'
@@ -115,7 +116,10 @@ describe('launch race parity, both spawn lanes', () => {
           path: pane.args.cwd,
           connectionId: null
         }),
-        resolveAgentTerminalCreateOptions: async (_workspace: unknown, opts: object) => opts,
+        resolveAgentTerminalCreateOptions: async (
+          _workspace: unknown,
+          opts: TerminalCreateOptions
+        ) => opts,
         resolveWorkspaceTerminalStartupCwd: () => pane.args.cwd
       })
       const controllerSet = vi.spyOn(runtime, 'setPtyController')
