@@ -148,7 +148,7 @@ describe('Pi RPC session ownership and delivery', () => {
       clientMessageId: 'send-1',
       body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] }
     })
-    expect(result).toEqual({ state: 'admitted' })
+    expect(result).toEqual({ state: 'admitted', ranOptions: { model: 'anthropic/model-1' } })
     expect(h.settled).not.toHaveBeenCalled()
     h.connection.receive({ type: 'agent_start' })
     expect(h.settled).toHaveBeenCalledWith({
@@ -195,7 +195,10 @@ describe('Pi RPC session ownership and delivery', () => {
       body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'chosen' }] },
       executionOptions: { model: 'anthropic/model-2', effort: 'low' }
     })
-    expect(result).toEqual({ state: 'admitted' })
+    expect(result).toEqual({
+      state: 'admitted',
+      ranOptions: { model: 'anthropic/model-2', effort: 'low' }
+    })
     expect(h.connection.requests.slice(-2)).toEqual(['set_model', 'set_thinking_level'])
     expect(h.connection.sent).toMatchObject([{ type: 'prompt', message: 'chosen' }])
   })
@@ -288,7 +291,10 @@ describe('Pi RPC session ownership and delivery', () => {
         executionOptions: { model: 'anthropic/model-1', effort: 'low' },
         body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'A again' }] }
       })
-    ).resolves.toEqual({ state: 'admitted' })
+    ).resolves.toEqual({
+      state: 'admitted',
+      ranOptions: { model: 'anthropic/model-1', effort: 'low' }
+    })
     expect(h.connection.requests.filter((command) => command === 'set_model')).toHaveLength(2)
     unanswered.resolve({})
     await Promise.resolve()

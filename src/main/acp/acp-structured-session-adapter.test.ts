@@ -8,6 +8,7 @@ import { AgentSessionAcquisitionRootExitObservedError } from '../native-chat/age
 import { GENERIC_ACP_DIALECT } from './acp-dialects/acp-dialect'
 import {
   GROK,
+  GROK_CONFIG_OPTIONS,
   openAcpAdapterRig,
   PID,
   PROVIDER_SESSION,
@@ -234,6 +235,33 @@ describe('ACP structured session adapter: turns', () => {
       { configId: 'reasoning_effort', value: 'high' },
       { configId: 'model', value: 'grok-4.6' }
     ])
+  })
+
+  it('runs a message with no choices on the model the agent moved to before Orca wrote any', async () => {
+    // As OpenCode 2: session/new answers before its catalog loads, then reports the configured model.
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    rig.child().agent.notify('session/update', {
+      sessionId: PROVIDER_SESSION,
+      update: {
+        sessionUpdate: 'config_option_update',
+        configOptions: GROK_CONFIG_OPTIONS.map((option) =>
+          option.id === 'model' ? { ...option, currentValue: 'grok-4.6' } : option
+        )
+      }
+    })
+    await waitFor(() =>
+      expect(rig.lifecycle.map((event) => event.type)).toContain('options-reported')
+    )
+    await rig.adapter.dispatch({
+      sessionId: SESSION,
+      fence: 1,
+      clientMessageId: 'unchosen-send',
+      body: hello,
+      executionOptions: {}
+    })
+    await rig.frame('session/prompt')
+    expect(rig.sent('session/set_config_option')).toEqual([])
   })
 
   it("sends Grok's prompt identity only to an agent whose dialect echoes it", async () => {

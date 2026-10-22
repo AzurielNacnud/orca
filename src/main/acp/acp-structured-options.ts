@@ -92,6 +92,11 @@ export class AcpStructuredOptions {
   adoptConfigOptions(configOptions: SessionConfigOption[] | null | undefined): void {
     if (configOptions) {
       this.configOptions = configOptions
+      // Until Orca writes a choice, a later report is still the agent's own (OpenCode's start
+      // answers before its catalog loads).
+      if (!this.picked.has('model') && !this.picked.has('effort')) {
+        this.initialChoice = this.reported()
+      }
     }
   }
 
