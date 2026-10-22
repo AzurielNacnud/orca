@@ -75,7 +75,7 @@ export async function buildRuntimePtySpawnOptions(
     prevalidatedCwd: ctx.prevalidatedCwd,
     isDaemonHostSpawn: ctx.isDaemonHostSpawn,
     preAdoptedStablePane: ctx.preAdoptedStablePane !== null,
-    isNewSession: ctx.isNewDaemonSession,
+    isNewSession: ctx.ownsNewIncarnation,
     codexRuntime: ctx.codexSelectionTarget.runtime,
     expectedWslDistro: ctx.expectedWslDistro,
     requestedAgentTeamsPath: ctx.requestedAgentTeamsPath,
@@ -95,7 +95,7 @@ export async function buildRuntimePtySpawnOptions(
   const seeded = seedPtySpawnSize({
     sessionId: ctx.sessionId,
     sessionAppId: ctx.effectiveSessionAppId,
-    isFreshSessionId: ctx.isNewDaemonSession,
+    isFreshSessionId: ctx.ownsNewIncarnation,
     // Why false: runtime callers (CLI, headless serve) have no hidden pane to report, so a
     // cached size is the only source that can outrank their requested grid here.
     requestIsUnmeasured: false,

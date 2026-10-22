@@ -2,6 +2,8 @@
  *  durable binding and runtime ownership keep graph sync from pruning the tab
  *  out from under a live agent — including when a window is attached. */
 import { describe, expect, it, vi } from 'vitest'
+import { ClaudeAgentTeamsService } from './claude-agent-teams-service'
+import * as launchPlan from './terminal/launch/agent-teams-launch-plan'
 import { OrcaRuntimeService } from './orca-runtime'
 
 vi.mock('electron', () => ({
@@ -69,4 +71,63 @@ describe('host-initiated terminal creation under an attached window', () => {
     expect(pty?.connected).toBe(true)
     expect(pty?.runtimeSessionOwned).toBe(true)
   })
+  it.each(['cancelled', 'refused', 'accepted-then-presentation-error'])(
+    'releases only this create allocation on %s with a reused handle',
+    async (failure) => {
+      const { runtime, spawn } = createRuntimeWithAttachedWindow()
+      const teams = new ClaudeAgentTeamsService()
+      const existing = teams.createLaunchEnv({
+        leaderHandle: 'shared-handle',
+        baseEnv: {},
+        shimDir: '/shim',
+        shimBin: '/orca'
+      })
+      Object.assign(runtime, { claudeAgentTeams: teams })
+      const signal = new AbortController()
+      const allocation = vi.spyOn(teams, 'createLaunchEnv')
+      const release = vi.spyOn(teams, 'releaseTeam')
+      const prepare = vi
+        .spyOn(launchPlan, 'buildRuntimeAgentTeamsLaunchPlan')
+        .mockImplementation(async (args) => {
+          const env = args.createTeamEnv('/shim', '/orca')
+          if (failure === 'cancelled') {
+            signal.abort()
+          }
+          return { plan: { env, command: 'claude' }, effectiveLaunchConfig: args.launchConfig }
+        })
+      if (failure === 'refused') {
+        spawn.mockRejectedValue(new Error('execution_owner_unavailable'))
+      }
+      if (failure === 'accepted-then-presentation-error') {
+        runtime.setPtyController({
+          spawn,
+          adoptStablePane: async (args) => {
+            const operation = { mustExist: false }
+            const result = await args.spawnFresh!(operation)
+            args.onOutcome?.({ kind: 'committed', result }, operation)
+            return null
+          }
+        })
+        vi.spyOn(runtime, 'assertPtyDidNotExitBeforeRegistration').mockImplementation(() => {
+          throw new Error('presentation failed')
+        })
+      }
+      try {
+        await expect(
+          runtime.createTerminal('id:repo-1::/tmp/wt-cli', {
+            command: 'claude',
+            preAllocatedHandle: 'shared-handle',
+            signal: signal.signal
+          })
+        ).rejects.toThrow()
+        const allocatedId = allocation.mock.results[0]!.value.teamId
+        expect(allocatedId).not.toBe(existing.teamId)
+        expect([teams.getActiveTeamCount(), release.mock.calls]).toEqual(
+          failure === 'accepted-then-presentation-error' ? [2, []] : [1, [[allocatedId]]]
+        )
+      } finally {
+        prepare.mockRestore()
+      }
+    }
+  )
 })

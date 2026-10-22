@@ -237,7 +237,7 @@ export function seedPtySpawnSize(input: {
   sessionId: string | undefined
   sessionAppId: string | undefined
   isFreshSessionId: boolean
-  /** TEMPORARY (C6 decides who seeds): window hidden requests are unmeasured; host requests never are. */
+  /** Whether this grid is ineligible as a provisional attach fallback; fresh seeding always wins. */
   requestIsUnmeasured: boolean
   cols: number
   rows: number

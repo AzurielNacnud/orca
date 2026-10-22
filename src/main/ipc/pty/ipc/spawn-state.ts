@@ -53,8 +53,6 @@ export type PtyIpcSpawnState = {
   preAdoptedStablePane: AdoptStablePaneResult | null
   /** The agent launch this pane's spawn admitted, until the spawn ends it. */
   paneAgentLaunch: PaneAgentLaunch | null
-  /** The new process exited before it registered; the pane drains it. */
-  exitedBeforeRegistration: boolean
   isClaudeLaunch: boolean
   claudeAuth: ClaudeRuntimeAuthPreparation | null
   terminalRuntimeOptions: {
@@ -62,7 +60,7 @@ export type PtyIpcSpawnState = {
     terminalWindowsWslDistro?: string | null
   }
   isDaemonHostSpawn: boolean
-  isMintedSessionId: boolean
+  ownsNewIncarnation: boolean
   effectiveSessionId: string | undefined
   effectiveSessionAppId: string | undefined
   expectedWslDistro: string | null
@@ -135,12 +133,11 @@ export function createPtyIpcSpawnState(
     provider: localProvider,
     preAdoptedStablePane: null,
     paneAgentLaunch: null,
-    exitedBeforeRegistration: false,
     isClaudeLaunch: false,
     claudeAuth: null,
     terminalRuntimeOptions: {},
     isDaemonHostSpawn: false,
-    isMintedSessionId: false,
+    ownsNewIncarnation: false,
     effectiveSessionId: undefined,
     effectiveSessionAppId: undefined,
     expectedWslDistro: null,

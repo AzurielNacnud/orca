@@ -1,3 +1,4 @@
+import type { PtySpawnOutcome } from '../spawn-outcome'
 import type { PtyRegistrationClaim } from '../../../runtime/runtime-terminal-state-records'
 import type { PaneSpawnOperation } from '../pane/pane-spawn-operation'
 import type { AgentLaunchRuntime } from '../../../../shared/agent-launch-runtime'
@@ -48,7 +49,7 @@ export type RuntimePtySpawnState = {
   requestedSessionId: string | undefined
   sessionId: string | undefined
   effectiveSessionAppId: string | undefined
-  isNewDaemonSession: boolean
+  ownsNewIncarnation: boolean
   expectedWslDistro: string | null
   codexSelectionTarget: CodexAccountSelectionTarget
   launchCommand: string | undefined
@@ -146,6 +147,8 @@ export type RuntimePtySpawnArgs = {
   onResumeOutcome?: (ptyId: string, outcome: PaneResumeOutcome) => void
   paneSpawnOperation?: PaneSpawnOperation
   adoptedStablePane?: {
+    operation?: PaneSpawnOperation
+    outcome?: PtySpawnOutcome
     result: PtySpawnResult
     owner: {
       handle?: string
@@ -182,7 +185,7 @@ export function createRuntimePtySpawnState(
     requestedSessionId: undefined,
     sessionId: undefined,
     effectiveSessionAppId: undefined,
-    isNewDaemonSession: false,
+    ownsNewIncarnation: false,
     expectedWslDistro: null,
     codexSelectionTarget: { runtime: 'host' },
     launchCommand: undefined,
