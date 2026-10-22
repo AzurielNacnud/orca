@@ -248,6 +248,7 @@ export async function useIpcEventsForCloseRouting({
           }
           return () => {}
         },
+        onBrowserPageTabShortcut: () => () => {},
         onSwitchRecentTab: () => () => {},
         onToggleStatusBar: () => () => {},
         onFullscreenChanged: () => () => {},

@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   mobileDrivenPageIds: new Set<string>(),
   remotelyViewedPageIds: new Set<string>(),
   focusGroup: vi.fn(),
-  pagePointerDown: null as ((target: { browserPageId: string }) => void) | null
+  pagePointerDown: vi.fn<(target: { browserPageId: string }) => void>()
 }))
 
 vi.mock('../../../store', () => ({
@@ -95,11 +95,10 @@ describe('BrowserPaneOverlayLayer', () => {
     mocks.remotelyViewedPageIds.clear()
     mocks.focusGroup.mockClear()
     mocks.state = createState()
-    mocks.pagePointerDown = null
     vi.stubGlobal('api', {
       ui: {
         onBrowserPagePointerDown: (listener: (target: { browserPageId: string }) => void) => {
-          mocks.pagePointerDown = listener
+          mocks.pagePointerDown.mockImplementation(listener)
           return () => {}
         }
       }
@@ -491,7 +490,7 @@ describe('BrowserPaneOverlayLayer', () => {
     render(<BrowserPaneOverlayLayer worktreeId="wt-1" isWorktreeActive />)
 
     // Main reports the press by page id, which is how both local and client-hosted guests register.
-    act(() => mocks.pagePointerDown?.({ browserPageId: 'page-b' }))
+    act(() => mocks.pagePointerDown({ browserPageId: 'page-b' }))
 
     expect(mocks.focusGroup).toHaveBeenCalledWith('wt-1', 'group-2')
   })

@@ -38,7 +38,8 @@ export function useBrowserPageChromeFocus({
   isActive,
   chromeShortcutScope,
   addressBarInputRef,
-  guestFocus
+  guestFocus,
+  inputLocked = false
 }: {
   browserTabId: string
   workspaceId: string
@@ -46,6 +47,8 @@ export function useBrowserPageChromeFocus({
   chromeShortcutScope: BrowserChromeShortcutScope
   addressBarInputRef: RefObject<HTMLInputElement | null>
   guestFocus: BrowserPageGuestFocus
+  /** A phone is driving the page; the desktop keyboard must not reach it. */
+  inputLocked?: boolean
 }): {
   focusAddressBarNow: (selection?: BrowserAddressBarSelection) => boolean
   focusGuestNow: () => boolean
@@ -156,18 +159,21 @@ export function useBrowserPageChromeFocus({
   )
 
   /** Retries for a few frames: a pane activated this commit may not have attached its guest yet. */
-  const focusGuestOverFrames = useCallback((): (() => void) => {
-    let frameId = 0
-    let attempts = 0
-    const runFocus = (): void => {
-      attempts += 1
-      if (!focusGuestNow() && attempts < ADDRESS_BAR_FOCUS_FRAMES) {
-        frameId = window.requestAnimationFrame(runFocus)
+  const focusGuestOverFrames = useCallback(
+    (stillWanted: () => boolean = () => true): (() => void) => {
+      let frameId = 0
+      let attempts = 0
+      const runFocus = (): void => {
+        attempts += 1
+        if (stillWanted() && !focusGuestNow() && attempts < ADDRESS_BAR_FOCUS_FRAMES) {
+          frameId = window.requestAnimationFrame(runFocus)
+        }
       }
-    }
-    frameId = window.requestAnimationFrame(runFocus)
-    return () => window.cancelAnimationFrame(frameId)
-  }, [focusGuestNow])
+      frameId = window.requestAnimationFrame(runFocus)
+      return () => window.cancelAnimationFrame(frameId)
+    },
+    [focusGuestNow]
+  )
 
   useEffect(() => {
     if (!isActive) {
@@ -359,14 +365,22 @@ export function useBrowserPageChromeFocus({
     // Why: a page activated in a split the user isn't in (an agent opening it there) must not pull
     // the keyboard across splits.
     if (
+      inputLocked ||
       chromeShortcutScopeRef.current === 'inactive' ||
       keepAddressBarFocusRef.current ||
       focusGuestNow()
     ) {
       return
     }
-    return focusGuestOverFrames()
-  }, [dragPassthroughActive, focusGuestNow, focusGuestOverFrames, isActive])
+    // Why: a late guest must not take focus the user has since moved (Cmd/Ctrl+L, another split).
+    const focusedAtActivation = document.activeElement
+    return focusGuestOverFrames(
+      () =>
+        document.activeElement === focusedAtActivation &&
+        chromeShortcutScopeRef.current !== 'inactive' &&
+        !keepAddressBarFocusRef.current
+    )
+  }, [dragPassthroughActive, focusGuestNow, focusGuestOverFrames, inputLocked, isActive])
 
   return { focusAddressBarNow, focusGuestNow, startAddressBarFocusGrab, keepAddressBarFocusRef }
 }

@@ -78,6 +78,7 @@ export function buildWindowApi(args: {
         onCloseActiveTab: () => () => {},
         onCloseFloatingItem: () => () => {},
         onSelectFloatingIndex: () => () => {},
+        onBrowserPageTabShortcut: () => () => {},
         onSwitchRecentTab: () => () => {},
         onToggleStatusBar: () => () => {},
         onFullscreenChanged: () => () => {},

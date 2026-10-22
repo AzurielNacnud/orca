@@ -142,6 +142,7 @@ describe('useIpcEvents updater integration', () => {
           onCloseActiveTab: () => () => {},
           onCloseFloatingItem: () => () => {},
           onSelectFloatingIndex: () => () => {},
+          onBrowserPageTabShortcut: () => () => {},
           onSwitchRecentTab: () => () => {},
           onToggleStatusBar: () => () => {},
           onFullscreenChanged: () => () => {},

@@ -23,20 +23,31 @@ export function useRemoteBrowserPagePointerHistory({
     if (!isActive || !viewport) {
       return
     }
-    const handlePointerUp = (event: PointerEvent): void => {
+    // Why both: in the paired web client the outer browser would also step its own history unless
+    // the press is claimed.
+    const claimSideButton = (event: MouseEvent): RemoteHistoryMethod | undefined => {
       const method = HISTORY_METHOD_BY_MOUSE_BUTTON[event.button]
+      if (method) {
+        event.preventDefault()
+      }
+      return method
+    }
+    const handleMouseUp = (event: MouseEvent): void => {
+      const method = claimSideButton(event)
       if (method) {
         void runRemoteNavigation(method)
       }
     }
-    viewport.addEventListener('pointerup', handlePointerUp)
+    viewport.addEventListener('mousedown', claimSideButton)
+    viewport.addEventListener('mouseup', handleMouseUp)
     const unsubscribeSwipe = window.api.ui.onBrowserPageSwipe(({ direction, screenX, screenY }) => {
       if (isBrowserPageAtScreenPoint(viewport, screenX, screenY)) {
         void runRemoteNavigation(direction === 'back' ? 'browser.back' : 'browser.forward')
       }
     })
     return () => {
-      viewport.removeEventListener('pointerup', handlePointerUp)
+      viewport.removeEventListener('mousedown', claimSideButton)
+      viewport.removeEventListener('mouseup', handleMouseUp)
       unsubscribeSwipe()
     }
   }, [isActive, remoteViewportRef, runRemoteNavigation])

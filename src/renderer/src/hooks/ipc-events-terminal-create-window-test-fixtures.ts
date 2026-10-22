@@ -134,6 +134,7 @@ export function buildTerminalCreateWindow(args: {
         onCloseActiveTab: () => () => {},
         onCloseFloatingItem: () => () => {},
         onSelectFloatingIndex: () => () => {},
+        onBrowserPageTabShortcut: () => () => {},
         onSwitchRecentTab: () => () => {},
         onToggleStatusBar: () => () => {},
         onFullscreenChanged: () => () => {},

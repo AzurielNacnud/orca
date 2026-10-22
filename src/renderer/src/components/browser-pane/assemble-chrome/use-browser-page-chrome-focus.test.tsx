@@ -35,6 +35,7 @@ function ChromeHarness({
   workspaceId = WORKSPACE_ID,
   chromeShortcutScope,
   hasGuest = true,
+  inputLocked = false,
   testId = 'a'
 }: {
   isActive?: boolean
@@ -42,6 +43,7 @@ function ChromeHarness({
   workspaceId?: string
   chromeShortcutScope?: BrowserChromeShortcutScope
   hasGuest?: boolean
+  inputLocked?: boolean
   testId?: string
 }): React.JSX.Element {
   const addressBarInputRef = useRef<HTMLInputElement | null>(null)
@@ -53,7 +55,8 @@ function ChromeHarness({
     isActive,
     chromeShortcutScope: chromeShortcutScope ?? (isActive ? 'focused' : 'inactive'),
     addressBarInputRef,
-    guestFocus
+    guestFocus,
+    inputLocked
   })
   return (
     <div data-browser-overlay-tab-id={workspaceId}>
@@ -191,6 +194,27 @@ describe('useBrowserPageChromeFocus', () => {
     act(() => flushFrames())
 
     expect(document.activeElement).toBe(guest())
+  })
+
+  it('lets a late guest leave focus the user moved while it attached', () => {
+    const view = render(<ChromeHarness isActive={false} hasGuest={false} />)
+
+    view.rerender(<ChromeHarness isActive hasGuest={false} />)
+    act(() => addressBar().focus())
+    view.rerender(<ChromeHarness isActive />)
+    act(() => flushFrames())
+
+    expect(document.activeElement).toBe(addressBar())
+  })
+
+  it('keeps the desktop keyboard off a page a phone is driving', () => {
+    const view = render(<ChromeHarness isActive={false} inputLocked />)
+    act(() => addressBar().focus())
+
+    view.rerender(<ChromeHarness isActive inputLocked />)
+    act(() => flushFrames())
+
+    expect(document.activeElement).toBe(addressBar())
   })
 
   it('ignores a pending request while the pane is not the active surface', () => {
