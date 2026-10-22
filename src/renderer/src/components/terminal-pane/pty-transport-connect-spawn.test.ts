@@ -1,3 +1,5 @@
+import type { ManagedPane } from '@/lib/pane-manager/pane-manager'
+import type { PtyConnectionDeps } from './pty-connection-types'
 import type { ConnectCallbacks } from './pty-connection-test-pane-fixtures'
 import { terminalAttachResult } from '../../../../shared/terminal-attach-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -438,13 +440,14 @@ describe('createIpcPtyTransport', () => {
     const { bindPtyConnectionTestMocks } = await import('./pty-connection-mocks.spec')
     const { createInitialStoreState } = await import('./pty-connection-test-store-fixtures')
     const { buildPaneConnectionDeps } = await import('./pty-connection-test-deps')
-    const {
-      createMockTransport,
-      createPane,
-      createManager,
-      captureCallbackTerminalWrites,
-      LEAF_1
-    } = await import('./pty-connection-test-pane-fixtures')
+    const { createMockTransport, createPaneContainer, LEAF_1 } =
+      await import('./pty-connection-test-pane-fixtures')
+    const { Terminal } = await import('@xterm/xterm')
+    const { FitAddon } = await import('@xterm/addon-fit')
+    const { SearchAddon } = await import('@xterm/addon-search')
+    const { SerializeAddon } = await import('@xterm/addon-serialize')
+    const { PaneManager } = await import('@/lib/pane-manager/pane-manager')
+    const { isTerminalLeafId } = await import('../../../../shared/stable-pane-id')
     const { installTerminalTestGlobals, restoreTerminalTestGlobals } =
       await import('./pty-connection-test-environment')
     const { flushAsyncTicks } = await import('./pty-connection-test-async')
@@ -479,29 +482,87 @@ describe('createIpcPtyTransport', () => {
           return result
         })
         transports.push(transport)
-        const pane = createPane(1)
-        const { writes, parseCallbacks } = captureCallbackTerminalWrites(pane)
-        const deps = buildPaneConnectionDeps(() => state, {
+        const leafId: string = LEAF_1
+        if (!isTerminalLeafId(leafId)) {
+          throw new Error('Expected a terminal leaf UUID')
+        }
+        const terminal = new Terminal({
+          cols: 120,
+          rows: 40,
+          scrollback: 5_000,
+          allowProposedApi: true,
+          theme: { foreground: '#eeeeee', background: '#111111' },
+          vtExtensions: { kittyKeyboard: true }
+        })
+        const writes: string[] = []
+        const parseCallbacks: (() => void)[] = []
+        vi.spyOn(terminal, 'write').mockImplementation((data, callback) => {
+          writes.push(typeof data === 'string' ? data : new TextDecoder().decode(data))
+          if (callback) {
+            parseCallbacks.push(callback)
+          }
+        })
+        const container = createPaneContainer()
+        Object.defineProperty(container, 'querySelectorAll', { value: () => [] })
+        const pane: ManagedPane = {
+          id: 1,
+          leafId,
+          stablePaneId: leafId,
+          terminal,
+          container,
+          linkTooltip: createPaneContainer(),
+          fitAddon: new FitAddon(),
+          searchAddon: new SearchAddon(),
+          serializeAddon: new SerializeAddon()
+        }
+        vi.spyOn(pane.fitAddon, 'fit').mockImplementation(() => {})
+        vi.spyOn(pane.fitAddon, 'proposeDimensions').mockReturnValue({ cols: 120, rows: 40 })
+        const manager = new PaneManager(container, { linkOpenHint: () => '' })
+        vi.spyOn(manager, 'getPanes').mockReturnValue([pane])
+        vi.spyOn(manager, 'getLeafId').mockReturnValue(leafId)
+        vi.spyOn(manager, 'getNumericIdForLeaf').mockReturnValue(1)
+        const fixtureDeps = buildPaneConnectionDeps(() => state, {
           isVisibleRef: { current: true },
           restoredLeafId: LEAF_1,
           restoredPtyIdByLeafId: { [LEAF_1]: 'tab-pty' }
         })
-        connectPanePty(pane as never, createManager(1) as never, deps as never)
-        await flushAsyncTicks(20)
-        for (let step = 0; step < 40; step += 1) {
-          parseCallbacks.shift()?.()
-          await flushAsyncTicks(2)
+        const deps: PtyConnectionDeps = {
+          ...fixtureDeps,
+          paneTransportsRef: { current: new Map() },
+          paneMode2031Ref: { current: new Map() },
+          paneLastThemeModeRef: { current: new Map() },
+          replayingPanesRef: { current: new Map() },
+          syncPanePtyLayoutBinding: (paneId, ptyId) => {
+            if (ptyId !== null) {
+              fixtureDeps.syncPanePtyLayoutBinding(paneId, ptyId)
+            }
+          }
         }
-        // The stream reaches main at 903 before the control reply; its delivery to this view is delayed until after OLD paints.
-        expect(writes.join('')).toContain('OLD')
-        callbacks?.onData?.('NEW', { seq: 903, rawLength: 3 })
-        for (let step = 0; step < 40; step += 1) {
-          parseCallbacks.shift()?.()
-          await flushAsyncTicks(2)
+        const binding = connectPanePty(pane, manager, deps)
+        try {
+          await flushAsyncTicks(20)
+          for (let step = 0; step < 40; step += 1) {
+            parseCallbacks.shift()?.()
+            await flushAsyncTicks(2)
+          }
+          // The stream reaches main at 903 before the control reply; its delivery to this view is delayed until after OLD paints.
+          expect(writes.join('')).toContain('OLD')
+          callbacks?.onData?.('NEW', { seq: 903, rawLength: 3 })
+          for (let step = 0; step < 40; step += 1) {
+            parseCallbacks.shift()?.()
+            await flushAsyncTicks(2)
+          }
+          expect(writes.join('').match(/OLD/g), proof).toHaveLength(1)
+          expect(writes.join('').match(/NEW/g), proof).toHaveLength(1)
+          expect(result.snapshotSeq).toBe(proof === 'covered' ? 900 : undefined)
+        } finally {
+          binding.dispose()
+          manager.destroy()
+          pane.fitAddon.dispose()
+          pane.searchAddon.dispose()
+          pane.serializeAddon.dispose()
+          terminal.dispose()
         }
-        expect(writes.join('').match(/OLD/g), proof).toHaveLength(1)
-        expect(writes.join('').match(/NEW/g), proof).toHaveLength(1)
-        expect(result.snapshotSeq).toBe(proof === 'covered' ? 900 : undefined)
       }
     } finally {
       await restoreTerminalTestGlobals()
