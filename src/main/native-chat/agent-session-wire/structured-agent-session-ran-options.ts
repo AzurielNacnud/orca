@@ -127,7 +127,7 @@ export async function recordStructuredAgentSessionRanOptions(
   const model = executed ? (executed.model ?? message?.model ?? newerModel) : message?.model
   childRuns.set(child, {
     ...(reported ? { reported } : {}),
-    ...(model || !executed ? {} : { owed: handed })
+    ...(executed && !model ? { owed: handed } : {})
   })
   if (!model) {
     return
