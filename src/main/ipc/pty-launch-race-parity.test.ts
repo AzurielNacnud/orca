@@ -1,6 +1,5 @@
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import type { TerminalCreateOptions } from '../runtime/runtime-terminal-contracts'
-import { spawnInAdmittedPane } from '../runtime/runtime-pane-admission'
 import { registerPtyHandlers } from './pty/register-handlers'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { launchWorkspaceId } from '../../shared/launch-parity-window-request.test-fixture'
@@ -122,7 +121,6 @@ describe('launch race parity, both spawn lanes', () => {
         ) => opts,
         resolveWorkspaceTerminalStartupCwd: () => pane.args.cwd
       })
-      const controllerSet = vi.spyOn(runtime, 'setPtyController')
       // SAFETY: the handler fixture supplies window ports; only the real mutable session and binding store are used.
       registerPtyHandlers(
         mainWindow as never,
@@ -132,7 +130,6 @@ describe('launch race parity, both spawn lanes', () => {
         undefined,
         store as never
       )
-      const controller = controllerSet.mock.calls.at(-1)![0]
       const admission = {
         type: 'createTerminalTab',
         workspace: pane.worktreeId,
@@ -185,14 +182,12 @@ describe('launch race parity, both spawn lanes', () => {
       const windowStart = () => Promise.resolve(handlers.get('pty:spawn')!(null, pane.args))
       const producerStart = () =>
         runtime.createTerminal(`id:${pane.worktreeId}`, { tabId: pane.tabId, leafId: pane.leafId })
-      const admittedStart = () =>
-        spawnInAdmittedPane(store, controller, { ...pane.args, preAllocatedHandle: 'cross-handle' })
       const first = winner === 'producer' ? producerStart() : windowStart()
       const firstObserved = first.catch((error: unknown) => error)
       await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce())
       const joined = vi.spyOn(paneSpawnReservations, 'joinPaneSpawn')
       onTestFinished(() => joined.mockRestore())
-      const second = winner === 'producer' ? windowStart() : admittedStart()
+      const second = winner === 'producer' ? windowStart() : producerStart()
       const secondObserved = second.catch((error: unknown) => error)
       const key = paneSpawnReservations.makePaneSpawnReservationKey(
         pane.worktreeId,
@@ -234,8 +229,12 @@ describe('launch race parity, both spawn lanes', () => {
         expect(window).toMatchObject({
           id: 'cross-exited',
           snapshot: 'final output',
-          snapshotKittyKeyboardFlags: undefined
+          snapshotKittyKeyboardFlags: undefined,
+          ...(winner === 'producer' ? { isReattach: true } : {})
         })
+        if (winner === 'window') {
+          expect(window).not.toHaveProperty('isReattach')
+        }
       } else {
         expect(window).toMatchObject({ message: 'terminal_pane_owner_changed' })
       }
@@ -274,6 +273,77 @@ describe('launch race parity, both spawn lanes', () => {
     await expect(lanes.spawn.ipc(pane.args)).resolves.toMatchObject({ id, isReattach: true })
     clearProviderPtyState(id)
   })
+  it.each(LAUNCH_RACE_LANES)(
+    '%s lane: auth failure before geometry acquisition preserves the existing grid',
+    async (lane) => {
+      const id = `pre-seed-auth-${lane}`
+      const cached = { cols: 180, rows: 50 }
+      ptySizes.set(id, cached)
+      onTestFinished(() => ptySizes.delete(id))
+      const spawn = vi.fn()
+      installDaemonTestProvider({ spawn })
+      const prepareClaudeAuth = vi.fn(async () => {
+        throw new Error('auth unavailable')
+      })
+      const lanes = registerLaunchRaceLanes({
+        handlers,
+        mainWindow,
+        runtime: createLaunchRaceRuntime(),
+        prepareClaudeAuth
+      })
+      await expect(
+        lanes.spawn[lane]({ cols: 80, rows: 24, sessionId: id, command: 'claude' })
+      ).rejects.toThrow('auth unavailable')
+      expect(prepareClaudeAuth).toHaveBeenCalledOnce()
+      expect(spawn).not.toHaveBeenCalled()
+      expect(ptySizes.get(id)).toEqual(cached)
+    }
+  )
+
+  it('runtime joins known pane coordinates without workspace before auth preparation', async () => {
+    const id = 'no-workspace-winner'
+    let release!: () => void
+    const gate = new Promise<void>((done) => {
+      release = done
+    })
+    const spawn = vi.fn(async () => {
+      await gate
+      return { id }
+    })
+    installDaemonTestProvider({ spawn })
+    const auth = vi.fn(async () => {
+      throw new Error('duplicate auth')
+    })
+    const lanes = registerLaunchRaceLanes({
+      handlers,
+      mainWindow,
+      runtime: createLaunchRaceRuntime(),
+      prepareClaudeAuth: auth
+    })
+    const args = {
+      cols: 80,
+      rows: 24,
+      tabId: 'tab-no-workspace',
+      leafId: '96969696-9696-4696-8696-969696969696'
+    }
+    const winner = lanes.spawn.runtime(args)
+    await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+    const joining = vi.spyOn(paneSpawnReservations, 'joinPaneSpawn')
+    onTestFinished(() => joining.mockRestore())
+    const joiner = lanes.spawn.runtime({ ...args, command: 'claude' })
+    const observed = joiner.catch((error: unknown) => error)
+    try {
+      await vi.waitFor(() => expect(joining).toHaveBeenCalledOnce())
+    } finally {
+      release()
+    }
+    await expect(winner).resolves.toMatchObject({ id })
+    await expect(observed).resolves.toMatchObject({ id })
+    expect(auth).not.toHaveBeenCalled()
+    expect(spawn).toHaveBeenCalledOnce()
+    clearProviderPtyState(id)
+  })
+
   it('seeds a fresh same-id incarnation before provider byte zero and restores a failed start', async () => {
     const id = 'fresh-same-id-grid'
     const old = { cols: 91, rows: 31 }

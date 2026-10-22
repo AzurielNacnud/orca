@@ -30,8 +30,7 @@ export type PtySpawnOperationState = Pick<
   | 'isDaemonHostSpawn'
   | 'expectedWslDistro'
   | 'isClaudeLaunch'
-  | 'hadSessionSizeBeforeAttach'
-  | 'sessionSizeBeforeAttach'
+  | 'provisionalPtySize'
   | 'ownsNewIncarnation'
 > & {
   deps: Pick<

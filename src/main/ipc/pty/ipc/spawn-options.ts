@@ -52,7 +52,7 @@ export async function buildPtyIpcSpawnOptions(ctx: PtyIpcSpawnState): Promise<vo
   ctx.spawnOptions = launch.spawnOptions
   ctx.spawnEnv = launch.env
   ctx.launchCommand = launch.launchCommand
-  const seeded = seedPtySpawnSize({
+  ctx.provisionalPtySize = seedPtySpawnSize({
     sessionId: ctx.effectiveSessionId,
     sessionAppId: ctx.effectiveSessionAppId,
     isFreshSessionId: ctx.ownsNewIncarnation,
@@ -60,8 +60,6 @@ export async function buildPtyIpcSpawnOptions(ctx: PtyIpcSpawnState): Promise<vo
     cols: args.cols,
     rows: args.rows
   })
-  ctx.hadSessionSizeBeforeAttach = seeded.hadSessionSizeBeforeAttach
-  ctx.sessionSizeBeforeAttach = seeded.sessionSizeBeforeAttach
   const resolvedPaneSpawnReservationKey = makePaneSpawnReservationKey(
     args.worktreeId,
     args.connectionId,

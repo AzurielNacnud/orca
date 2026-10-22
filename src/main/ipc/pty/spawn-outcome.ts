@@ -1,3 +1,4 @@
+import type { AdoptStablePaneResult } from './ipc/spawn-types'
 import type { StartupCwdFallback } from '../../../shared/startup-cwd-fallback'
 import type { SleepingAgentLaunchConfig } from '../../../shared/agent-session-resume'
 import type { StablePaneOwner } from './pane/stable-owner'
@@ -38,4 +39,12 @@ export function requireAcceptedSpawn(outcome: PtySpawnOutcome): PtySpawnOutcome[
     throw new Error('agent_session_exited_during_start')
   }
   return outcome.result
+}
+
+export function adoptedOutcome(adopted: AdoptStablePaneResult): PtySpawnOutcome {
+  return {
+    ...(adopted.outcome ?? { kind: 'adopted' }),
+    result: { ...adopted.result, isReattach: true },
+    owner: adopted.owner
+  }
 }

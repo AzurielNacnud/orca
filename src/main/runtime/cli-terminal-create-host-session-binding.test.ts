@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ClaudeAgentTeamsService } from './claude-agent-teams-service'
 import * as launchPlan from './terminal/launch/agent-teams-launch-plan'
 import { OrcaRuntimeService } from './orca-runtime'
+import type { RuntimePtyController } from './runtime-pty-controller-contract'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => ({ isDestroyed: () => false })) },
@@ -13,10 +14,7 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/tmp') }
 }))
 
-function createRuntimeWithAttachedWindow(): {
-  runtime: OrcaRuntimeService
-  spawn: ReturnType<typeof vi.fn>
-} {
+function createRuntimeWithAttachedWindow() {
   const runtime = new OrcaRuntimeService()
   vi.spyOn(
     runtime as unknown as {
@@ -30,7 +28,9 @@ function createRuntimeWithAttachedWindow(): {
     repo: null,
     folderWorkspace: null
   })
-  const spawn = vi.fn().mockResolvedValue({ id: 'repo-1::/tmp/wt-cli@@a1b2c3d4' })
+  const spawn = vi
+    .fn<NonNullable<RuntimePtyController['spawn']>>()
+    .mockResolvedValue({ id: 'repo-1::/tmp/wt-cli@@a1b2c3d4' })
   runtime.setPtyController({
     spawn,
     write: () => true,

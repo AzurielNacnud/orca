@@ -1,3 +1,4 @@
+import type { PtySpawnSizeSeed } from './spawn-options-assembly'
 import { isValidTerminalTabId } from '../../../shared/terminal-tab-id'
 import type { AgentSessionClaimedSpawnResult } from '../../../shared/agent-session-host-authority'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
@@ -15,7 +16,7 @@ import {
   codexReattachedHomeRouteField,
   shouldSkipCodexHomeEnvForWindowsShell
 } from './host-env/codex-home'
-import { commitAttachedPtySize, type PtyGrid } from './delivery/attached-pty-size'
+import { commitAttachedPtySize } from './delivery/attached-pty-size'
 import { seedTerminalRestoreRecordsFromSpawnResult } from './pane/agent-session-owners'
 import { admitProviderReattachLaunchIdentity } from './pane/launch-authority'
 import type { ReplacedPaneOwner } from './pane/replaced-pane-owner'
@@ -58,7 +59,7 @@ export type PtySpawnCommitState = {
   pendingRegistrationPtyId: string | null
   effectiveSessionAppId: string | undefined
   stablePaneOwner: StablePaneOwner | null
-  sessionSizeBeforeAttach: PtyGrid | undefined
+  provisionalPtySize: PtySpawnSizeSeed | undefined
   isDaemonHostSpawn: boolean
   codexResumeHomeSelected: boolean
   codexResumeUnavailable?: boolean
@@ -231,7 +232,7 @@ async function commitAdoptedAgentSession(
   commitAttachedPtySize({
     result: adoptedResult,
     requested: { cols: state.args.cols, rows: state.args.rows },
-    cachedBeforeAttach: state.sessionSizeBeforeAttach,
+    cachedBeforeAttach: state.provisionalPtySize?.cachedBeforeAttach,
     reflowHeadlessTerminalToPtyGrid: runtime?.reflowHeadlessTerminalToPtyGrid?.bind(runtime)
   })
   return {

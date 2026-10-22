@@ -1,3 +1,4 @@
+import { adoptedOutcome } from '../../../../main/ipc/pty/spawn-outcome'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installIpcPtyWindow, restorePtySpecWindow } from './pty-transport-test-harness'
 
@@ -5,7 +6,12 @@ describe('createIpcPtyTransport', () => {
   const originalWindow = (globalThis as { window?: typeof window }).window
   let onData: ((payload: { id: string; data: string }) => void) | null = null
   let onExit:
-    | ((payload: { id: string; code: number; preserveRendererBinding?: boolean }) => void)
+    | ((payload: {
+        id: string
+        code: number
+        preserveRendererBinding?: boolean
+        incarnationId?: string
+      }) => void)
     | null = null
 
   beforeEach(() => {
@@ -53,6 +59,57 @@ describe('createIpcPtyTransport', () => {
       transport.detach?.()
     }
   )
+
+  it('drains an exited join with pre-request output and preserves its snapshot projection', async () => {
+    const { createIpcPtyTransport } = await import('./pty-transport')
+    const { ensurePtyDispatcher } = await import('./pty-dispatcher')
+    const creator = {
+      kind: 'registration-exited' as const,
+      result: {
+        id: 'exited-join',
+        incarnationId: 'join-inc',
+        snapshot: 'final snapshot',
+        snapshotCols: 120,
+        snapshotRows: 40,
+        snapshotSeq: 7,
+        snapshotKittyKeyboardFlags: 3
+      }
+    }
+    const joined = adoptedOutcome({
+      outcome: creator,
+      result: creator.result,
+      owner: { ptyId: creator.result.id, tabId: 'tab-join', leafId: 'leaf-join' },
+      materialized: true
+    })
+    ensurePtyDispatcher()
+    onData!({ id: creator.result.id, data: 'final output' })
+    onExit!({ id: creator.result.id, code: 23, incarnationId: creator.result.incarnationId })
+    vi.mocked(window.api.pty.spawn).mockResolvedValue(joined.result)
+    const onOutput = vi.fn()
+    const onEnd = vi.fn()
+    const transport = createIpcPtyTransport({})
+    const result = await transport.connect({
+      url: '',
+      callbacks: { onData: onOutput, onExit: onEnd }
+    })
+    expect(onOutput).toHaveBeenCalledWith('final output')
+    expect(onEnd).toHaveBeenCalledWith(23)
+    expect(result).toEqual({ id: creator.result.id, exitedBeforeAttach: true })
+    transport.detach?.()
+    const snapshotView = createIpcPtyTransport({})
+    expect(await snapshotView.connect({ url: '', callbacks: {} })).toMatchObject({
+      id: creator.result.id,
+      isReattach: true,
+      snapshot: 'final snapshot',
+      snapshotCols: 120,
+      snapshotRows: 40,
+      snapshotSeq: 7,
+      snapshotKittyKeyboardFlags: 3
+    })
+    expect(creator.result).not.toHaveProperty('isReattach')
+    expect(joined.kind).toBe('registration-exited')
+    snapshotView.detach?.()
+  })
 
   it('leaves title tracking to the PTY data stream (no OpenCode IPC channel)', async () => {
     // Why: the OpenCode status IPC channel is gone (now the agent-hooks server), so the transport has no per-agent status callback.

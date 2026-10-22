@@ -388,7 +388,7 @@ it.each(['joined', 'fresh'] as const)(
         ctx.result = result
         ctx.hostSessionBinding = { store, ...binding }
         ctx.metadataLeafId = binding.leafId
-        return commitRuntimePtySpawn(ctx)
+        return (await commitRuntimePtySpawn(ctx)).result
       }
     })
     if (reservation) {

@@ -1,3 +1,4 @@
+import { seedPtySpawnSize } from '../spawn-options-assembly'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ptySizes } from '../delivery/visibility-state'
 import { commitRuntimePtySpawn } from './spawn-commit'
@@ -66,7 +67,14 @@ describe('runtime spawn commit: adopted agent-session claim', () => {
   it('treats an adoption without a reattach flag as an attach and keeps the held size', async () => {
     ptySizes.set(PTY_ID, LIVE_GRID)
     const { runtime, ctx } = makeAdoptedCtx({})
-    ctx.sessionSizeBeforeAttach = LIVE_GRID
+    ctx.provisionalPtySize = seedPtySpawnSize({
+      sessionId: PTY_ID,
+      sessionAppId: PTY_ID,
+      isFreshSessionId: false,
+      requestIsUnmeasured: false,
+      cols: 120,
+      rows: 40
+    })
 
     await commitRuntimePtySpawn(ctx)
 

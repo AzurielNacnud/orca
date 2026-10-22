@@ -92,7 +92,7 @@ export async function buildRuntimePtySpawnOptions(
   ctx.spawnOptions = launch.spawnOptions
   ctx.env = launch.env
   ctx.launchCommand = launch.launchCommand
-  const seeded = seedPtySpawnSize({
+  ctx.provisionalPtySize = seedPtySpawnSize({
     sessionId: ctx.sessionId,
     sessionAppId: ctx.effectiveSessionAppId,
     isFreshSessionId: ctx.ownsNewIncarnation,
@@ -102,8 +102,6 @@ export async function buildRuntimePtySpawnOptions(
     cols: args.cols,
     rows: args.rows
   })
-  ctx.hadSessionSizeBeforeAttach = seeded.hadSessionSizeBeforeAttach
-  ctx.sessionSizeBeforeAttach = seeded.sessionSizeBeforeAttach
   if (
     !ctx.preAdoptedStablePane &&
     args.agentSessionEnsure &&

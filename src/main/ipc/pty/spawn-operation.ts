@@ -1,10 +1,10 @@
 import type { PaneSpawnOperation } from './pane/pane-spawn-operation'
 import type { AdoptStablePaneArgs } from './ipc/spawn-types'
-import type { PtySpawnOutcome } from './spawn-outcome'
+import { adoptedOutcome, type PtySpawnOutcome } from './spawn-outcome'
 import type { PtySpawnOperationState, PtySpawnExecutionFacts } from './spawn-operation-state'
-import { beginPtySpawn, adoptedOutcome, reportPtyPaneAdoption } from './spawn-begin'
+import { beginPtySpawn, reportPtyPaneAdoption } from './spawn-begin'
 import { executePtySpawn } from './spawn-execute'
-import { resolveEarlyPaneKey, resolveEarlyPaneSpawnReservationKey } from './ipc/spawn-begin'
+import { resolveEarlyPaneKey, resolveEarlyPaneSpawnReservationKey } from './spawn-pane-coordinates'
 import { consumeExitedPaneOperation } from './pane/adopt-stable'
 import { attachOnlyViewOf } from './pane/attach-only-view'
 import {
@@ -54,13 +54,7 @@ function retirePreparation<State extends PtySpawnOperationState>(
 ): void {
   const ctx = adapter.state
   adapter.releasePreparation?.()
-  restoreProvisionalPtySize({
-    sessionId: adapter.facts().sessionId,
-    sessionAppId: ctx.effectiveSessionAppId,
-    reattachId,
-    hadSessionSizeBeforeAttach: ctx.hadSessionSizeBeforeAttach,
-    sessionSizeBeforeAttach: ctx.sessionSizeBeforeAttach
-  })
+  restoreProvisionalPtySize(ctx, { reattachId })
   ctx.finishTerminalInstall()
   ctx.finishTerminalInstall = () => {}
   ctx.releaseWorktreeSpawn?.()
@@ -96,23 +90,13 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
     const runtime = ctx.deps.runtime
     const acquire = runtime?.acquireWorktreeTerminalSpawn
     ctx.releaseWorktreeSpawn = acquire
-      ? await acquire
-          .call(runtime, spawnWorktreeTarget(args.worktreeId, args.connectionId), {
-            refuseSleptWorktree: args.refuseSleptWorktree,
-            reattachSessionId: ctx.preAdoptedStablePane?.owner.ptyId ?? args.sessionId,
-            requireAttachOnly: () => {
-              ctx.spawnOptions = { ...ctx.spawnOptions, attachOnly: true }
-            }
-          })
-          .catch((error: unknown) => {
-            restoreProvisionalPtySize({
-              sessionId: adapter.facts().sessionId,
-              sessionAppId: ctx.effectiveSessionAppId,
-              hadSessionSizeBeforeAttach: ctx.hadSessionSizeBeforeAttach,
-              sessionSizeBeforeAttach: ctx.sessionSizeBeforeAttach
-            })
-            throw error
-          })
+      ? await acquire.call(runtime, spawnWorktreeTarget(args.worktreeId, args.connectionId), {
+          refuseSleptWorktree: args.refuseSleptWorktree,
+          reattachSessionId: ctx.preAdoptedStablePane?.owner.ptyId ?? args.sessionId,
+          requireAttachOnly: () => {
+            ctx.spawnOptions = { ...ctx.spawnOptions, attachOnly: true }
+          }
+        })
       : undefined
     adapter.beforeExecute?.()
     await executePtySpawn(ctx, adapter.facts())
@@ -164,15 +148,7 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
     ctx.paneSpawnOperation = operation
     ctx.args.paneSpawnOperation = operation
     prepared = true
-    await adapter.prepare().catch((error: unknown) => {
-      restoreProvisionalPtySize({
-        sessionId: adapter.facts().sessionId,
-        sessionAppId: ctx.effectiveSessionAppId,
-        hadSessionSizeBeforeAttach: ctx.hadSessionSizeBeforeAttach,
-        sessionSizeBeforeAttach: ctx.sessionSizeBeforeAttach
-      })
-      throw error
-    })
+    await adapter.prepare()
     const latePane =
       !resolveEarlyPaneKey(args) && !operation.acquisition ? adapter.facts().paneKey : null
     if (latePane) {
@@ -217,6 +193,7 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
     adapter.releasePreparation?.()
     adapter.releaseHiddenMark?.()
     cancelRegistration(ctx)
+    restoreProvisionalPtySize(ctx)
     await adapter.replace?.release()
     rejectPaneSpawnReservation(ctx.paneSpawnReservationKey, ctx.paneSpawnReservation, error)
     throw error

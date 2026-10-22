@@ -1,7 +1,6 @@
 import type { PtySpawnOperationState } from './spawn-operation-state'
 import type { AdoptStablePaneResult } from './ipc/spawn-types'
-import type { PtySpawnOutcome } from './spawn-outcome'
-import { resolveEarlyPaneKey, resolveEarlyPaneSpawnReservationKey } from './ipc/spawn-begin'
+import { resolveEarlyPaneKey, resolveEarlyPaneSpawnReservationKey } from './spawn-pane-coordinates'
 import { consumeExitedPaneOperation } from './pane/adopt-stable'
 import { codexReattachedHomeRouteField, snapshotCodexPaneHomeRoutes } from './host-env/codex-home'
 import { allocatePtyLifecycleSequence } from './host-env/types'
@@ -88,13 +87,6 @@ export async function beginPtySpawn(
     }
   }
   return null
-}
-
-export function adoptedOutcome(adopted: AdoptStablePaneResult): PtySpawnOutcome {
-  return {
-    ...(adopted.outcome ?? { kind: 'adopted', result: { ...adopted.result, isReattach: true } }),
-    owner: adopted.owner
-  }
 }
 
 export function reportPtyPaneAdoption(

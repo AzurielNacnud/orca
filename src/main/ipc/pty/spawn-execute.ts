@@ -43,7 +43,7 @@ export async function executePtySpawn(
                 args.worktreeId,
                 args.connectionId
               ),
-              facts.replacedPaneOwner
+              facts.replacedPaneOwner ?? null
             ),
             ctx.paneSpawnOperation?.absentOwner
           )

@@ -1,3 +1,4 @@
+import type { PtySpawnSizeSeed } from '../spawn-options-assembly'
 import type { PtySpawnOutcome } from '../spawn-outcome'
 import type { PtyRegistrationClaim } from '../../../runtime/runtime-terminal-state-records'
 import type { PaneSpawnOperation } from '../pane/pane-spawn-operation'
@@ -75,8 +76,7 @@ export type RuntimePtySpawnState = {
   skipCodexHomeEnv: boolean
   stripInheritedOrcaCodexHome: boolean
   spawnOptions: PtySpawnOptions
-  hadSessionSizeBeforeAttach: boolean
-  sessionSizeBeforeAttach: { cols: number; rows: number } | undefined
+  provisionalPtySize: PtySpawnSizeSeed | undefined
   materializedPaneKey: string | null
   metadataLeafId: string | null
   metadataPaneKey: string | null
@@ -201,8 +201,7 @@ export function createRuntimePtySpawnState(
     skipCodexHomeEnv: false,
     stripInheritedOrcaCodexHome: false,
     spawnOptions: { cols: args.cols, rows: args.rows },
-    hadSessionSizeBeforeAttach: false,
-    sessionSizeBeforeAttach: undefined,
+    provisionalPtySize: undefined,
     materializedPaneKey: null,
     metadataLeafId: null,
     metadataPaneKey: null,

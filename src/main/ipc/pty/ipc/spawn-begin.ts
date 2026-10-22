@@ -1,23 +1,14 @@
-import { isTerminalLeafId, makePaneKey } from '../../../../shared/stable-pane-id'
+import { resolveEarlyPaneKey as resolvePaneCoordinates } from '../spawn-pane-coordinates'
 import { resolveAgentLaunchPaneVerdict } from '../../../agent-launch/agent-launch-pane-attachment'
 import { AGENT_LAUNCH_PANE_REFUSED_CODE } from '../../../../shared/agent-launch-pane-verdict'
 import { agentLaunchPaneLiveness } from '../pane/agent-launch-pane-evidence'
-import { isValidTerminalTabId } from '../../../../shared/terminal-tab-id'
 import { makePaneSpawnReservationKey } from '../pane/spawn-reservation'
 import type { PtyIpcSpawnState } from './spawn-state'
 import type { PtySpawnIpcArgs } from './spawn-types'
 
 /** The pane key a spawn names before preflight; null when it names no stable pane. */
 export function resolveEarlyPaneKey(args: PtySpawnIpcArgs): string | null {
-  const leafId =
-    typeof args.leafId === 'string' && isTerminalLeafId(args.leafId) ? args.leafId : null
-  return typeof args.worktreeId === 'string' &&
-    typeof args.tabId === 'string' &&
-    isValidTerminalTabId(args.tabId) &&
-    args.tabId.length <= 512 &&
-    leafId
-    ? makePaneKey(args.tabId, leafId)
-    : null
+  return typeof args.worktreeId === 'string' ? resolvePaneCoordinates(args) : null
 }
 
 export function resolveEarlyPaneSpawnReservationKey(args: PtySpawnIpcArgs): string | null {

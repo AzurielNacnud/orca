@@ -52,8 +52,7 @@ export async function commitPtyWithOpenCodePromptIntent<
   facts?.reserveSpawnCommit(options.result)
   try {
     const result = await commit()
-    const accepted =
-      'kind' in result ? (result.kind === 'registration-exited' ? null : result.result) : result
+    const accepted = acceptedPromptSpawnResult(result)
     if (accepted) {
       bindOpenCodeStartupPromptOwner({ ...options, result: accepted })
     } else {
@@ -72,6 +71,12 @@ export async function commitPtyWithOpenCodePromptIntent<
   } finally {
     facts?.discardSpawnCommit(options.result)
   }
+}
+
+function acceptedPromptSpawnResult(
+  result: PtySpawnResult | PtySpawnOutcome
+): PtySpawnResult | null {
+  return 'kind' in result ? (result.kind === 'registration-exited' ? null : result.result) : result
 }
 
 export function bindOpenCodeStartupPromptOwner(options: {

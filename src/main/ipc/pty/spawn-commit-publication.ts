@@ -62,7 +62,7 @@ export function publishCommittedPtySpawn(input: PtySpawnCommitInput): PtySpawnOu
   commitAttachedPtySize({
     result,
     requested: { cols: args.cols, rows: args.rows },
-    cachedBeforeAttach: state.sessionSizeBeforeAttach,
+    cachedBeforeAttach: state.provisionalPtySize?.cachedBeforeAttach,
     reflowHeadlessTerminalToPtyGrid: runtime?.reflowHeadlessTerminalToPtyGrid?.bind(runtime)
   })
   if (state.effectiveSessionAppId !== undefined && state.effectiveSessionAppId !== result.id) {
