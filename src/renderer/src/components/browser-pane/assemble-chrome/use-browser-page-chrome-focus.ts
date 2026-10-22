@@ -362,11 +362,11 @@ export function useBrowserPageChromeFocus({
       return
     }
     focusedForActivationRef.current = true
-    // Why: a page activated in a split the user isn't in (an agent opening it there) must not pull
-    // the keyboard across splits.
+    // Why 'focused' only: a page activated in a split the user isn't in (an agent opening it there)
+    // must not pull the keyboard across, and floating splits all report 'owned-target'.
     if (
       inputLocked ||
-      chromeShortcutScopeRef.current === 'inactive' ||
+      chromeShortcutScopeRef.current !== 'focused' ||
       keepAddressBarFocusRef.current ||
       focusGuestNow()
     ) {
@@ -377,7 +377,7 @@ export function useBrowserPageChromeFocus({
     return focusGuestOverFrames(
       () =>
         document.activeElement === focusedAtActivation &&
-        chromeShortcutScopeRef.current !== 'inactive' &&
+        chromeShortcutScopeRef.current === 'focused' &&
         !keepAddressBarFocusRef.current
     )
   }, [dragPassthroughActive, focusGuestNow, focusGuestOverFrames, inputLocked, isActive])

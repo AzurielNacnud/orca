@@ -186,6 +186,16 @@ describe('useBrowserPageChromeFocus', () => {
     expect(document.activeElement).toBe(addressBar())
   })
 
+  it('leaves the keyboard alone for splits that only own their target, as floating ones do', () => {
+    const view = render(<ChromeHarness isActive={false} />)
+    act(() => addressBar().focus())
+
+    view.rerender(<ChromeHarness isActive chromeShortcutScope="owned-target" />)
+    act(() => flushFrames())
+
+    expect(document.activeElement).toBe(addressBar())
+  })
+
   it('focuses a page whose guest attaches a frame after the tab activates', () => {
     const view = render(<ChromeHarness isActive={false} hasGuest={false} />)
 
