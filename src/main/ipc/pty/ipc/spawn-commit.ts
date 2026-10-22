@@ -92,11 +92,7 @@ function ipcSpawnPaneBinding(ctx: PtyIpcSpawnState): PtySpawnPaneBinding | undef
 function ipcSpawnResponse(ctx: PtyIpcSpawnState) {
   const startupCwdFallback = startupCwdFallbackOutcome(ctx.startupCwdFallback, ctx.result)
   return {
-    ...provenSpawnResponse(
-      ctx.result,
-      ctx.reconciledSnapshotSeq,
-      ctx.snapshotKittyFlagsCoverReconciledSeq
-    ),
+    ...provenSpawnResponse(ctx.result, ctx.provedSnapshotSeq),
     ...(!ctx.result.isReattach && ctx.effectiveLaunchConfig
       ? { launchConfig: ctx.effectiveLaunchConfig }
       : {}),

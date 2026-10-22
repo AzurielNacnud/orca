@@ -4,6 +4,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { setupPtyIpcSuite } from './pty-ipc-test-harness'
 import { registerPtyHandlers } from './pty/register-handlers'
 import { setLocalPtyProvider } from './pty/provider/registry'
+import { OrcaRuntimeService } from '../runtime/orca-runtime'
+import { createPaneBindingStore } from './pty-launch-race-test-fixture'
+import {
+  pendingRuntimePaneCreatesByOwnerKey,
+  makePaneSpawnReservationKey
+} from './pty/pane/spawn-reservation'
+import { makePaneKey } from '../../shared/stable-pane-id'
 
 vi.mock('../../shared/layout-owner-switch', () => ({ ORCA_LAYOUT_OWNER_IS_MAIN: true }))
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
@@ -51,11 +58,6 @@ vi.mock('../codex/codex-state-db-backfill-recovery', () =>
 )
 
 type PaneArgs = { worktreeId: string; connectionId: string | null; tabId: string; leafId: string }
-type RuntimeSpawnController = {
-  claimStablePaneCreate(args: PaneArgs): () => void
-  spawn(args: Record<string, unknown>): Promise<{ id: string }>
-}
-
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: test doubles implement only the members these spawn paths read.
 const testDouble = <T>(value: unknown): T => value as T
 
@@ -71,10 +73,19 @@ describe('a window view of a pane main is starting', () => {
 
   /** Main starts the pane while the window's view of it waits; resolves the view's attach. */
   async function viewDuringMainStart(startResult: Record<string, unknown>) {
-    const providerSpawn = vi.fn(async (opts: { sessionId?: string }) => ({
-      id: opts.sessionId ?? 'pty-main',
-      ...startResult
-    }))
+    let release!: () => void
+    const gate = new Promise<void>((done) => {
+      release = done
+    })
+    const providerSpawn = vi.fn(async (opts: { sessionId?: string; attachOnly?: boolean }) => {
+      await gate
+      return {
+        id: opts.sessionId ?? 'pty-main',
+        incarnationId: 'main-inc',
+        ...(opts.attachOnly ? { isReattach: true } : {}),
+        ...startResult
+      }
+    })
     setLocalPtyProvider(
       testDouble({
         spawn: providerSpawn,
@@ -100,22 +111,47 @@ describe('a window view of a pane main is starting', () => {
         getProfiles: vi.fn()
       })
     )
-    let controller: RuntimeSpawnController | null = null
-    const runtime = {
-      setPtyController: vi.fn((value: RuntimeSpawnController) => {
-        controller = value
+    const store = Object.assign(createPaneBindingStore(), { getSettings: () => ({}) })
+    const runtime = new OrcaRuntimeService()
+    Object.assign(runtime, {
+      store,
+      resolveTerminalWorkspaceLaunchScope: async () => ({
+        id: PANE.worktreeId,
+        path: '/tmp/view-join',
+        connectionId: null
       }),
-      createPreAllocatedTerminalHandle: vi.fn(() => 'term_main'),
-      registerPreAllocatedHandleForPty: vi.fn(),
-      registerPty: vi.fn(),
-      onPtySpawned: vi.fn(),
-      onPtyExit: vi.fn(),
-      onPtyData: vi.fn(),
-      seedHeadlessTerminal: vi.fn()
-    }
-    registerPtyHandlers(testDouble(mainWindow), testDouble(runtime))
-    const main = testDouble<RuntimeSpawnController>(controller)
-    const releaseClaim = main.claimStablePaneCreate(PANE)
+      resolveAgentTerminalCreateOptions: async (_workspace: unknown, opts: unknown) => opts,
+      resolveWorkspaceTerminalStartupCwd: () => '/tmp/view-join'
+    })
+    registerPtyHandlers(
+      testDouble(mainWindow),
+      runtime,
+      undefined,
+      undefined,
+      undefined,
+      testDouble(store)
+    )
+    const started = runtime.createTerminal(`id:${PANE.worktreeId}`, {
+      tabId: PANE.tabId,
+      leafId: PANE.leafId,
+      sessionId: 'pty-main',
+      presentation: 'background'
+    })
+    await vi.waitFor(() => expect(providerSpawn).toHaveBeenCalledOnce())
+    const key = makePaneSpawnReservationKey(
+      PANE.worktreeId,
+      null,
+      makePaneKey(PANE.tabId, PANE.leafId)
+    )!
+    const pending = pendingRuntimePaneCreatesByOwnerKey.get(key)!
+    const barrier = pending.promise
+    // Deliver the captured result after the producer's second registration settles.
+    const settled = barrier.then(async (result) => {
+      await started
+      return result
+    })
+    const waiting = vi.fn(() => settled)
+    Object.defineProperty(pending, 'promise', { get: waiting })
     const view = handlers.get('pty:spawn')!(null, {
       cols: 80,
       rows: 24,
@@ -123,8 +159,11 @@ describe('a window view of a pane main is starting', () => {
       sessionId: 'pty-main',
       attachOnlyView: true
     })
-    await main.spawn({ cols: 80, rows: 24, cwd: '/tmp/view-join', ...PANE, sessionId: 'pty-main' })
-    releaseClaim()
+    await vi.waitFor(() => expect(waiting).toHaveBeenCalled())
+    release()
+    await started
+    expect(pending.operation?.acquisition?.reservation.outcome?.kind).toBe('committed')
+    expect(pendingRuntimePaneCreatesByOwnerKey.has(key)).toBe(false)
     return { view: await view, providerSpawn }
   }
 

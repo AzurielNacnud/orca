@@ -1,6 +1,6 @@
 import { runPtySpawn, normalizePtySpawnSessionId } from '../spawn-operation'
 import { checkPtyIpcLaunchPane, resolveEarlyPaneKey } from './spawn-begin'
-import { releaseStoppedPaneBinding, stopReplacedPaneOwner } from '../pane/pane-owner-replacement'
+import { stopReplacedPaneOwner } from '../pane/pane-owner-replacement'
 import { keepAbsentBindingForSwap } from './spawn-absent-binding-swap'
 import { planPaneAgentLaunch } from './spawn-agent-launch'
 import { endPaneAgentLaunch } from './spawn-agent-launch-end'
@@ -21,12 +21,14 @@ import { excludeReplacedPaneOwner } from '../pane/replaced-pane-owner'
 export async function runPtyIpcSpawn(deps: PtySpawnIpcDeps, request: PtySpawnIpcArgs) {
   const args = { ...request, sessionId: normalizePtySpawnSessionId(request.sessionId) }
   const ctx = createPtyIpcSpawnState(deps, args)
+  const admit = () => {
+    triggerPtySpawnPushTargetMaterialization(deps, args)
+    return checkPtyIpcLaunchPane(ctx)
+  }
+  const admission = args.replacesPtyId === undefined ? admit() : undefined
   const outcome = await runPtySpawn({
     state: ctx,
-    beforeBegin: async () => {
-      triggerPtySpawnPushTargetMaterialization(deps, args)
-      await checkPtyIpcLaunchPane(ctx)
-    },
+    admission,
     prepare: async () => {
       ctx.earlyStablePaneOwner = excludeReplacedPaneOwner(
         resolveStablePaneOwner(
@@ -83,23 +85,17 @@ export async function runPtyIpcSpawn(deps: PtySpawnIpcDeps, request: PtySpawnIpc
         deps.transitionSpawnHiddenRendererPtyDeliveryState(ctx.preSpawnHiddenMarkId, false)
       }
     },
-    adoption: { renderer: true, keepAbsentBinding: keepAbsentBindingForSwap(ctx) },
+    adoption: () => ({ renderer: true, keepAbsentBinding: keepAbsentBindingForSwap(ctx) }),
     ...(args.replacesPtyId !== undefined
       ? {
-          replace: {
-            stop: async () => {
-              ctx.replacedPaneOwner = await stopReplacedPaneOwner(deps, {
-                replacesPtyId: args.replacesPtyId!,
-                paneKey: resolveEarlyPaneKey(args),
-                worktreeId: args.worktreeId,
-                connectionId: args.connectionId
-              })
-            },
-            release: async () => {
-              if (ctx.replacedPaneOwner) {
-                await releaseStoppedPaneBinding(deps.store, ctx.replacedPaneOwner)
-              }
-            }
+          replace: async () => {
+            ctx.replacedPaneOwner = await stopReplacedPaneOwner(deps, {
+              replacesPtyId: args.replacesPtyId!,
+              paneKey: resolveEarlyPaneKey(args),
+              worktreeId: args.worktreeId,
+              connectionId: args.connectionId
+            })
+            await admit()
           }
         }
       : {})

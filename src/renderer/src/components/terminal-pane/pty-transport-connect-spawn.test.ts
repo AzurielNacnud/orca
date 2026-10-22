@@ -1,3 +1,4 @@
+import type { ConnectCallbacks } from './pty-connection-test-pane-fixtures'
 import { terminalAttachResult } from '../../../../shared/terminal-attach-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installIpcPtyWindow, restorePtySpecWindow } from './pty-transport-test-harness'
@@ -431,5 +432,79 @@ describe('createIpcPtyTransport', () => {
       command: 'echo hello'
     })
     expect(writeMock).not.toHaveBeenCalled()
+  })
+  it('paints an old image and delayed live bytes once without claiming their newer frontier', async () => {
+    const { provenSpawnResponse } = await import('../../../../shared/terminal-spawn-response')
+    const { bindPtyConnectionTestMocks } = await import('./pty-connection-mocks.spec')
+    const { createInitialStoreState } = await import('./pty-connection-test-store-fixtures')
+    const { buildPaneConnectionDeps } = await import('./pty-connection-test-deps')
+    const {
+      createMockTransport,
+      createPane,
+      createManager,
+      captureCallbackTerminalWrites,
+      LEAF_1
+    } = await import('./pty-connection-test-pane-fixtures')
+    const { installTerminalTestGlobals, restoreTerminalTestGlobals } =
+      await import('./pty-connection-test-environment')
+    const { flushAsyncTicks } = await import('./pty-connection-test-async')
+    let state = createInitialStoreState(() => state)
+    const transports: ReturnType<typeof createMockTransport>[] = []
+    bindPtyConnectionTestMocks({
+      getState: () => state,
+      getTransportQueue: () => transports,
+      getTransportOptions: () => [],
+      getStoreSubscribers: () => [],
+      setStoreSubscribers: () => {}
+    })
+    await installTerminalTestGlobals()
+    try {
+      const { connectPanePty } = await import('./pty-connection')
+      for (const proof of ['interleaved', 'covered', 'no-flags'] as const) {
+        state = createInitialStoreState(() => state)
+        const result = provenSpawnResponse(
+          {
+            id: 'tab-pty',
+            isReattach: true,
+            snapshot: 'OLD',
+            providerSequence: { value: 900, generation: 'continued' as const },
+            ...(proof !== 'no-flags' ? { snapshotKittyKeyboardFlags: 0 } : {})
+          },
+          proof === 'covered' ? 900 : undefined
+        )
+        const transport = createMockTransport('tab-pty')
+        let callbacks: ConnectCallbacks | undefined
+        transport.connect.mockImplementation(async (options: { callbacks?: ConnectCallbacks }) => {
+          callbacks = options.callbacks
+          return result
+        })
+        transports.push(transport)
+        const pane = createPane(1)
+        const { writes, parseCallbacks } = captureCallbackTerminalWrites(pane)
+        const deps = buildPaneConnectionDeps(() => state, {
+          isVisibleRef: { current: true },
+          restoredLeafId: LEAF_1,
+          restoredPtyIdByLeafId: { [LEAF_1]: 'tab-pty' }
+        })
+        connectPanePty(pane as never, createManager(1) as never, deps as never)
+        await flushAsyncTicks(20)
+        for (let step = 0; step < 40; step += 1) {
+          parseCallbacks.shift()?.()
+          await flushAsyncTicks(2)
+        }
+        // The stream reaches main at 903 before the control reply; its delivery to this view is delayed until after OLD paints.
+        expect(writes.join('')).toContain('OLD')
+        callbacks?.onData?.('NEW', { seq: 903, rawLength: 3 })
+        for (let step = 0; step < 40; step += 1) {
+          parseCallbacks.shift()?.()
+          await flushAsyncTicks(2)
+        }
+        expect(writes.join('').match(/OLD/g), proof).toHaveLength(1)
+        expect(writes.join('').match(/NEW/g), proof).toHaveLength(1)
+        expect(result.snapshotSeq).toBe(proof === 'covered' ? 900 : undefined)
+      }
+    } finally {
+      await restoreTerminalTestGlobals()
+    }
   })
 })

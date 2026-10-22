@@ -151,15 +151,7 @@ export async function buildRuntimePtySpawnOptions(
   ctx.stablePaneBindingPersisted = false
   ctx.rejectedRegistrationCandidate = null
   ctx.pendingRegistrationPtyId = null
-  // Why hoisted to the reply scope: main reconciles the provider sequence
-  // deep inside the spawn path, but the pane needs that renderer-domain
-  // boundary beside the daemon snapshot's kitty flags.
-  ctx.reconciledSnapshotSeq = null
-  // False when bytes crossed the data socket during the spawn RPC: the
-  // reconciled boundary covers them, but the daemon proved its kitty flags
-  // before they existed, so the claim must not erase what the pane may
-  // have scanned from those bytes live.
-  ctx.snapshotKittyFlagsCoverReconciledSeq = true
+  ctx.provedSnapshotSeq = undefined
   ctx.preparedProvisionalExecutionContext = false
 
   return null

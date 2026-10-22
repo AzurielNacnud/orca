@@ -123,7 +123,7 @@ export function publishCommittedPtySpawn(input: PtySpawnCommitInput): PtySpawnOu
         ? { launchEnv: input.codexLaunchEnv }
         : {})
   })
-  return { kind: result.isReattach ? 'adopted' : 'committed', result: input.response }
+  return { kind: 'committed', result: input.response }
 }
 
 function markRendererScopedHiddenAtCommit(state: PtySpawnCommitState): void {

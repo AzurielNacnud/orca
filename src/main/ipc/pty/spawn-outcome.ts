@@ -18,22 +18,7 @@ export type PtySpawnOutcome = {
   }
 }
 
-export function provenSpawnResponse(
-  result: PtySpawnResult,
-  snapshotSeq: number | null | undefined,
-  flagsCoverSequence: boolean
-): PtySpawnResult {
-  const { startupCwdSource: _source, ...response } = result
-  return {
-    ...response,
-    ...(typeof snapshotSeq === 'number' ? { snapshotSeq } : {}),
-    ...(typeof result.snapshotKittyKeyboardFlags === 'number' &&
-    typeof snapshotSeq === 'number' &&
-    flagsCoverSequence
-      ? { snapshotSeq }
-      : { snapshotKittyKeyboardFlags: undefined })
-  }
-}
+export { provenSpawnResponse } from '../../../shared/terminal-spawn-response'
 
 export function requireAcceptedSpawn(outcome: PtySpawnOutcome): PtySpawnOutcome['result'] {
   if (outcome.kind === 'registration-exited') {

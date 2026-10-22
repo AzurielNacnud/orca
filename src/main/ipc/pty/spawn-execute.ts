@@ -197,15 +197,17 @@ export async function executePtySpawn(
       // Why kept: this is the reattach boundary in the RENDERER's sequence
       // domain, and the daemon snapshot's kitty flags mean nothing without
       // the boundary they were proven at.
-      ctx.reconciledSnapshotSeq =
+      const translatedSnapshotSeq =
         ctx.deps.runtime?.synchronizePtyOutputSequenceFromProvider?.(
           ctx.result.id,
           ctx.result.providerSequence,
           sequenceBeforeProviderSpawn
         ) ?? null
-      if (runtimeSequenceBeforeReconcile > sequenceBeforeProviderSpawn) {
-        ctx.snapshotKittyFlagsCoverReconciledSeq = false
-      }
+      ctx.provedSnapshotSeq =
+        runtimeSequenceBeforeReconcile <= sequenceBeforeProviderSpawn &&
+        typeof ctx.result.snapshotKittyKeyboardFlags === 'number'
+          ? (translatedSnapshotSeq ?? undefined)
+          : undefined
     }
     ensureWslHookRelayForReattach(ctx.result)
     const spawnedWslDistro =

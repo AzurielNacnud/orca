@@ -19,8 +19,7 @@ export type PtySpawnOperationState = Pick<
   | 'pendingRegistrationPtyId'
   | 'pendingRegistrationClaim'
   | 'rejectedRegistrationCandidate'
-  | 'reconciledSnapshotSeq'
-  | 'snapshotKittyFlagsCoverReconciledSeq'
+  | 'provedSnapshotSeq'
   | 'preparedProvisionalExecutionContext'
   | 'paneSpawnReservationKey'
   | 'paneSpawnReservation'
@@ -46,6 +45,7 @@ export type PtySpawnOperationState = Pick<
   args: Omit<RuntimePtySpawnArgs, 'spawnIntent' | 'terminalColorQueryReplies' | 'placement'> & {
     attachOnlyView?: unknown
   }
+  replacedPaneOwner?: ReplacedPaneOwner | null
   paneSpawnOperation?: PaneSpawnOperation
   spawnTiming?: PtySpawnTiming
 }

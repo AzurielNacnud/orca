@@ -208,7 +208,13 @@ export async function adoptStablePane(
           acquisition: { key, reservation, settle: (outcome) => settle(outcome, operation) }
         }
         const result = await args.spawnFresh(operation)
-        settle({ kind: result.isReattach ? 'adopted' : 'committed', result }, operation)
+        settle(
+          {
+            kind: result.agentSessionEnsure?.disposition === 'adopted' ? 'adopted' : 'committed',
+            result
+          },
+          operation
+        )
         return null
       }
     })

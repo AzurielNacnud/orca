@@ -15,22 +15,22 @@ import {
 import { restoreProvisionalPtySize } from './spawn-options-assembly'
 import { spawnWorktreeTarget } from '../../../shared/worktree/host-qualified-identity'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
+import { releaseStoppedPaneBinding } from './pane/pane-owner-replacement'
 
 type SpawnAdapter<State extends PtySpawnOperationState> = {
   state: State
   prepare: () => Promise<void>
   commit: () => Promise<PtySpawnOutcome>
   facts: () => PtySpawnExecutionFacts
-  /** Boundary validation, feedback and request assembly; no lifecycle ownership. */
-  beforeBegin?: () => Promise<void>
+  admission?: Promise<void>
   beforeExecute?: () => void
   onCommitted?: () => void
   onOutcome?: (outcome: PtySpawnOutcome) => void
   onError?: (error: unknown) => unknown
   releasePreparation?: () => void
   releaseHiddenMark?: () => void
-  adoption?: Pick<AdoptStablePaneArgs, 'renderer' | 'keepAbsentBinding' | 'completed'>
-  replace?: { stop: () => Promise<void>; release: () => Promise<void> }
+  adoption?: () => Pick<AdoptStablePaneArgs, 'renderer' | 'keepAbsentBinding' | 'completed'>
+  replace?: () => Promise<void>
 }
 
 export function normalizePtySpawnSessionId(sessionId: string | undefined): string | undefined {
@@ -114,7 +114,7 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
     const pane = parsePaneKey(paneKey)!
     let outcome: PtySpawnOutcome | undefined
     const adopted = await ctx.deps.adoptStablePane({
-      ...adapter.adoption,
+      ...adapter.adoption?.(),
       cols: args.cols,
       rows: args.rows,
       cwd: ctx.cwd,
@@ -162,7 +162,7 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
           const adopted = consumeExitedPaneOperation(
             ctx.deps.runtime,
             ctx.deps.store,
-            { ...args, ...pane, renderer: adapter.adoption?.renderer },
+            { ...args, ...pane, renderer: adapter.adoption?.().renderer },
             pending.operation
           )
           retirePreparation(adapter, adopted.result.id)
@@ -175,13 +175,15 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
     return complete(operation)
   }
   try {
-    await adapter.replace?.stop()
-    await adapter.beforeBegin?.()
-    const early = await beginPtySpawn(ctx, adapter.adoption?.renderer)
+    if (adapter.replace) {
+      await adapter.replace()
+    }
+    await adapter.admission
+    const early = await beginPtySpawn(ctx, adapter.adoption?.().renderer)
     if (early) {
       return finish(adoptedOutcome(early))
     }
-    if (adapter.adoption?.completed?.materialized) {
+    if (adapter.adoption?.().completed?.materialized) {
       return acquire(resolveEarlyPaneKey(args)!, fresh)
     }
     const paneKey = resolveEarlyPaneKey(args)
@@ -194,7 +196,9 @@ export async function runPtySpawn<State extends PtySpawnOperationState>(
     adapter.releaseHiddenMark?.()
     cancelRegistration(ctx)
     restoreProvisionalPtySize(ctx)
-    await adapter.replace?.release()
+    if (ctx.replacedPaneOwner) {
+      await releaseStoppedPaneBinding(ctx.deps.store, ctx.replacedPaneOwner)
+    }
     rejectPaneSpawnReservation(ctx.paneSpawnReservationKey, ctx.paneSpawnReservation, error)
     throw error
   } finally {

@@ -34,16 +34,16 @@ export async function spawnPtyFromRuntimeController(
     commit: () => commitRuntimePtySpawn(ctx),
     onCommitted: () => commitRuntimeSpawnHiddenDelivery(ctx),
     releaseHiddenMark: () => releaseRuntimeSpawnPreSpawnHiddenMark(ctx),
-    adoption: { completed: args.adoptedStablePane }
+    adoption: () => ({ completed: args.adoptedStablePane })
   })
   const result = requireAcceptedSpawn(outcome)
   let stablePaneOwner = result.stablePaneOwner
-  if (outcome.kind === 'adopted' && args.worktreeId && args.tabId && args.leafId) {
-    const handle = stablePaneOwner?.handle ?? outcome.owner?.handle ?? args.preAllocatedHandle
+  if (outcome.owner && args.worktreeId) {
+    const handle = stablePaneOwner?.handle ?? outcome.owner.handle ?? args.preAllocatedHandle
     if (!handle) {
       throw new Error('terminal_pane_owner_unknown')
     }
-    stablePaneOwner = { handle, tabId: args.tabId, leafId: args.leafId }
+    stablePaneOwner = { handle, tabId: outcome.owner.tabId, leafId: outcome.owner.leafId }
   }
   return {
     id: result.id,

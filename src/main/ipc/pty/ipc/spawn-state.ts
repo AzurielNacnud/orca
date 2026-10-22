@@ -46,8 +46,7 @@ export type PtyIpcSpawnState = {
   rejectedRegistrationCandidate: PtySpawnResult | null
   pendingRegistrationPtyId: string | null
   pendingRegistrationClaim?: PtyRegistrationClaim
-  reconciledSnapshotSeq: number | null
-  snapshotKittyFlagsCoverReconciledSeq: boolean
+  provedSnapshotSeq: number | undefined
   preparedProvisionalExecutionContext: boolean
   releaseWorktreeSpawn: (() => void) | undefined
   provider: IPtyProvider
@@ -126,8 +125,7 @@ export function createPtyIpcSpawnState(
     stablePaneBindingPersisted: false,
     rejectedRegistrationCandidate: null,
     pendingRegistrationPtyId: null,
-    reconciledSnapshotSeq: null,
-    snapshotKittyFlagsCoverReconciledSeq: true,
+    provedSnapshotSeq: undefined,
     preparedProvisionalExecutionContext: false,
     releaseWorktreeSpawn: undefined,
     provider: localProvider,

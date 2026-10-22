@@ -40,11 +40,7 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
       initiallyHidden: args.initiallyHidden === true,
       hiddenDelivery: 'runtime-owned',
       response: {
-        ...provenSpawnResponse(
-          ctx.result,
-          ctx.reconciledSnapshotSeq,
-          ctx.snapshotKittyFlagsCoverReconciledSeq
-        ),
+        ...provenSpawnResponse(ctx.result, ctx.provedSnapshotSeq),
         savedStartupCwd: correctStartupCwd ?? ctx.requestedCwd,
         ...(startupCwdFallback ? { startupCwdFallback } : {})
       }

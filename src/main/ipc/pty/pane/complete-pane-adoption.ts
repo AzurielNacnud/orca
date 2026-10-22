@@ -130,7 +130,10 @@ export async function completePaneAdoption(
         providerReattachLaunchIdentity: admitProviderReattachLaunchIdentity(result) ?? undefined
       }
     )
-    const response = provenSpawnResponse(result, snapshotSeq, beforeReconcile <= beforeAttach)
+    const response = provenSpawnResponse(
+      result,
+      beforeReconcile <= beforeAttach ? snapshotSeq : undefined
+    )
     if (rejected) {
       try {
         await rejected
