@@ -11,6 +11,16 @@ export type RuntimeTerminalSend = {
   writeSettlement?: WriteSettlement
 }
 
+export type RuntimeTerminalPromptSubmission =
+  | { requestId: string; status: 'pending' }
+  | { requestId: string; status: 'submitted'; send: RuntimeTerminalSend }
+  | {
+      requestId: string
+      status: 'failed'
+      reason: 'permission' | 'no-agent' | 'not-writable' | 'submission-failed'
+      inputWritten: boolean
+    }
+
 export type RuntimeTerminalPromptStage = 'input_accepted' | 'turn_started'
 
 export type RuntimeTerminalPromptDelivery = {

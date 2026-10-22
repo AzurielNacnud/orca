@@ -1,7 +1,10 @@
 import type { RuntimeTerminalWriteOptions } from '../../runtime-terminal-writer'
 import type { WriteSettlement } from '../../../../shared/pty-write-settlement'
 import type { RuntimeLeafRecord } from '../../runtime-terminal-state-records'
-import type { RuntimeTerminalPromptDelivery } from '../../../../shared/runtime-terminal-send-contract'
+import type {
+  RuntimeTerminalPromptDelivery,
+  RuntimeTerminalPromptSubmission
+} from '../../../../shared/runtime-terminal-send-contract'
 import { OrcaRuntimeWithResolveTerminalPane } from '../recovery/resolve-terminal-pane'
 import { wrapTerminalBracketedPasteText } from '../../../../shared/terminal-bracketed-paste-text'
 import { PROVEN_ABSENT_LEAF_PTY_TTL_MS } from '../../orca-runtime-core'
@@ -20,8 +23,64 @@ import {
   buildAgentPromptPasteBytes
 } from '../../../../shared/agent-prompt-injection'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
+import { TerminalPromptSubmissions } from '../../terminal-prompt-submissions'
+import { recognizeAgentProcess } from '../../../../shared/agent-process-recognition'
+import type { TerminalAgent } from '../../../../shared/terminal-agent'
 
 export abstract class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithResolveTerminalPane {
+  private readonly terminalPromptSubmissions = new TerminalPromptSubmissions()
+
+  protected async resolveTerminalPromptAgent(ptyId: string): Promise<TerminalAgent | null> {
+    const foreground = await this.ptyForegroundAgent.read(ptyId)
+    const recognized =
+      foreground?.controller === this.ptyController && foreground.available
+        ? recognizeAgentProcess(foreground.process)?.agent
+        : undefined
+    const pty = this.ptysById.get(ptyId)
+    return recognized ?? pty?.foregroundAgent ?? pty?.launchAgent ?? null
+  }
+
+  async queueTerminalAgentPrompt(
+    handle: string,
+    requestId: string,
+    prompt: string,
+    options: RuntimeAgentPromptWriteOptions & { onSettled?: () => void }
+  ): Promise<RuntimeTerminalPromptSubmission> {
+    await assertTerminalInputWithinLimitWithYield(prompt)
+    const ptyId =
+      this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
+    if (!ptyId) {
+      throw new Error('terminal_not_writable')
+    }
+    const generation = this.getPtyLifecycleGeneration(ptyId)
+    return this.terminalPromptSubmissions.enqueue(handle, requestId, prompt, (inputWritten) =>
+      this.sendTerminalAgentPrompt(handle, prompt, {
+        ...options,
+        acceptQueued: true,
+        observationTimeoutMs: 0,
+        requestId,
+        beforeWrite: async (id) => {
+          this.assertAgentPromptGeneration(ptyId, generation)
+          this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
+          await options.beforeWrite?.(id)
+        },
+        afterWrite: async (id) => {
+          inputWritten()
+          await options.afterWrite?.(id)
+        }
+      }).finally(() => options.onSettled?.())
+    )
+  }
+
+  waitForTerminalAgentPrompt(
+    handle: string,
+    requestId: string,
+    timeoutMs: number,
+    signal?: AbortSignal
+  ): Promise<RuntimeTerminalPromptSubmission> {
+    return this.terminalPromptSubmissions.wait(handle, requestId, timeoutMs, signal)
+  }
+
   protected abstract writeTerminalAction(
     ptyId: string,
     action: { text?: string; enter?: boolean; interrupt?: boolean },
@@ -187,7 +246,13 @@ export abstract class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntim
       ...(writeSettlement ? { writeSettlement } : {}),
       bytesWritten: accepted ? Buffer.byteLength(payload, 'utf8') : 0,
       ...(accepted && submitText
-        ? { submitDelayMs: this.terminalWriter.getSubmitDelayMs(ptyId, submitText) }
+        ? {
+            submitDelayMs: this.terminalWriter.getSubmitDelayMs(
+              ptyId,
+              submitText,
+              await this.resolveTerminalPromptAgent(ptyId)
+            )
+          }
         : {})
     }
   }

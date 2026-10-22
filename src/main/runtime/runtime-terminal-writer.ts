@@ -32,12 +32,8 @@ export class RuntimeTerminalWriter {
     ) => WriteSettlement | Promise<WriteSettlement>
   ) {}
 
-  getSubmitDelayMs(ptyId: string, text: string): number {
-    return resolveAgentPromptSubmitDelayForAgent(
-      this.getWriteHostPlatform(ptyId),
-      text,
-      this.getAgent(ptyId)
-    )
+  getSubmitDelayMs(ptyId: string, text: string, agent = this.getAgent(ptyId)): number {
+    return resolveAgentPromptSubmitDelayForAgent(this.getWriteHostPlatform(ptyId), text, agent)
   }
 
   async writeAction(
