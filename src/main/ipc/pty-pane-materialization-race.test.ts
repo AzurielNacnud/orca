@@ -243,6 +243,8 @@ describe('registerPtyHandlers', () => {
 
     const runtimeSpawn = (controller as unknown as RuntimeSpawnController).spawn({
       ...paneArgs,
+      cols: 132,
+      rows: 45,
       command: 'printf runtime'
     })
     await vi.waitFor(() => expect(providerSpawn).toHaveBeenCalledOnce())
@@ -262,7 +264,7 @@ describe('registerPtyHandlers', () => {
     expect(providerSpawn).toHaveBeenCalledOnce()
     await expect(
       handlers.get('pty:getSize')!(null, { id: 'pty-runtime-reservation' })
-    ).resolves.toEqual({ cols: 80, rows: 24 })
+    ).resolves.toEqual({ cols: 132, rows: 45 })
   })
   it('reuses renderer spawn when runtime materialization starts for the same pane', async () => {
     type RuntimeSpawnController = {

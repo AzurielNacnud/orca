@@ -243,7 +243,6 @@ describe('launch race parity, both spawn lanes', () => {
       clearProviderPtyState('cross-exited')
     }
   )
-
   it('restores a persisted window owner without imposing the runtime handle requirement', async () => {
     const pane = launchRacePane('restore-no-handle', '95959595-9595-4595-8595-959595959595')
     const id = 'persisted-no-handle'
@@ -271,7 +270,6 @@ describe('launch race parity, both spawn lanes', () => {
     await expect(lanes.spawn.ipc(pane.args)).resolves.toMatchObject({ id, isReattach: true })
     clearProviderPtyState(id)
   })
-
   it('seeds a fresh same-id incarnation before provider byte zero and restores a failed start', async () => {
     const id = 'fresh-same-id-grid'
     const old = { cols: 91, rows: 31 }
@@ -292,7 +290,6 @@ describe('launch race parity, both spawn lanes', () => {
     expect(ptySizes.get(id)).toEqual(old)
     ptySizes.delete(id)
   })
-
   it('allows fallback for an unreadable request without healing its saved folder or mobile snapshot', async () => {
     setMainPlatform('darwin')
     onTestFinished(restoreMainPlatform)
