@@ -5,6 +5,8 @@ import { setupPtyIpcSuite } from './pty-ipc-test-harness'
 import { registerPtyHandlers } from './pty/register-handlers'
 import { setLocalPtyProvider } from './pty/provider/registry'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
+import type { RuntimeStore } from '../runtime/runtime-store-contract'
+import { TerminalSurfaceIndex } from '../runtime/terminal/surface/terminal-surface-index'
 import { createPaneBindingStore } from './pty-launch-race-test-fixture'
 import {
   pendingRuntimePaneCreatesByOwnerKey,
@@ -111,7 +113,36 @@ describe('a window view of a pane main is starting', () => {
         getProfiles: vi.fn()
       })
     )
-    const store = Object.assign(createPaneBindingStore(), { getSettings: () => ({}) })
+    const bindingStore = createPaneBindingStore()
+    type WriteListener = Parameters<NonNullable<RuntimeStore['onWorkspaceSessionWritten']>>[0]
+    const written = new Set<WriteListener>()
+    const notifyWritten = (): void => {
+      for (const listener of written) {
+        listener('local')
+      }
+    }
+    const store = {
+      ...bindingStore,
+      getSettings: () => ({}),
+      getWorkspaceSessionHostIds: (): ReturnType<
+        NonNullable<RuntimeStore['getWorkspaceSessionHostIds']>
+      > => ['local'],
+      setWorkspaceSession: (...args: Parameters<typeof bindingStore.setWorkspaceSession>) => {
+        bindingStore.setWorkspaceSession(...args)
+        notifyWritten()
+      },
+      persistPtyBinding: async (...args: Parameters<typeof bindingStore.persistPtyBinding>) => {
+        const persisted = await bindingStore.persistPtyBinding(...args)
+        if (persisted) {
+          notifyWritten()
+        }
+        return persisted
+      },
+      onWorkspaceSessionWritten: (listener: WriteListener) => {
+        written.add(listener)
+        return () => written.delete(listener)
+      }
+    }
     const runtime = new OrcaRuntimeService()
     Object.assign(runtime, {
       store,
@@ -131,6 +162,22 @@ describe('a window view of a pane main is starting', () => {
       undefined,
       testDouble(store)
     )
+    const mainSurfaces = new TerminalSurfaceIndex({
+      reads: () => runtime.workspaceLayoutReads,
+      hostIds: () => store.getWorkspaceSessionHostIds(),
+      homeHostId: (key) => runtime['tryGetWorkspaceSessionHostIdForWorktree'](key),
+      generatedTitlesEnabled: () => false,
+      onChanged: () => {}
+    })
+    const registerPty = runtime.registerPty.bind(runtime)
+    const registrations = vi.spyOn(runtime, 'registerPty').mockImplementation((...args) => {
+      expect(mainSurfaces.surfaces().leaves.find((leaf) => leaf.ptyId === args[0])).toMatchObject({
+        worktreeId: PANE.worktreeId,
+        tabId: PANE.tabId,
+        leafId: PANE.leafId
+      })
+      registerPty(...args)
+    })
     const started = runtime.createTerminal(`id:${PANE.worktreeId}`, {
       tabId: PANE.tabId,
       leafId: PANE.leafId,
@@ -146,10 +193,7 @@ describe('a window view of a pane main is starting', () => {
     const pending = pendingRuntimePaneCreatesByOwnerKey.get(key)!
     const barrier = pending.promise
     // Deliver the captured result after the producer's second registration settles.
-    const settled = barrier.then(async (result) => {
-      await started
-      return result
-    })
+    const settled = Promise.all([barrier, started]).then(([result]) => result)
     const waiting = vi.fn(() => settled)
     Object.defineProperty(pending, 'promise', { get: waiting })
     const view = handlers.get('pty:spawn')!(null, {
@@ -159,12 +203,14 @@ describe('a window view of a pane main is starting', () => {
       sessionId: 'pty-main',
       attachOnlyView: true
     })
+    const completed = Promise.all([started, view])
     await vi.waitFor(() => expect(waiting).toHaveBeenCalled())
     release()
-    await started
+    const [, attached] = await completed
+    expect(registrations.mock.calls.length).toBeGreaterThanOrEqual(2)
     expect(pending.operation?.acquisition?.reservation.outcome?.kind).toBe('committed')
     expect(pendingRuntimePaneCreatesByOwnerKey.has(key)).toBe(false)
-    return { view: await view, providerSpawn }
+    return { view: attached, providerSpawn }
   }
 
   it('attaches to the terminal main starts, with one provider request', async () => {
