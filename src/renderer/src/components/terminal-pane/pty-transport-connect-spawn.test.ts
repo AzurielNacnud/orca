@@ -1,4 +1,4 @@
-import { adoptedOutcome } from '../../../../main/ipc/pty/spawn-outcome'
+import { terminalAttachResult } from '../../../../shared/terminal-attach-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installIpcPtyWindow, restorePtySpecWindow } from './pty-transport-test-harness'
 
@@ -75,16 +75,11 @@ describe('createIpcPtyTransport', () => {
         snapshotKittyKeyboardFlags: 3
       }
     }
-    const joined = adoptedOutcome({
-      outcome: creator,
-      result: creator.result,
-      owner: { ptyId: creator.result.id, tabId: 'tab-join', leafId: 'leaf-join' },
-      materialized: true
-    })
+    const joined = terminalAttachResult(creator.result)
     ensurePtyDispatcher()
     onData!({ id: creator.result.id, data: 'final output' })
     onExit!({ id: creator.result.id, code: 23, incarnationId: creator.result.incarnationId })
-    vi.mocked(window.api.pty.spawn).mockResolvedValue(joined.result)
+    vi.mocked(window.api.pty.spawn).mockResolvedValue(joined)
     const onOutput = vi.fn()
     const onEnd = vi.fn()
     const transport = createIpcPtyTransport({})
@@ -107,7 +102,6 @@ describe('createIpcPtyTransport', () => {
       snapshotKittyKeyboardFlags: 3
     })
     expect(creator.result).not.toHaveProperty('isReattach')
-    expect(joined.kind).toBe('registration-exited')
     snapshotView.detach?.()
   })
 

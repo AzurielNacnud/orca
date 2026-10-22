@@ -1,3 +1,4 @@
+import { terminalAttachResult } from '../../../shared/terminal-attach-result'
 import type { AdoptStablePaneResult } from './ipc/spawn-types'
 import type { StartupCwdFallback } from '../../../shared/startup-cwd-fallback'
 import type { SleepingAgentLaunchConfig } from '../../../shared/agent-session-resume'
@@ -44,7 +45,7 @@ export function requireAcceptedSpawn(outcome: PtySpawnOutcome): PtySpawnOutcome[
 export function adoptedOutcome(adopted: AdoptStablePaneResult): PtySpawnOutcome {
   return {
     ...(adopted.outcome ?? { kind: 'adopted' }),
-    result: { ...adopted.result, isReattach: true },
+    result: terminalAttachResult(adopted.result),
     owner: adopted.owner
   }
 }

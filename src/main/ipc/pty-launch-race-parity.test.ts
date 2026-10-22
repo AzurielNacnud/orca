@@ -194,6 +194,7 @@ describe('launch race parity, both spawn lanes', () => {
         null,
         makePaneKey(pane.tabId, pane.leafId)
       )!
+      const canonical = paneSpawnReservations.paneSpawnReservationsByOwnerKey.get(key)!
       if (winner === 'producer') {
         const pending = paneSpawnReservations.pendingRuntimePaneCreatesByOwnerKey.get(key)!
         const barrier = pending.promise
@@ -224,6 +225,8 @@ describe('launch race parity, both spawn lanes', () => {
       const [firstResult, secondResult] = await Promise.all([firstObserved, secondObserved])
       const host = winner === 'producer' ? firstResult : secondResult
       const window = winner === 'producer' ? secondResult : firstResult
+      expect(canonical.outcome?.kind).toBe('registration-exited')
+      expect(canonical.outcome?.result).not.toHaveProperty('isReattach')
       expect(host).toMatchObject({ message: 'agent_session_exited_during_start' })
       if (surface === 'existing') {
         expect(window).toMatchObject({
@@ -279,7 +282,9 @@ describe('launch race parity, both spawn lanes', () => {
       const id = `pre-seed-auth-${lane}`
       const cached = { cols: 180, rows: 50 }
       ptySizes.set(id, cached)
-      onTestFinished(() => ptySizes.delete(id))
+      onTestFinished(() => {
+        ptySizes.delete(id)
+      })
       const spawn = vi.fn()
       installDaemonTestProvider({ spawn })
       const prepareClaudeAuth = vi.fn(async () => {

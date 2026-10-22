@@ -101,6 +101,9 @@ describe('host-initiated terminal creation under an attached window', () => {
       if (failure === 'accepted-then-presentation-error') {
         runtime.setPtyController({
           spawn,
+          write: () => true,
+          kill: () => true,
+          getForegroundProcess: async () => null,
           adoptStablePane: async (args) => {
             const operation = { mustExist: false }
             const result = await args.spawnFresh!(operation)
