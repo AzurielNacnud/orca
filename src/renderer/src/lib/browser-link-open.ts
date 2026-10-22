@@ -31,14 +31,22 @@ export function browserLinkCommitIsValid(
     return false
   }
   const intent = context.linkIntent
+  const matchesHost = createBrowserLinkHostMatcher(
+    state,
+    destination.worktreeId,
+    destination.executionHostId
+  )
+  if (
+    intent?.workspaceId === destination.worktreeId &&
+    intent.hostId &&
+    !matchesHost(intent.hostId)
+  ) {
+    return false
+  }
   return (
     !intent?.targetGroupId ||
     (intent.workspaceId === destination.worktreeId &&
-      createBrowserLinkHostMatcher(
-        state,
-        destination.worktreeId,
-        destination.executionHostId
-      )(intent.hostId) &&
+      matchesHost(intent.hostId) &&
       intent.targetGroupId === groupId)
   )
 }

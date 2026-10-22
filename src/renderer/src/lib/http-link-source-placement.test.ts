@@ -1,6 +1,8 @@
 import { toast } from 'sonner'
 import type * as BrowserFocusModule from '@/components/browser-pane/host-guest/browser-focus'
-import { getDefaultSettings } from '../../../shared/constants'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
+import { makeTabGroup, makeUnifiedTab } from '@/store/slices/store-test-helpers'
+import { canOfferHttpLinkGroupAction } from './http-link-in-group-availability'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createStoreCascadesMockApi } from '@/store/slices/store-cascades-test-harness'
 import { openWorkspaceBrowserTabForLink } from './workspace-browser-tab-open'
@@ -142,3 +144,74 @@ it('refuses a stale explicit chat action when its source closed before activatio
   expect(store.getState().browserPagesByWorkspace).toEqual({})
   expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Couldn't open"))
 })
+
+it.each([false, true])(
+  'opens floating HTTP links through the managed route (explicit: %s)',
+  async (explicit) => {
+    const floating = FLOATING_TERMINAL_WORKTREE_ID
+    store.setState((state) => ({
+      groupsByWorktree: {
+        ...state.groupsByWorktree,
+        [floating]: ['left', 'right'].map((id) =>
+          makeTabGroup({
+            id,
+            worktreeId: floating,
+            activeTabId: id === 'left' ? 'floating-source' : null,
+            tabOrder: id === 'left' ? ['floating-source'] : []
+          })
+        )
+      },
+      unifiedTabsByWorktree: {
+        ...state.unifiedTabsByWorktree,
+        [floating]: [
+          makeUnifiedTab({
+            id: 'floating-source',
+            worktreeId: floating,
+            groupId: 'left',
+            executionHostId: 'local',
+            contentType: 'terminal'
+          })
+        ]
+      },
+      layoutByWorktree: {
+        ...state.layoutByWorktree,
+        [floating]: {
+          type: 'split',
+          direction: 'horizontal',
+          first: { type: 'leaf', groupId: 'left' },
+          second: { type: 'leaf', groupId: 'right' }
+        }
+      }
+    }))
+    expect(
+      canOfferHttpLinkGroupAction(store.getState(), {
+        workspaceId: floating,
+        sourceTabId: 'floating-source',
+        sourceOwner: { kind: 'local' },
+        url: URL_TO_OPEN
+      })
+    ).toBe(true)
+    openRoutedHttpLink(URL_TO_OPEN, {
+      worktreeId: floating,
+      sourceTabId: 'floating-source',
+      sourceOwner: { kind: 'local' },
+      forceDestination: 'orca',
+      openInSourceGroup: explicit
+    })
+    await settle()
+    expect(outcomes).toMatchObject([
+      {
+        status: 'opened',
+        result: {
+          worktreeId: floating,
+          executionHostId: 'local',
+          groupId: explicit ? 'left' : 'right'
+        }
+      }
+    ])
+    expect(store.getState().activeWorktreeId).toBe(WORKSPACE)
+    expect(store.getState().activeWorkspaceExecutionHostId).toBe('local')
+    expect(store.getState().activeGroupIdByWorktree[WORKSPACE]).toBe('c')
+    expect(store.getState().browserTabsByWorktree[WORKSPACE] ?? []).toEqual([])
+  }
+)

@@ -4,7 +4,10 @@ import type { AppState } from '@/store/types'
 import type { HttpLinkGroupActionRequest } from './http-link-routing'
 import { captureLinkOpenIntent } from './link-open-intent'
 import { getClientCreationActionPolicy } from './client-creation-action-policy'
-import { resolveWorktreeOperationRoute } from './worktree-operation-route'
+import {
+  getFloatingWorkspaceOperationRoute,
+  resolveWorktreeOperationRoute
+} from './worktree-operation-route'
 import {
   isExpectedRuntimeBrowserRoute,
   isSshDeploymentClientBrowserRoute,
@@ -19,7 +22,9 @@ export function canOfferHttpLinkGroupAction(
   request: HttpLinkGroupActionRequest
 ): boolean {
   const availability = getClientCreationActionPolicy(state, request.workspaceId)['managed-browser']
-  const route = resolveWorktreeOperationRoute(state, request.workspaceId)
+  const route =
+    getFloatingWorkspaceOperationRoute(request.workspaceId) ??
+    resolveWorktreeOperationRoute(state, request.workspaceId)
   const intent = captureLinkOpenIntent(state, request.workspaceId, request.sourceTabId, {
     explicitSourceGroup: true
   })

@@ -32,7 +32,10 @@ import {
   getClientCreationActionPolicy,
   type ClientCreationActionAvailability
 } from './client-creation-action-policy'
-import { resolveWorktreeOperationRoute } from './worktree-operation-route'
+import {
+  getFloatingWorkspaceOperationRoute,
+  resolveWorktreeOperationRoute
+} from './worktree-operation-route'
 import {
   intentPresentation,
   openFailure,
@@ -119,7 +122,9 @@ export async function openWorkspaceBrowserTab(
   const state = useAppStore.getState()
   const availability = getClientCreationActionPolicy(state, request.workspaceId)['managed-browser']
   assertManagedBrowserEnabled(availability, presentation)
-  const route = resolveWorktreeOperationRoute(state, request.workspaceId)
+  const route =
+    getFloatingWorkspaceOperationRoute(request.workspaceId) ??
+    resolveWorktreeOperationRoute(state, request.workspaceId)
   if (!route) {
     throw openFailure(presentation.error, 'no active worktree route')
   }

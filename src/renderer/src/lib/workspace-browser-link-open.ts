@@ -14,7 +14,10 @@ import {
   type BrowserOpenOutcome
 } from './browser-link-destination'
 import { activateBrowserWorkspaceTab } from './browser-workspace-tab-activation'
-import { resolveWorktreeOperationRoute } from './worktree-operation-route'
+import {
+  getFloatingWorkspaceOperationRoute,
+  resolveWorktreeOperationRoute
+} from './worktree-operation-route'
 import { getClientCreationActionPolicy } from './client-creation-action-policy'
 import { selectWorkspaceSurface } from './workspace-surface-reveal'
 
@@ -23,7 +26,9 @@ function ownsBrowserRoute(
   request: OpenWorkspaceBrowserTabRequest,
   destination: BrowserLinkDestination
 ): boolean {
-  const route = resolveWorktreeOperationRoute(state, request.workspaceId)
+  const route =
+    getFloatingWorkspaceOperationRoute(request.workspaceId) ??
+    resolveWorktreeOperationRoute(state, request.workspaceId)
   return (
     route?.executionHostId === destination.executionHostId &&
     (!destination.browserRuntimeEnvironmentId ||

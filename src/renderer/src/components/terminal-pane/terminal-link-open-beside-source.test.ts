@@ -190,18 +190,8 @@ describe('terminal file links carry their source tab', () => {
     seedSourceTab()
 
     const browserOpen = vi
-      .spyOn(browserLinkOpen, 'openResolvedHtmlFileInBrowser')
-      .mockReturnValueOnce({
-        status: 'opened',
-        result: {
-          worktreeId: 'wt-1',
-          executionHostId: 'local',
-          browserWorkspaceId: 'browser',
-          browserPageId: 'page',
-          unifiedTabId: 'wrapper',
-          groupId: 'group-a'
-        }
-      })
+      .spyOn(browserLinkOpen, 'openTerminalHtmlFileInBrowser')
+      .mockReturnValueOnce(true)
     openDetectedFilePath('/tmp/report.html', null, null, sourceDeps)
     await flushAsyncWork()
 
@@ -209,6 +199,7 @@ describe('terminal file links carry their source tab', () => {
       expect.objectContaining({
         filePath: '/tmp/report.html',
         worktreeId: 'wt-1',
+        fileExecutionHostId: 'local',
         linkContext: expect.objectContaining({
           linkIntent: expect.objectContaining({ sourceTabId: 'unified-term' })
         })

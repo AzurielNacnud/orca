@@ -1,4 +1,4 @@
-import { openPlannedFileBrowserLink } from './file-preview-link-open'
+import { openPlannedFileBrowserLink, type FileBrowserLinkTarget } from './file-preview-link-open'
 import type { BrowserLinkOpenContext, BrowserOpenOutcome } from './browser-link-destination'
 import { toast } from 'sonner'
 import { absolutePathToFileUri } from '@/components/editor/markdown-internal-links'
@@ -202,14 +202,14 @@ function openDocPreviewTab(
   })
 }
 
-export function openFileInBrowserTab(params: {
-  filePath: string
-  worktreeId: string
-  targetGroupId?: string
-  clientLocal?: boolean
-  linkContext?: BrowserLinkOpenContext
-  onLinkOutcome?: (outcome: BrowserOpenOutcome) => void
-}): WorkspaceFilePreviewPlan {
+export function openFileInBrowserTab(
+  params: FileBrowserLinkTarget & {
+    targetGroupId?: string
+    clientLocal?: boolean
+    linkContext?: BrowserLinkOpenContext
+    onLinkOutcome?: (outcome: BrowserOpenOutcome) => void
+  }
+): WorkspaceFilePreviewPlan {
   const state = useAppStore.getState()
   const plan = getWorkspaceFilePreviewPlan(
     state,

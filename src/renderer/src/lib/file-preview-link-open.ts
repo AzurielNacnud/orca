@@ -1,22 +1,37 @@
 import { resolveBrowserLinkSession } from './browser-link-session'
 import { activateAndRevealWorkspace } from './worktree-activation'
 import type { AppState } from '@/store/types'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import { ORCA_BROWSER_BLANK_URL } from '../../../shared/constants'
 import type { WorkspaceFilePreviewPlan } from './file-preview'
 import type { BrowserLinkOpenContext, BrowserOpenOutcome } from './browser-link-destination'
 import { openLocalBrowserLink } from './browser-link-open'
 import { getResolvedExecutionHostIdForWorktree } from './resolved-worktree-execution-host'
+import { createBrowserLinkHostMatcher } from './browser-link-owner'
+
+export type FileBrowserLinkTarget = {
+  filePath: string
+  worktreeId: string
+  fileExecutionHostId?: ExecutionHostId
+}
 
 export function openPlannedFileBrowserLink(
   state: AppState,
-  params: { filePath: string; worktreeId: string },
+  params: FileBrowserLinkTarget,
   plan: Exclude<WorkspaceFilePreviewPlan, { status: 'unsupported' }>,
   context: BrowserLinkOpenContext,
   ownsPreviewRoute: (state: AppState) => boolean
 ): BrowserOpenOutcome {
   const executionHostId = getResolvedExecutionHostIdForWorktree(state, params.worktreeId)
-  if (!executionHostId) {
+  if (
+    !executionHostId ||
+    (params.fileExecutionHostId &&
+      !createBrowserLinkHostMatcher(
+        state,
+        params.worktreeId,
+        executionHostId
+      )(params.fileExecutionHostId))
+  ) {
     return { status: 'refused' }
   }
   const docLocation = {

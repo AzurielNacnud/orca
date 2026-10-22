@@ -1,7 +1,12 @@
 import type * as BrowserFocusModule from '@/components/browser-pane/host-guest/browser-focus'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createStoreCascadesMockApi } from '@/store/slices/store-cascades-test-harness'
-import { makeTabGroup, makeUnifiedTab } from '@/store/slices/store-test-helpers'
+import {
+  TEST_REPO,
+  makeTabGroup,
+  makeUnifiedTab,
+  makeWorktree
+} from '@/store/slices/store-test-helpers'
 import {
   createBrowserLinkTestStore,
   WORKSPACE,
@@ -15,6 +20,7 @@ import {
   releaseDocPreviewGrant
 } from './doc-preview-grants'
 import type { BrowserOpenOutcome } from './browser-link-destination'
+import { openResolvedHtmlFileInBrowser } from '@/components/terminal-pane/terminal-file-link-browser-open'
 
 const mocks = vi.hoisted(() => ({ getState: vi.fn(), mint: vi.fn(), revoke: vi.fn() }))
 vi.mock('@/store', () => ({ useAppStore: { getState: () => mocks.getState() } }))
@@ -187,4 +193,111 @@ it('a folder workspace uses its own layout and activates its browser without Git
     })
   )
   expect(store.getState().activeGroupIdByWorktree[folder]).toBe('right')
+})
+
+it.each([false, true])(
+  'refuses a replaced file owner for a captured preview (explicit: %s)',
+  (explicit) => {
+    const linkIntent = captureLinkOpenIntent(store.getState(), WORKSPACE, 'source', {
+      explicitSourceGroup: explicit
+    })
+    const host = 'ssh:changed-owner'
+    store.setState((state) => ({
+      repos: state.repos.map((repo) => ({
+        ...repo,
+        connectionId: 'changed-owner',
+        executionHostId: host
+      })),
+      worktreesByRepo: {
+        repo1: state.worktreesByRepo.repo1!.map((worktree) => ({ ...worktree, hostId: host }))
+      },
+      activeWorkspaceExecutionHostId: host
+    }))
+    const outcome = vi.fn()
+    openFileInBrowserTab({
+      filePath: '/repo/index.html',
+      worktreeId: WORKSPACE,
+      linkContext: { linkIntent },
+      onLinkOutcome: outcome
+    })
+    expect(outcome).toHaveBeenCalledExactlyOnceWith({ status: 'refused' })
+    expect(store.getState().browserPagesByWorkspace).toEqual({})
+    expect(store.getState().activeGroupIdByWorktree[WORKSPACE]).toBe('c')
+  }
+)
+
+it.each([true, false])(
+  'validates the resolved file owner independently of a different source workspace (owner matches: %s)',
+  (ownerMatches) => {
+    const destination = 'repo2::/other'
+    const host = 'ssh:file-owner'
+    const linkIntent = captureLinkOpenIntent(store.getState(), WORKSPACE, 'source')
+    store.setState((state) => ({
+      repos: [
+        ...state.repos,
+        { ...TEST_REPO, id: 'repo2', connectionId: 'file-owner', executionHostId: host }
+      ],
+      worktreesByRepo: {
+        ...state.worktreesByRepo,
+        repo2: [makeWorktree({ id: destination, repoId: 'repo2', path: '/other', hostId: host })]
+      }
+    }))
+    const outcome = vi.fn()
+    openFileInBrowserTab({
+      filePath: '/other/report.html',
+      worktreeId: destination,
+      fileExecutionHostId: ownerMatches ? host : 'local',
+      linkContext: { linkIntent },
+      onLinkOutcome: outcome
+    })
+    if (!ownerMatches) {
+      expect(outcome).toHaveBeenCalledExactlyOnceWith({ status: 'refused' })
+      expect(store.getState().browserPagesByWorkspace).toEqual({})
+      expect(store.getState().activeWorktreeId).toBe(WORKSPACE)
+      return
+    }
+    expect(outcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'opened',
+        result: expect.objectContaining({ worktreeId: destination, executionHostId: host })
+      })
+    )
+  }
+)
+
+it('keeps deliberate client-local HTML discovery from a remote source available', () => {
+  const host = 'ssh:remote-source'
+  store.setState((state) => ({
+    repos: state.repos.map((repo) => ({
+      ...repo,
+      connectionId: 'remote-source',
+      executionHostId: host
+    })),
+    worktreesByRepo: {
+      repo1: state.worktreesByRepo.repo1!.map((worktree) => ({ ...worktree, hostId: host }))
+    },
+    activeWorkspaceExecutionHostId: host,
+    unifiedTabsByWorktree: {
+      [WORKSPACE]: state.unifiedTabsByWorktree[WORKSPACE]!.map((tab) => ({
+        ...tab,
+        executionHostId: host
+      }))
+    }
+  }))
+  const outcome = openResolvedHtmlFileInBrowser({
+    filePath: '/tmp/client-report.html',
+    worktreeId: WORKSPACE,
+    clientLocal: true,
+    linkContext: { linkIntent: captureLinkOpenIntent(store.getState(), WORKSPACE, 'source') }
+  })
+  expect(outcome).toMatchObject({ status: 'opened', result: { worktreeId: WORKSPACE } })
+  if (outcome?.status !== 'opened') {
+    throw new Error('Expected client-local preview')
+  }
+  expect(
+    store.getState().browserPagesByWorkspace[outcome.result.browserWorkspaceId]?.[0]
+  ).toMatchObject({
+    url: 'file:///tmp/client-report.html',
+    browserRuntimeEnvironmentId: null
+  })
 })
