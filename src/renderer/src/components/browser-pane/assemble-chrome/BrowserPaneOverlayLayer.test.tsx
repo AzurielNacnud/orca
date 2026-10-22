@@ -12,6 +12,7 @@ type MockAppState = {
   unifiedTabsByWorktree: Record<string, readonly Tab[]>
   groupsByWorktree: Record<string, readonly TabGroup[]>
   activeGroupIdByWorktree: Record<string, string>
+  browserPagesByWorkspace: Record<string, readonly { id: string }[]>
   focusGroup: (worktreeId: string, groupId: string) => void
 }
 
@@ -24,14 +25,20 @@ const mocks = vi.hoisted(() => ({
   pagePointerDown: vi.fn<(target: { browserPageId: string }) => void>()
 }))
 
-vi.mock('../../../store', () => ({
-  useAppStore: (selector: (state: MockAppState) => unknown) => {
+vi.mock('../../../store', () => {
+  const readState = (): MockAppState => {
     if (!mocks.state) {
       throw new Error('mock app state not initialized')
     }
-    return selector(mocks.state)
+    return mocks.state
   }
-}))
+  return {
+    useAppStore: Object.assign(
+      (selector: (state: MockAppState) => unknown) => selector(readState()),
+      { getState: readState }
+    )
+  }
+})
 
 vi.mock('../host-guest/browser-automation-visibility', () => ({
   useBrowserAutomationVisibilityForAny: (pageIds: readonly string[]) =>
@@ -557,6 +564,10 @@ function createState(): MockAppState {
     },
     // Default: the browser's own group holds focus, so active === focused.
     activeGroupIdByWorktree: { 'wt-1': 'group-1' },
+    browserPagesByWorkspace: {
+      [browserA.id]: [{ id: 'page-a' }],
+      [browserB.id]: [{ id: 'page-b' }]
+    },
     focusGroup: mocks.focusGroup
   }
 }

@@ -1,7 +1,6 @@
 import type { BrowserPageZoomDirection } from '../../shared/browser-page-zoom'
 import type { ResolveRenderer } from './browser-guest-renderer-target'
-import { isAgentInjectingInput } from './agent-input-injection'
-import { resolveGuestMouseHistoryDirection } from './browser-guest-mouse-history'
+import { forwardGuestMousePress } from './browser-guest-mouse-press'
 
 const CONTROL_MODIFIERS = new Set(['control', 'ctrl'])
 const MAC_COMMAND_MODIFIERS = new Set(['meta', 'command', 'cmd'])
@@ -83,25 +82,8 @@ export function setupGuestMouseWheelZoomForwarding(args: {
     onViewportWheelConsumed
   } = args
   const handler = (event: Electron.Event, mouse: Electron.MouseInputEvent): void => {
-    // Why here: this is the guest's one before-mouse-event listener, so presses share its lifetime.
-    // Agent tools click and press X1/X2 as real page input; neither may move the user's split or history.
-    if ((mouse.type === 'mouseDown' || mouse.type === 'mouseUp') && isAgentInjectingInput(guest)) {
-      return
-    }
-    if (mouse.type === 'mouseDown') {
-      // Why: a click into a page reaches the embedder as no reliable DOM focus event, so its split
-      // never became active (#22144); the press itself is the signal.
-      resolveRenderer(browserTabId)?.send('ui:browserPagePointerDown', {
-        browserPageId: browserTabId
-      })
-      return
-    }
-    const historyDirection = resolveGuestMouseHistoryDirection(mouse)
-    if (historyDirection) {
-      resolveRenderer(browserTabId)?.send('ui:browserHistoryNavigate', {
-        browserPageId: browserTabId,
-        direction: historyDirection
-      })
+    // Why here: presses ride this per-guest listener and its cleanup rather than a second one.
+    if (forwardGuestMousePress(guest, browserTabId, resolveRenderer, mouse)) {
       return
     }
     const direction = resolveGuestMouseWheelZoomDirection(mouse)

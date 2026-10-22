@@ -6,6 +6,7 @@ import { keybindingMatchesAction, type KeybindingOverrides } from '../../shared/
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import type { BrowserPageZoomDirection } from '../../shared/browser-page-zoom'
 import type { BrowserFindTarget } from '../../shared/browser-find-source'
+import type { BrowserPageTabShortcut } from '../../shared/browser-page-command-target'
 import type { ResolveRenderer } from './browser-guest-renderer-target'
 import { matchesGuestTabShortcut } from './browser-guest-tab-shortcut'
 
@@ -67,13 +68,6 @@ export function forwardGuestShortcutInput(
     event.preventDefault()
     const renderer = resolveRenderer(browserTabId)
     renderer?.send('ui:toggleFloatingTerminal')
-    return true
-  }
-
-  if (keybindingMatchesAction('tab.previousRecent', input, process.platform, keybindings)) {
-    event.preventDefault()
-    const renderer = resolveRenderer(browserTabId)
-    renderer?.send('ui:switchRecentTab')
     return true
   }
 
@@ -164,10 +158,16 @@ export function forwardGuestShortcutInput(
   ) {
     // Why: replay into the renderer's own tab-shortcut handler so a page answers tab chords exactly as the rest of Orca does.
     const { key, code, alt, meta, control, shift, doubleTapModifier } = input
-    renderer.send(
-      'ui:browserPageTabShortcut',
-      doubleTapModifier ? { doubleTapModifier } : { key, code, alt, meta, control, shift }
-    )
+    const shortcut: BrowserPageTabShortcut = {
+      key,
+      code,
+      alt,
+      meta,
+      control,
+      shift,
+      doubleTapModifier
+    }
+    renderer.send('ui:browserPageTabShortcut', shortcut)
   } else {
     return false
   }

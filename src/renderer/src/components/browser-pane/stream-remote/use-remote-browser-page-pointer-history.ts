@@ -1,12 +1,8 @@
 import { useEffect, type RefObject } from 'react'
 import { isBrowserPageAtScreenPoint } from '../host-guest/browser-page-screen-point'
+import { getRemoteBrowserHistoryMethod } from './remote-browser-page-input-model'
 
-type RemoteHistoryMethod = 'browser.back' | 'browser.forward'
-
-const HISTORY_METHOD_BY_MOUSE_BUTTON: Readonly<Record<number, RemoteHistoryMethod>> = {
-  3: 'browser.back',
-  4: 'browser.forward'
-}
+type RemoteHistoryMethod = NonNullable<ReturnType<typeof getRemoteBrowserHistoryMethod>>
 
 /** Mouse back/forward buttons and macOS swipes over a streamed page step its history on the host. */
 export function useRemoteBrowserPagePointerHistory({
@@ -25,8 +21,8 @@ export function useRemoteBrowserPagePointerHistory({
     }
     // Why both: in the paired web client the outer browser would also step its own history unless
     // the press is claimed.
-    const claimSideButton = (event: MouseEvent): RemoteHistoryMethod | undefined => {
-      const method = HISTORY_METHOD_BY_MOUSE_BUTTON[event.button]
+    const claimSideButton = (event: MouseEvent): RemoteHistoryMethod | null => {
+      const method = getRemoteBrowserHistoryMethod(event.button)
       if (method) {
         event.preventDefault()
       }

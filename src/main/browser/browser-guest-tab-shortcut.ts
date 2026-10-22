@@ -6,7 +6,8 @@ import {
 } from '../../shared/keybindings'
 import type { WindowShortcutInput } from '../../shared/window-shortcut-policy'
 
-// Why: neither has a window-wide keyboard owner, so claiming them would only take the chord from the page.
+// Why: neither acts on a page (open-markdown has no app-wide owner, rename only renames terminal and
+// chat tabs), so claiming them would only take the chord from the page.
 const TAB_ACTIONS_WITHOUT_KEYBOARD_OWNER = new Set<KeybindingActionId>([
   'tab.rename',
   'tab.openMarkdown'

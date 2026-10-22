@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   type MutableRefObject,
@@ -342,43 +343,30 @@ export function useBrowserPageChromeFocus({
     startGuestFocusRetry
   ])
 
-  // Why a ref: the split can become focused mid-retry, and re-running the effect would cancel it.
-  const chromeShortcutScopeRef = useRef(chromeShortcutScope)
-  useEffect(() => {
-    chromeShortcutScopeRef.current = chromeShortcutScope
-  })
-  const dragPassthroughActive = useWebviewDragPassthroughActive()
+  // Why an effect event: a split focused mid-retry must not re-run the effect and cancel it.
+  const isSplitFocused = useEffectEvent(() => chromeShortcutScope === 'focused')
+  const dragPassthroughActive = useWebviewDragPassthroughActive(isActive)
   const focusedForActivationRef = useRef(false)
-  // Why: switching to a page hands it the keyboard, as switching to a terminal does (#20533).
-  // Declared after the address-bar effects so a new blank tab's grab has already raised the latch.
+  // Why: switching to a page hands it the keyboard, as for terminals (#20533); declared after the
+  // address-bar effects so a new blank tab's grab has already raised the latch.
   useEffect(() => {
     if (!isActive) {
       focusedForActivationRef.current = false
       return
     }
-    // Why the drag gate defers rather than consumes: a drag preview-activates what it hovers, and
-    // focusing another WebContents mid-drag reads as an aborted drag; the focus lands once it ends.
+    // Why defer, not consume: focusing a guest mid-drag reads as an aborted drag.
     if (focusedForActivationRef.current || dragPassthroughActive) {
       return
     }
     focusedForActivationRef.current = true
-    // Why 'focused' only: a page activated in a split the user isn't in (an agent opening it there)
-    // must not pull the keyboard across, and floating splits all report 'owned-target'.
-    if (
-      inputLocked ||
-      chromeShortcutScopeRef.current !== 'focused' ||
-      keepAddressBarFocusRef.current ||
-      focusGuestNow()
-    ) {
+    // Why 'focused' only: never pull the keyboard across splits; floating ones all report 'owned-target'.
+    if (inputLocked || !isSplitFocused() || keepAddressBarFocusRef.current || focusGuestNow()) {
       return
     }
     // Why: a late guest must not take focus the user has since moved (Cmd/Ctrl+L, another split).
     const focusedAtActivation = document.activeElement
     return focusGuestOverFrames(
-      () =>
-        document.activeElement === focusedAtActivation &&
-        chromeShortcutScopeRef.current === 'focused' &&
-        !keepAddressBarFocusRef.current
+      () => document.activeElement === focusedAtActivation && !keepAddressBarFocusRef.current
     )
   }, [dragPassthroughActive, focusGuestNow, focusGuestOverFrames, inputLocked, isActive])
 
