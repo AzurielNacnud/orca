@@ -70,6 +70,7 @@ describe('browserManager', () => {
     const guest = {
       id: 405,
       isDestroyed: vi.fn(() => false),
+      isCurrentlyAudible: vi.fn(() => false),
       getType: vi.fn(() => 'webview'),
       setBackgroundThrottling: guestSetBackgroundThrottlingMock,
       setWindowOpenHandler: guestSetWindowOpenHandlerMock,
@@ -94,6 +95,8 @@ describe('browserManager', () => {
       webContentsId: guest.id,
       rendererWebContentsId
     })
+    // Registration also reports audio state; this test is about shortcut forwarding.
+    rendererSendMock.mockClear()
 
     const beforeInputHandler = guestOnMock.mock.calls.findLast(
       ([event]) => event === 'before-input-event'
@@ -161,6 +164,7 @@ describe('browserManager', () => {
     const guest = {
       id: 406,
       isDestroyed: vi.fn(() => false),
+      isCurrentlyAudible: vi.fn(() => false),
       getType: vi.fn(() => 'webview'),
       setBackgroundThrottling: guestSetBackgroundThrottlingMock,
       setWindowOpenHandler: guestSetWindowOpenHandlerMock,
@@ -185,6 +189,8 @@ describe('browserManager', () => {
       webContentsId: guest.id,
       rendererWebContentsId
     })
+    // Registration also reports audio state; this test is about shortcut forwarding.
+    rendererSendMock.mockClear()
 
     const beforeInputHandler = guestOnMock.mock.calls.findLast(
       ([event]) => event === 'before-input-event'
@@ -320,6 +326,7 @@ describe('browserManager', () => {
     const guest = {
       id: 407,
       isDestroyed: vi.fn(() => false),
+      isCurrentlyAudible: vi.fn(() => false),
       getType: vi.fn(() => 'webview'),
       setBackgroundThrottling: guestSetBackgroundThrottlingMock,
       setWindowOpenHandler: guestSetWindowOpenHandlerMock,
@@ -350,6 +357,8 @@ describe('browserManager', () => {
       webContentsId: guest.id,
       rendererWebContentsId
     })
+    // Registration also reports audio state; this test is about shortcut forwarding.
+    rendererSendMock.mockClear()
 
     const beforeInputHandler = guestOnMock.mock.calls.findLast(
       ([event]) => event === 'before-input-event'
@@ -424,6 +433,7 @@ describe('browserManager', () => {
     const guest = {
       id: 407,
       isDestroyed: vi.fn(() => false),
+      isCurrentlyAudible: vi.fn(() => false),
       getType: vi.fn(() => 'webview'),
       setBackgroundThrottling: guestSetBackgroundThrottlingMock,
       setWindowOpenHandler: guestSetWindowOpenHandlerMock,
@@ -448,6 +458,8 @@ describe('browserManager', () => {
       webContentsId: guest.id,
       rendererWebContentsId
     })
+    // Registration also reports audio state; this test is about shortcut forwarding.
+    rendererSendMock.mockClear()
 
     const beforeInputHandler = guestOnMock.mock.calls.findLast(
       ([event]) => event === 'before-input-event'
@@ -494,6 +506,7 @@ describe('browserManager', () => {
     const guest = {
       id: 408,
       isDestroyed: vi.fn(() => false),
+      isCurrentlyAudible: vi.fn(() => false),
       getType: vi.fn(() => 'webview'),
       setBackgroundThrottling: guestSetBackgroundThrottlingMock,
       setWindowOpenHandler: guestSetWindowOpenHandlerMock,
