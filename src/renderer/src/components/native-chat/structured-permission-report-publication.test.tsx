@@ -127,17 +127,17 @@ it.each([1, 10, 100])(
         return host.readOptions(sessionId)
       })
       transport.call.mockImplementation((_target, method) => read(method))
-      // SAFETY: these are the transport methods used by the real phone hooks; feed events and RPC envelopes use production handlers.
-      const client = {
+      const client: RpcClient = {
         getState: () => 'connected',
         onStateChange: () => () => {},
-        subscribe: (
-          _method: string,
-          _params: unknown,
-          emit: Parameters<typeof host.subscribeStatus>[0]['emit']
-        ) => subscribe(emit),
-        sendRequest: async (method: string) => ({ ok: true, result: await read(method) })
-      } as unknown as RpcClient
+        getReconnectAttempt: () => 0,
+        getLastConnectedAt: () => null,
+        updateTerminalSubscriptionViewport: () => {},
+        notifyForeground: () => {},
+        close: () => {},
+        subscribe: (_method, _params, emit) => subscribe(emit),
+        sendRequest: async (method) => ({ id: 'report-rpc', ok: true, result: await read(method) })
+      }
       const target = { kind: 'local' } as const
       const common = { agent: 'claude' as const, sessionId, fence }
       const hooks = [
