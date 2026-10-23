@@ -292,7 +292,9 @@ export function useStructuredAgentSessionOptionState(args: {
 
   return {
     // What the picker shows and a send carries.
-    optionView: (...args: Parameters<typeof structuredAgentSessionOptionView>) => {
+    optionView: (
+      ...args: Parameters<typeof structuredAgentSessionOptionView>
+    ): StructuredAgentSessionOptionState => {
       const view = { ...structuredAgentSessionOptionView(...args), permissionOwnSupported }
       return pendingOptionsRef.current.model === undefined ? view : { ...view, pendingId: 'model' }
     },
