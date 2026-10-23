@@ -261,7 +261,10 @@ export async function readAcpLiveOptions(
   const options = withLiveCatalogListing(session.options.read())
   return {
     ...options,
-    current: session.options.observedCurrent(permissionModes),
+    current: {
+      ...options.current,
+      reportedPermissionMode: session.options.reportedPermissionMode(permissionModes)
+    },
     acceptsImages
   }
 }
