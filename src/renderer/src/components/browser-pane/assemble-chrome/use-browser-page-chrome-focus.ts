@@ -159,23 +159,6 @@ export function useBrowserPageChromeFocus({
     [addressBarInputRef, cancelAddressBarFocusGrab, focusAddressBarNow]
   )
 
-  /** Retries for a few frames: a pane activated this commit may not have attached its guest yet. */
-  const focusGuestOverFrames = useCallback(
-    (stillWanted: () => boolean = () => true): (() => void) => {
-      let frameId = 0
-      let attempts = 0
-      const runFocus = (): void => {
-        attempts += 1
-        if (stillWanted() && !focusGuestNow() && attempts < ADDRESS_BAR_FOCUS_FRAMES) {
-          frameId = window.requestAnimationFrame(runFocus)
-        }
-      }
-      frameId = window.requestAnimationFrame(runFocus)
-      return () => window.cancelAnimationFrame(frameId)
-    },
-    [focusGuestNow]
-  )
-
   useEffect(() => {
     if (!isActive) {
       return
@@ -229,7 +212,14 @@ export function useBrowserPageChromeFocus({
    * requeues an unfinished request unless `{ requeue: false }`, so a re-run still finds it.
    */
   const startGuestFocusRetry = useCallback(
-    ({ firstAttempt }: { firstAttempt: 'now' | 'next-frame' }) => {
+    ({
+      firstAttempt,
+      stillWanted = () => true
+    }: {
+      firstAttempt: 'now' | 'next-frame'
+      /** Checked before every attempt; false drops the focus for good. */
+      stillWanted?: () => boolean
+    }) => {
       let cancelled = false
       let settled = false
       let frameId = 0
@@ -238,6 +228,10 @@ export function useBrowserPageChromeFocus({
       const focusAtRequest = document.activeElement
       const runFocus = (): void => {
         if (cancelled) {
+          return
+        }
+        if (!stillWanted()) {
+          settled = true
           return
         }
         // Why: the retry budget starts once there is a guest; focus the user moves meanwhile
@@ -360,15 +354,13 @@ export function useBrowserPageChromeFocus({
     }
     focusedForActivationRef.current = true
     // Why 'focused' only: never pull the keyboard across splits; floating ones all report 'owned-target'.
-    if (inputLocked || !isSplitFocused() || keepAddressBarFocusRef.current || focusGuestNow()) {
-      return
-    }
-    // Why: a late guest must not take focus the user has since moved (Cmd/Ctrl+L, another split).
-    const focusedAtActivation = document.activeElement
-    return focusGuestOverFrames(
-      () => document.activeElement === focusedAtActivation && !keepAddressBarFocusRef.current
-    )
-  }, [dragPassthroughActive, focusGuestNow, focusGuestOverFrames, inputLocked, isActive])
+    const cancelGuestFocus = startGuestFocusRetry({
+      firstAttempt: 'now',
+      stillWanted: () => !inputLocked && isSplitFocused() && !keepAddressBarFocusRef.current
+    })
+    // Why no requeue: an activation is not a queued request, so leaving the tab drops it.
+    return () => cancelGuestFocus({ requeue: false })
+  }, [dragPassthroughActive, inputLocked, isActive, startGuestFocusRetry])
 
   return { focusAddressBarNow, focusGuestNow, startAddressBarFocusGrab, keepAddressBarFocusRef }
 }

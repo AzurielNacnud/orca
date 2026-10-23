@@ -663,6 +663,8 @@ function createWebview(): {
   const focus = vi.fn(() => HTMLElement.prototype.focus.call(webview))
   const blur = vi.fn(() => HTMLElement.prototype.blur.call(webview))
   Object.assign(webview, {
+    // An attached guest has a WebContents id; focus waits for one.
+    getWebContentsId: vi.fn(() => 7),
     getURL: vi.fn(() => url),
     getTitle: vi.fn(() => title),
     isLoading: vi.fn(() => false),

@@ -49,7 +49,14 @@ export function forwardGuestShortcutInput(
   if (input.isAutoRepeat) {
     if (
       (action?.type === 'dictationKeyDown' && shouldForwardDictationShortcut?.()) ||
-      action?.type === 'deleteCurrentWorkspace'
+      action?.type === 'deleteCurrentWorkspace' ||
+      // Why: Orca claims a held tab chord on every repeat but acts once, so repeats never reach the page.
+      matchesGuestTabShortcut(
+        input,
+        process.platform,
+        keybindings,
+        isMobileEmulatorEnabled?.() ?? true
+      )
     ) {
       event.preventDefault()
       return true
