@@ -1,4 +1,3 @@
-import { readClaudeReportedPermissionMode } from './claude-structured-init-proof'
 // Claude initialize is awaited by the host after process publication, under its own bound. Settings
 // enrichment follows independently; the host owns a failed open and its single close.
 
@@ -11,6 +10,7 @@ import {
   claudeAuthDiagnostic,
   claudeInitializationAuthError,
   readClaudeCapabilities,
+  readClaudeReportedPermissionMode,
   readClaudeModels,
   type ClaudeInitObservation,
   type ClaudeInitProof

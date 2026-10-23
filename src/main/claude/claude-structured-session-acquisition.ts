@@ -1,4 +1,3 @@
-import { readClaudeReportedPermissionMode } from './claude-structured-init-proof'
 import type {
   AgentSessionAcquisition,
   StructuredAgentSessionAcquireInput
@@ -12,6 +11,7 @@ import { settleClaudeTurnEndWaiters } from './claude-request-end-wait'
 import {
   createClaudeInitProof,
   readClaudeCapabilities,
+  readClaudeReportedPermissionMode,
   readClaudeFrameString,
   readClaudeInit
 } from './claude-structured-init-proof'

@@ -2,6 +2,7 @@ import { useStructuredAgentSessionHostCapabilityState } from '@/runtime/structur
 import { AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY } from '../../../../shared/agent-session-permission-modes-capability'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import {
+  AGENT_CHAT_PERMISSION_MODES,
   agentChatPermissionModes,
   newChatPermissionModeForSettings
 } from '../../../../shared/agent-chat-permission-mode'
@@ -10,7 +11,6 @@ import { PERMISSION_CHOICE_AGENTS } from '../../../../shared/tui-agent-permissio
 import { useAppStore } from '@/store'
 import { Button } from '../ui/button'
 import { NativeChatPermissionModePicker } from '../native-chat/NativeChatPermissionModePicker'
-import { AGENT_CHAT_PERMISSION_MODES } from '../../../../shared/agent-chat-permission-mode'
 import { nativeChatPermissionModeLabel } from '../native-chat/native-chat-permission-mode-labels'
 import { SettingsRow } from './SettingsFormControls'
 import { SearchableSetting } from './SearchableSetting'
