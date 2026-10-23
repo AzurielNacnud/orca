@@ -20,6 +20,7 @@ import {
 import { useActiveProjectSkillRuntime } from '@/hooks/useActiveProjectSkillRuntime'
 import { useLinearProviderConnected } from '@/hooks/useLinearProviderConnected'
 import { useSkillFreshness } from '@/hooks/useSkillFreshness'
+import { useProjectHostSetupProjection } from '@/store/selectors'
 import { getFallbackTerminalFonts, mergeFontSuggestions } from './SettingsConstants'
 import { useGhosttyImport } from './useGhosttyImport'
 import { useWarpThemeImport } from './useWarpThemeImport'
@@ -68,7 +69,15 @@ export function useSettingsStoreModel() {
   const runtimeEnvironmentCatalogHydrated = useAppStore((s) => s.runtimeEnvironmentCatalogHydrated)
 
   // Why: same inputs as nav metadata so both lists agree — the source of truth for the pane list.
-  const settingsProjectList = useMemo(() => buildSettingsProjectList(repos), [repos])
+  const projection = useProjectHostSetupProjection()
+  const settingsProjectList = useMemo(
+    () =>
+      buildSettingsProjectList(repos, {
+        projects: projection.projects,
+        projectHostSetups: projection.setups
+      }),
+    [repos, projection]
+  )
   const repoIdToRepresentative = useMemo(
     () => buildRepoIdToRepresentative(settingsProjectList),
     [settingsProjectList]

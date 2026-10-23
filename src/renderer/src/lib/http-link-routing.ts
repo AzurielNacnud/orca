@@ -1,3 +1,8 @@
+import {
+  getProjectHostSetupLookup,
+  type WorkspaceProjectOwner
+} from '../../../shared/project-host-setup-lookup'
+import type { ProjectHostSetup } from '../../../shared/project-types'
 import { translate } from '@/i18n/i18n'
 import { isFloatingWorkspaceId } from '../../../shared/floating-workspace-worktree'
 import {
@@ -45,6 +50,7 @@ type StoreAccessor = () => {
   createBrowserTab: (worktreeId: string, url: string, opts: { activate: boolean }) => unknown
   repos?: readonly LocalhostLinkRepo[]
   projects?: readonly LocalhostLinkProject[]
+  projectHostSetups?: readonly ProjectHostSetup[]
   worktreesByRepo?: Record<string, LocalhostLinkWorktree[]>
   allWorktrees?: () => LocalhostLinkWorktree[]
   workspacePortScan?: { result: WorkspacePortScanResult } | null
@@ -68,10 +74,7 @@ type LocalhostLinkRepo = {
 
 type LocalhostLinkProject = LocalhostLinkRepo
 
-type LocalhostLinkWorktree = {
-  id: string
-  projectId?: string
-}
+type LocalhostLinkWorktree = { id: string } & Partial<WorkspaceProjectOwner>
 
 // Why: store access is injected via registerHttpLinkStoreAccessor rather than
 // a direct `import '@/store'` to avoid a circular import — store/slices/editor.ts
@@ -288,9 +291,13 @@ function localhostLabelRouteForTerminalLink(
     return null
   }
   const worktree = findWorktreeById(state, port.owner.worktreeId)
+  const projectId = getProjectHostSetupLookup(state.projectHostSetups).projectId({
+    ...worktree,
+    repoId: port.owner.repoId
+  })
   const project =
-    worktree?.projectId && state.projects
-      ? (state.projects.find((entry) => entry.id === worktree.projectId) ?? null)
+    projectId && state.projects
+      ? (state.projects.find((entry) => entry.id === projectId) ?? null)
       : null
   const projectSource = project ?? repo
   return {

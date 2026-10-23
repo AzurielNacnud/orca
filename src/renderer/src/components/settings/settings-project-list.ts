@@ -1,3 +1,4 @@
+import type { ProjectGroupingModel } from '../../../../shared/project-section-grouping'
 import type { Project, ProjectHostSetup } from '../../../../shared/project-types'
 import type { Repo } from '../../../../shared/repo-types'
 import {
@@ -61,8 +62,13 @@ export function getSettingsProjectRepresentativeRepoId(
  * One entry per project. Entries are derived from repos alone so the nav and
  * pane lists agree exactly.
  */
-export function buildSettingsProjectList(repos: readonly Repo[]): SettingsProject[] {
-  const projection = projectHostSetupProjectionFromRepos(repos)
+export function buildSettingsProjectList(
+  repos: readonly Repo[],
+  grouping?: ProjectGroupingModel
+): SettingsProject[] {
+  const projection = grouping
+    ? { projects: grouping.projects, setups: grouping.projectHostSetups }
+    : projectHostSetupProjectionFromRepos(repos)
   const projectById = new Map(projection.projects.map((project) => [project.id, project]))
   // Why: Settings metadata is rebuilt as repos refresh across hosts; index
   // setups once so many projects do not turn each refresh into an O(n²) scan.

@@ -22,9 +22,11 @@ function countCollectionReads<T>(items: readonly T[]): {
         counters[property] += 1
         return array[property].bind(array)
       }
-      if (property === Symbol.iterator) {
+      if (property === Symbol.iterator || property === 'entries') {
         counters.iterator += 1
-        return array[Symbol.iterator].bind(array)
+        return property === 'entries'
+          ? array.entries.bind(array)
+          : array[Symbol.iterator].bind(array)
       }
       if (property === 'length') {
         counters.length += 1

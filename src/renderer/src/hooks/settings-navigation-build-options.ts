@@ -1,3 +1,4 @@
+import type { ProjectGroupingModel } from '../../../shared/project-section-grouping'
 import type { Repo } from '../../../shared/repo-types'
 
 export type SettingsNavigationBuildOptions = {
@@ -13,4 +14,5 @@ export type SettingsNavigationBuildOptions = {
   isDev: boolean
   isLinearConnected: boolean
   repos: readonly Repo[]
+  projectGrouping?: ProjectGroupingModel
 }

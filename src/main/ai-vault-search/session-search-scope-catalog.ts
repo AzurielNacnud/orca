@@ -1,6 +1,7 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Project, ProjectHostSetup } from '../../shared/project-types'
 import type { Repo } from '../../shared/repo-types'
+import type { WorkspaceProjectOwner } from '../../shared/project-host-setup-lookup'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 
 // Persisted state, never a git scan: a handful of prefixes answers a search that
@@ -11,12 +12,19 @@ export type SessionSearchScopeCatalog = {
     'id' | 'path' | 'kind' | 'worktreeBasePath' | 'connectionId' | 'executionHostId'
   >[]
   projects: readonly Pick<Project, 'id' | 'sourceRepoIds'>[]
-  projectHostSetups: readonly Pick<
+  projectHostSetups: readonly (Pick<
     ProjectHostSetup,
     'projectId' | 'repoId' | 'path' | 'worktreeBasePath'
-  >[]
+  > &
+    Partial<Pick<ProjectHostSetup, 'id' | 'hostId' | 'executionHostId' | 'connectionId'>>)[]
   /** Registered workspaces of this host, keyed by worktree id. */
-  worktreeMeta: Readonly<Record<string, Pick<WorktreeMeta, 'projectId' | 'priorWorktreeIds'>>>
+  worktreeMeta: Readonly<
+    Record<
+      string,
+      Pick<WorktreeMeta, 'projectId' | 'priorWorktreeIds'> &
+        Partial<Omit<WorkspaceProjectOwner, 'repoId'>>
+    >
+  >
   settings: Pick<GlobalSettings, 'workspaceDir' | 'nestWorkspaces' | 'workspaceDirHistory'>
 }
 

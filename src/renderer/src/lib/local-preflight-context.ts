@@ -14,7 +14,10 @@ import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import { projectMatchesRepo } from '../../../shared/project-repo-match'
 import { getIndexedRepoMap } from '@/store/worktree-repo-index'
 import { defaultScopeHost } from './default-creation-host'
-import { getLocalProjectRuntimeWorkspace } from './local-project-runtime-workspace'
+import {
+  getLocalPreflightProjectId,
+  getLocalProjectRuntimeWorkspace
+} from './local-project-runtime-workspace'
 import { getActiveWorkspaceOwnerTarget } from './resolved-worktree-execution-host'
 import { getEnvironmentRuntimeContextKey } from './provider-runtime-context'
 import { getRendererAppPlatform } from './renderer-app-platform'
@@ -42,7 +45,7 @@ type LocalProjectRuntimeState = Pick<
   AppState,
   'activeRepoId' | 'activeWorktreeId' | 'projects' | 'repos' | 'settings' | 'worktreesByRepo'
 > &
-  Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups'>>
+  Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups' | 'projectHostSetups'>>
 
 // Why: the shared indexes are WeakMap-keyed on slice identity, so a fresh `{}`
 // or `[]` fallback would miss the cache on every read.
@@ -318,17 +321,8 @@ function getLocalRuntimeProject(
   projectId: string,
   repoId: string
 ) {
-  return state.projects?.find(
-    (entry) => entry.id === projectId || projectMatchesRepo(entry, repoId)
-  )
-}
-
-function getLocalPreflightProjectId(
-  state: LocalProjectRuntimeState,
-  worktreeId?: string | null
-): string {
-  const activeWorktree = getLocalProjectRuntimeWorkspace(state, worktreeId)
   return (
-    activeWorktree?.projectId ?? activeWorktree?.repoId ?? state.activeRepoId ?? 'local-project'
+    state.projects?.find((entry) => entry.id === projectId) ??
+    state.projects?.find((entry) => projectMatchesRepo(entry, repoId))
   )
 }

@@ -5,11 +5,11 @@ import type { Project, ProjectHostSetup } from '../../../../shared/project-types
 import * as paths from '../../../../shared/cross-platform-path'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
-import { toAiVaultProjectKey } from '../../../../shared/ai-vault-project-key'
 import {
   buildAiVaultProjectContext,
   buildAiVaultSessionProjectById
 } from './ai-vault-session-projects'
+import { resolveSessionSearchScope } from '../../../../main/ai-vault-search/session-search-scope-resolution'
 import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
 import { truncateAiVaultListResult } from '../../../../shared/ai-vault-session-depth'
 import {
@@ -40,14 +40,6 @@ const baseSession: AiVaultSession = {
   subagent: null
 }
 
-describe('toAiVaultProjectKey', () => {
-  it('does not double-wrap compatibility repo project ids', () => {
-    expect(toAiVaultProjectKey('project-1', 'repo-1')).toBe('project:project-1')
-    expect(toAiVaultProjectKey('repo:repo-1', 'repo-1')).toBe('repo:repo-1')
-    expect(toAiVaultProjectKey(null, 'repo-1')).toBe('repo:repo-1')
-  })
-})
-
 describe('buildAiVaultProjectContext', () => {
   // #28589: an imported folder whose copied .git/config points at another checkout's remote.
   it("keeps a same-host folder that shares a remote out of the other checkout's project", () => {
@@ -70,18 +62,48 @@ describe('buildAiVaultProjectContext', () => {
       addedAt: 200,
       gitRemoteIdentity: remote
     })
-    const niwSession = makeSession({ id: 'claude:niw', cwd: niw.path })
+    const linkedPath = '/Users/benny/workspaces/niw-topic'
+    const oldProjectId = 'github:bennyoooo/open-social'
+    const worktree = makeWorktree({
+      id: `niw::${linkedPath}`,
+      repoId: niw.id,
+      projectHostSetupId: niw.id,
+      projectId: oldProjectId,
+      path: linkedPath
+    })
+    const niwSession = makeSession({ id: 'claude:niw', cwd: linkedPath })
+    const projection = projectHostSetupProjectionFromRepos([niw, openSocial])
     const openSocialSession = makeSession({ id: 'claude:open-social', cwd: openSocial.path })
 
     const context = buildAiVaultProjectContext({
       repos: [niw, openSocial],
-      worktrees: [],
-      projectHostSetupProjection: projectHostSetupProjectionFromRepos([niw, openSocial]),
+      worktrees: [worktree],
+      projectHostSetupProjection: projection,
       activeRepo: niw,
-      activeWorktree: null,
+      activeWorktree: worktree,
       sessions: [niwSession, openSocialSession]
     })
 
+    const catalog = {
+      repos: [niw, openSocial],
+      projects: projection.projects,
+      projectHostSetups: projection.setups,
+      worktreeMeta: {
+        [worktree.id]: { ...worktree, priorWorktreeIds: ['niw::/Users/benny/old-niw-topic'] }
+      },
+      settings: { nestWorkspaces: false }
+    }
+    const ownerScope = resolveSessionSearchScope(
+      { kind: 'project', projectKey: 'repo:niw' },
+      catalog
+    )
+    expect(ownerScope).toEqual({
+      kind: 'resolved',
+      paths: expect.arrayContaining([niw.path, linkedPath, '/Users/benny/old-niw-topic'])
+    })
+    expect(
+      resolveSessionSearchScope({ kind: 'project', projectKey: `project:${oldProjectId}` }, catalog)
+    ).toEqual({ kind: 'resolved', paths: [openSocial.path] })
     expect(context.activeProjectKey).toBe('repo:niw')
     expect(context.sessionProjectById.get(niwSession.id)).toMatchObject({
       key: 'repo:niw',
@@ -302,7 +324,7 @@ describe('buildAiVaultProjectContext', () => {
     expect(context.sessionProjectById.get(secondSession.id)?.label).toBe('Canonical Project')
   })
 
-  it('chooses the most specific nested path and lets worktrees win equal-length ties', () => {
+  it('keeps the most specific workspace path while using its current checkout affiliation', () => {
     const repo = makeRepo({ id: 'repo-root', displayName: 'Root', path: '/repo' })
     const childRepo = makeRepo({ id: 'repo-child', displayName: 'Child Repo', path: '/repo/pkg' })
     const worktree = makeWorktree({
@@ -317,7 +339,7 @@ describe('buildAiVaultProjectContext', () => {
       repos: [repo, childRepo],
       worktrees: [worktree],
       projectHostSetupProjection: makeProjection({
-        projects: [makeProject({ id: 'child-project', displayName: 'Child Project' })],
+        projects: [makeProject({ id: 'setup-child', displayName: 'Child Project' })],
         setups: [
           makeSetup({ repoId: repo.id, projectId: 'root-project', path: repo.path }),
           makeSetup({ repoId: childRepo.id, projectId: 'setup-child', path: childRepo.path })
@@ -329,7 +351,7 @@ describe('buildAiVaultProjectContext', () => {
     })
 
     expect(context.sessionProjectById.get(session.id)).toMatchObject({
-      key: 'project:child-project',
+      key: 'project:setup-child',
       label: 'Child Project'
     })
   })

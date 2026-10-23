@@ -1,3 +1,4 @@
+import { getProjectHostSetupLookup } from '../../../shared/project-host-setup-lookup'
 import type { AppState } from '@/store/types'
 import { getIndexedWorktreeById } from '@/store/worktree-repo-index'
 import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
@@ -17,7 +18,16 @@ const EMPTY_WORKTREES_BY_REPO: AppState['worktreesByRepo'] = {}
 export function getLocalProjectRuntimeWorkspace(
   state: RuntimeWorkspaceState,
   worktreeId?: string | null
-): Pick<Worktree, 'id' | 'repoId' | 'projectId' | 'path' | 'hostId'> | null {
+): Pick<
+  Worktree,
+  | 'id'
+  | 'repoId'
+  | 'projectId'
+  | 'path'
+  | 'hostId'
+  | 'projectHostSetupId'
+  | 'runtimeOwnerEnvironmentId'
+> | null {
   const targetWorktreeId = worktreeId ?? state.activeWorktreeId
   if (!targetWorktreeId) {
     return null
@@ -57,4 +67,21 @@ export function getLocalProjectRuntimeWorkspace(
         hostId: LOCAL_EXECUTION_HOST_ID
       }
     : null
+}
+
+export function getLocalPreflightProjectId(
+  state: RuntimeWorkspaceState &
+    Pick<AppState, 'activeRepoId'> &
+    Partial<Pick<AppState, 'projectHostSetups'>>,
+  worktreeId?: string | null
+): string {
+  const activeWorktree = getLocalProjectRuntimeWorkspace(state, worktreeId)
+  return (
+    (activeWorktree
+      ? getProjectHostSetupLookup(state.projectHostSetups).projectId(activeWorktree)
+      : undefined) ??
+    activeWorktree?.repoId ??
+    state.activeRepoId ??
+    'local-project'
+  )
 }

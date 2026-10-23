@@ -9,7 +9,7 @@ import {
 } from '../../../../shared/execution-host'
 import type { ProjectHostSetupProjection } from '../../../../shared/project-host-setup-projection'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
-import type { ProjectHostSetup } from '../../../../shared/project-types'
+import { getProjectHostSetupLookup } from '../../../../shared/project-host-setup-lookup'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { normalizeRuntimePathForComparison } from '../../../../shared/cross-platform-path'
@@ -60,10 +60,10 @@ export function buildAiVaultProjectContext({
   activeWorktree,
   sessions
 }: ProjectResolverArgs): AiVaultProjectContext {
-  const setupByRepoId = buildSetupByRepoId(projectHostSetupProjection.setups)
+  const owners = getProjectHostSetupLookup(projectHostSetupProjection.setups)
 
   return {
-    activeProjectKey: resolveActiveProjectKey(activeRepo, activeWorktree, setupByRepoId),
+    activeProjectKey: resolveActiveProjectKey(activeRepo, activeWorktree, owners),
     activeRepoId: activeRepo?.id ?? activeWorktree?.repoId ?? null,
     projectLabelByKey: buildProjectLabelByKey(repos, projectHostSetupProjection),
     sessionProjectById: buildAiVaultSessionProjectById({
@@ -86,14 +86,9 @@ export function buildAiVaultSessionProjectById({
   sessions
 }: Omit<ProjectResolverArgs, 'activeRepo' | 'activeWorktree'>): Map<string, AiVaultSessionProject> {
   const repoById = new Map(repos.map((repo) => [repo.id, repo]))
-  const setupByRepoId = buildSetupByRepoId(projectHostSetupProjection.setups)
+  const owners = getProjectHostSetupLookup(projectHostSetupProjection.setups)
   const projectLabelByKey = buildProjectLabelByKey(repos, projectHostSetupProjection)
-  const candidates = buildProjectCandidates(
-    worktrees,
-    projectHostSetupProjection,
-    repoById,
-    setupByRepoId
-  )
+  const candidates = buildProjectCandidates(worktrees, projectHostSetupProjection, repoById, owners)
   const sessionProjectById = new Map<string, AiVaultSessionProject>()
   const projectsByHostAndCwd = new Map<
     ExecutionHostId | null,
@@ -115,18 +110,6 @@ export function buildAiVaultSessionProjectById({
     sessionProjectById.set(session.id, { ...project })
   }
   return sessionProjectById
-}
-
-function buildSetupByRepoId(
-  setups: readonly ProjectHostSetup[]
-): ReadonlyMap<string, ProjectHostSetup> {
-  const setupByRepoId = new Map<string, ProjectHostSetup>()
-  for (const setup of setups) {
-    if (setup.repoId && !setupByRepoId.has(setup.repoId)) {
-      setupByRepoId.set(setup.repoId, setup)
-    }
-  }
-  return setupByRepoId
 }
 
 function buildProjectLabelByKey(
@@ -163,7 +146,7 @@ function buildProjectCandidates(
   worktrees: readonly Worktree[],
   projection: ProjectHostSetupProjection,
   repoById: ReadonlyMap<string, Repo>,
-  setupByRepoId: ReadonlyMap<string, ProjectHostSetup>
+  owners: ReturnType<typeof getProjectHostSetupLookup>
 ): SessionProjectCandidate[] {
   const candidates: SessionProjectCandidate[] = []
   const setupRepoIds = new Set<string>()
@@ -173,7 +156,7 @@ function buildProjectCandidates(
       continue
     }
     const repo = repoById.get(worktree.repoId)
-    const setup = setupByRepoId.get(worktree.repoId)
+    const setup = owners.forWorkspace(worktree)
     candidates.push(
       makeProjectCandidate({
         source: 'worktree',
@@ -183,7 +166,7 @@ function buildProjectCandidates(
           setup?.hostId,
           repo ? getRepoExecutionHostId(repo) : null
         ),
-        projectId: worktree.projectId ?? setup?.projectId ?? null,
+        projectId: owners.projectId(worktree) ?? null,
         repoId: worktree.repoId
       })
     )

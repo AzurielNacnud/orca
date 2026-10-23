@@ -1,3 +1,4 @@
+import { getProjectHostSetupLookup } from '../../shared/project-host-setup-lookup'
 import { toAiVaultProjectKey } from '../../shared/ai-vault-project-key'
 import type { AiVaultSearchScopeIdentity } from '../../shared/ai-vault-search-scope'
 import {
@@ -9,6 +10,7 @@ import {
 import { areRuntimePathsEqual } from '../../shared/worktree/ownership'
 import type { SessionSearchScopeCatalog } from './session-search-scope-catalog'
 import type { SessionSearchHostScope } from './session-search-service'
+import { getRepoExecutionHostId } from '../../shared/execution-host'
 import { managedWorktreeDirectories, ScopePathSet } from './session-search-scope-paths'
 
 type ScopeRepo = SessionSearchScopeCatalog['repos'][number]
@@ -73,6 +75,8 @@ function registeredWorktreeId(
 function resolveProjectScope(projectKey: string, catalog: SessionSearchScopeCatalog): string[] {
   const paths = new ScopePathSet()
   const repoIds = new Set<string>()
+  const owners = getProjectHostSetupLookup(catalog.projectHostSetups)
+  const reposById = new Map(catalog.repos.map((repo) => [repo.id, repo]))
   for (const setup of catalog.projectHostSetups) {
     if (toAiVaultProjectKey(setup.projectId, setup.repoId) === projectKey) {
       repoIds.add(setup.repoId)
@@ -84,7 +88,14 @@ function resolveProjectScope(projectKey: string, catalog: SessionSearchScopeCata
   for (const project of catalog.projects) {
     if (project.id === projectId) {
       for (const repoId of project.sourceRepoIds) {
-        repoIds.add(repoId)
+        const repo = reposById.get(repoId)
+        const owner = owners.forWorkspace({
+          repoId,
+          hostId: repo ? getRepoExecutionHostId(repo) : undefined
+        })
+        if (!owner || toAiVaultProjectKey(owner.projectId, repoId) === projectKey) {
+          repoIds.add(repoId)
+        }
       }
     }
   }
@@ -94,7 +105,7 @@ function resolveProjectScope(projectKey: string, catalog: SessionSearchScopeCata
   }
   for (const [worktreeId, meta] of Object.entries(catalog.worktreeMeta)) {
     const repoId = getRepoIdFromWorktreeId(worktreeId)
-    if (toAiVaultProjectKey(meta.projectId ?? null, repoId) === projectKey) {
+    if (toAiVaultProjectKey(owners.projectId({ ...meta, repoId }) ?? null, repoId) === projectKey) {
       repoIds.add(repoId)
     }
   }
