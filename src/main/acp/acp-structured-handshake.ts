@@ -166,7 +166,7 @@ export async function initializeAcpStructuredSession(
   }
   return {
     link,
-    reportedOptions: options.read().current,
+    reportedOptions: options.observedCurrent(spec.permissionModeConfig?.values),
     catalogListing: options.startListing()
   }
 }

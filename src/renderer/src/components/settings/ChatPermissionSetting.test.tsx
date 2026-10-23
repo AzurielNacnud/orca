@@ -145,3 +145,33 @@ it('shows the paired host permission and follows mutations, reconnects and re-pa
   })
   await expectClaude('Approve for me')
 })
+
+it('keeps the Agents link disabled until host support is known', () => {
+  mocks.capability = 'unknown'
+  const element = (
+    <TooltipProvider>
+      <ChatPermissionSetting
+        settings={getDefaultSettings('/tmp')}
+        updateSettings={vi.fn()}
+        forceVisible
+      />
+    </TooltipProvider>
+  )
+  const view = render(element)
+  expect(screen.getByRole('button', { name: 'Settings → Agents' }).hasAttribute('disabled')).toBe(
+    true
+  )
+  mocks.capability = 'supported'
+  view.rerender(
+    <TooltipProvider>
+      <ChatPermissionSetting
+        settings={getDefaultSettings('/tmp')}
+        updateSettings={vi.fn()}
+        forceVisible
+      />
+    </TooltipProvider>
+  )
+  expect(screen.getByRole('button', { name: 'Settings → Agents' }).hasAttribute('disabled')).toBe(
+    false
+  )
+})

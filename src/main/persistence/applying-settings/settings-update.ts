@@ -82,9 +82,6 @@ export function updateSettings(
       nestedWorkerMaxDepth: updates.nestedWorkerMaxDepth
     })
   }
-  if ('nativeChatPermissionMode' in updates) {
-    Object.assign(sanitizedUpdates, legacyChatPermissionWrite(updates.nativeChatPermissionMode))
-  }
   if ('nativeChatAppearance' in updates) {
     sanitizedUpdates.nativeChatAppearance = normalizeNativeChatAppearanceSettings(
       updates.nativeChatAppearance
@@ -107,6 +104,12 @@ export function updateSettings(
     }
   }
   sanitizeAgentLaunchProfileUpdates(sanitizedUpdates, updates)
+  if ('nativeChatPermissionMode' in updates || 'agentPermissionDefault' in updates) {
+    Object.assign(
+      sanitizedUpdates,
+      legacyChatPermissionWrite(operations.state.settings, sanitizedUpdates)
+    )
+  }
   if ('terminalQuickCommands' in updates) {
     const terminalQuickCommands = normalizeTerminalQuickCommands(updates.terminalQuickCommands)
     // Every local and paired save lands here, so this is where an unstorable list is refused.

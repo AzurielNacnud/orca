@@ -60,6 +60,7 @@ export function useMobileStructuredAgentOptions(args: {
     [sessionId]
   )
   const {
+    projectPermission,
     optionState,
     optionStateRef,
     activeOptionRecordRef,
@@ -116,10 +117,12 @@ export function useMobileStructuredAgentOptions(args: {
     lockSnapshotRef.current = lockSnapshot
   })
   const shown = lockSnapshot(
-    structuredAgentSessionShownSnapshot({
-      ...optionState,
-      permissionOwnSupported: hostSupport?.permissionOwn === true
-    })
+    structuredAgentSessionShownSnapshot(
+      projectPermission({
+        ...optionState,
+        permissionOwnSupported: hostSupport ? hostSupport.permissionOwn === true : null
+      })
+    )
   )
   const optionSnapshot = legacyHostPermissions
     ? [...shown, legacyHostPermissionDescriptor()]
@@ -127,10 +130,10 @@ export function useMobileStructuredAgentOptions(args: {
 
   const setStructuredOption = useCallback(
     async (id: string, value: SessionOptionValue): Promise<boolean> => {
-      const currentState = {
+      const currentState = projectPermission({
         ...optionStateRef.current,
-        permissionOwnSupported: hostSupport?.permissionOwn === true
-      }
+        permissionOwnSupported: hostSupport ? hostSupport.permissionOwn === true : null
+      })
       const encoded = encodeStructuredAgentSessionOptionValue(id, value)
       if (
         (id === AGENT_CHAT_PERMISSION_MODE_OPTION_ID &&
@@ -233,6 +236,7 @@ export function useMobileStructuredAgentOptions(args: {
       agent,
       awaitingOptions,
       hostSupport?.permissionOwn,
+      projectPermission,
       client,
       createdHere,
       mutate,
@@ -255,6 +259,7 @@ export function useMobileStructuredAgentOptions(args: {
       demandModelCatalog,
       setStructuredOption,
       optionStateRef,
+      projectPermission,
       lockSnapshot: (snapshot) => lockSnapshotRef.current(snapshot)
     })
 

@@ -31,6 +31,43 @@ vi.mock('../agent-hooks/managed-agent-hook-controls', () => ({
 }))
 
 describe('durable execution-host launch settings', () => {
+  it('maps an old dropdown through the all-agents reset, persists it and publishes typed precedence', async () => {
+    const { store, readState } = await fixture()
+    const controller = new RuntimeClientSettingsController(store)
+    await controller.mutateAgentLaunch({
+      type: 'permission',
+      agent: 'claude',
+      choice: 'full-access'
+    })
+    await controller.update({ nativeChatPermissionMode: 'ask' })
+    await store.flushPendingOrThrowAsync()
+    expect(readState().settings).toMatchObject({
+      agentPermissionDefault: 'ask',
+      agentPermissionOverrides: {}
+    })
+    expect(controller.get().nativeChatPermissionMode).toBe('ask')
+    expect(resolveTuiAgentLaunchArgs('claude', store.getSettings())).toBe(
+      '--permission-mode default'
+    )
+    expect(newChatPermissionModeForSettings('claude', store.getSettings())).toBe('ask')
+    store.updateSettings({ nativeChatPermissionMode: 'full-access', agentPermissionDefault: 'own' })
+    await store.flushPendingOrThrowAsync()
+    const saved = readState()
+    expect(saved.settings.agentPermissionDefault).toBe('own')
+    const reloaded = new Store({
+      serializedState: JSON.stringify(saved),
+      dataFile: join(saved.settings.workspaceDir, 'legacy-permission-reload.json')
+    })
+    try {
+      expect(new RuntimeClientSettingsController(reloaded).get().nativeChatPermissionMode).toBe(
+        'ask'
+      )
+      expect(newChatPermissionModeForSettings('claude', reloaded.getSettings())).toBe('own')
+    } finally {
+      await reloaded.freezeWritesAsync()
+    }
+  })
+
   it('persists host carrier edits and reloads the same terminal and new-chat intent', async () => {
     const { store, readState } = await fixture()
     const controller = new RuntimeClientSettingsController(store)
@@ -344,7 +381,7 @@ describe('durable execution-host launch settings', () => {
     expect(store.getSettings().nativeChatPermissionMode).toBe(before)
     expect(readState().settings.nativeChatPermissionMode).toBe(before)
     await controller.mutateAgentLaunch({ type: 'permissions', syncNativeChat: true, mode: 'auto' })
-    expect(readState().settings.nativeChatPermissionMode).toBe(before)
+    expect(readState().settings.nativeChatPermissionMode).toBe('auto')
     expect(readState().settings).not.toHaveProperty('agentNativeChatPermissionModes')
   })
 

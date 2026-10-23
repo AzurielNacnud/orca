@@ -45,7 +45,10 @@ describe('the permission mode picker', () => {
     expect(permission(pr1)?.kind).toMatchObject({
       choices: expect.not.arrayContaining([expect.objectContaining({ value: 'own' })])
     })
+    expect(permission({ ...pr1, permissionOwnSupported: null })?.settable).toBe(false)
+    expect(permission({ ...pr1, permissionOwnSupported: false })?.settable).toBe(true)
     const capable = { ...pr1, permissionOwnSupported: true }
+    expect(permission(capable)?.settable).toBe(true)
     expect(permission(capable)?.kind).toMatchObject({
       choices: expect.arrayContaining([
         expect.objectContaining({ value: 'own', label: "Codex's own settings" })

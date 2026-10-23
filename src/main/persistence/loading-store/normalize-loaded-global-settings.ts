@@ -9,7 +9,7 @@ import { normalizeTerminalCustomThemes } from '../../../shared/terminal-custom-t
 import { normalizeTerminalDefaultShell } from '../../../shared/terminal-default-shell'
 import { projectSourceControlAiToLegacyCommitMessageAi } from '../../../shared/source-control-ai'
 import { normalizeNativeChatShellEnvironmentVariables } from '../../../shared/native-chat-shell-environment'
-import { isAgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
+import { publishedLegacyChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
 import {
   savedChatUiWithTerminalDefaultView,
   stripRetiredGlobalSettings
@@ -138,9 +138,10 @@ export function normalizeLoadedGlobalSettings(
       parsed.settings?.nativeChatShellEnvironmentVariables
     ),
     // Old clients identify hosts with per-chat permissions through this valid value.
-    nativeChatPermissionMode: isAgentChatPermissionMode(parsed.settings?.nativeChatPermissionMode)
-      ? parsed.settings.nativeChatPermissionMode
-      : 'ask',
+    nativeChatPermissionMode: publishedLegacyChatPermissionMode({
+      ...parsed.settings,
+      ...migratedAgentYoloDefaults
+    }),
     defaultTaskSource: taskProviderSettings.defaultTaskSource,
     visibleTaskProviders: taskProviderSettings.visibleTaskProviders,
     visibleTaskProvidersDefaultedForJira: true,

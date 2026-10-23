@@ -7,7 +7,6 @@ import { prepareLoadedTerminalSettings } from './prepare-loaded-terminal-setting
 import { prepareLoadedProfileSettings } from './prepare-loaded-profile-settings'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
 import type { PersistedState } from '../../../shared/persisted-state-types'
-import { applyAgentPermissionMode } from '../../../shared/tui-agent-permissions'
 
 // Simulates a profile created before the dedicated Experimental switch was persisted.
 function normalizeLegacyProfile(overrides: Record<string, unknown>): PersistedState['settings'] {
@@ -139,31 +138,6 @@ describe('chat appearance settings', () => {
         nativeChatAppearance: { fontSize: 14, codeFontSize: 12, width: 'comfortable' }
       }).nativeChatAppearance
     ).toBeUndefined()
-  })
-})
-
-describe('the new-chat permission setting', () => {
-  it.each([
-    ['manual', 'ask'],
-    ['yolo', 'ask']
-  ] as const)(
-    'keeps a valid legacy marker without re-deriving it from %s arguments',
-    (mode, expected) => {
-      const normalized = normalizeLegacyProfile({
-        nativeChatPermissionMode: undefined,
-        ...applyAgentPermissionMode({ mode })
-      })
-      expect(normalized.nativeChatPermissionMode).toBe(expected)
-    }
-  )
-
-  // Seeded once: after the next save the setting is the user's, not a mirror of Agent Permissions.
-  it('keeps a saved value when Agent Permissions change afterwards', () => {
-    const normalized = normalizeLegacyProfile({
-      nativeChatPermissionMode: 'ask',
-      ...applyAgentPermissionMode({ mode: 'yolo' })
-    })
-    expect(normalized.nativeChatPermissionMode).toBe('ask')
   })
 })
 

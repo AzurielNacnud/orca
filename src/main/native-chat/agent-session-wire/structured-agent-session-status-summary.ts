@@ -1,3 +1,4 @@
+import { structuredAgentSessionRuntimePermission } from './structured-agent-session-ran-options'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import { normalizeOptionalField } from '../../../shared/agent-status-field-normalization'
@@ -59,6 +60,8 @@ export function structuredAgentSessionStatusSummary({
       : {}),
     ...(session.restartResume ? { restartResume: { phase: session.restartResume.phase } } : {}),
     ...projected,
+    runtimePermission:
+      permissionMode === 'own' ? structuredAgentSessionRuntimePermission(session.child) : null,
     // Only a working session is still being stopped; any other status already ended that work.
     ...(stopping && projected.status === 'working' ? { stopping: true as const } : {}),
     ...(record?.rewind?.phase === 'prepared' || record?.rewind?.phase === 'provider-succeeded'

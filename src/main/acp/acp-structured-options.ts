@@ -216,6 +216,10 @@ export class AcpStructuredOptions {
     }
   }
 
+  observedCurrent(values?: Readonly<Partial<Record<string, string>>>) {
+    return { ...this.read().current, reportedPermissionMode: this.reportedPermissionMode(values) }
+  }
+
   reportedPermissionMode(
     values: Readonly<Partial<Record<string, string>>> | undefined
   ): string | null {
@@ -257,10 +261,7 @@ export async function readAcpLiveOptions(
   const options = withLiveCatalogListing(session.options.read())
   return {
     ...options,
-    current: {
-      ...options.current,
-      reportedPermissionMode: session.options.reportedPermissionMode(permissionModes)
-    },
+    current: session.options.observedCurrent(permissionModes),
     acceptsImages
   }
 }

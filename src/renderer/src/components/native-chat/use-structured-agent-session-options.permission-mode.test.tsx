@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({ call: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: mocks.call
+  callStructuredAgentSession: mocks.call,
+  subscribeStructuredAgentSessionStatus: vi.fn(async () => ({ unsubscribe: vi.fn() }))
 }))
 
 vi.mock('./native-chat-session-option-settings-write', () => ({
@@ -74,6 +75,7 @@ function renderReopened(fence: number, agent: 'codex' | 'claude' = 'codex') {
 
 describe('the permission mode another device picks', () => {
   beforeEach(() => {
+    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_PERMISSION_MODES_RUNTIME_CAPABILITY])
     mocks.call.mockReset()
     resetHostModelCatalogSnapshotsForTests()
   })
@@ -134,6 +136,7 @@ describe('the permission mode another device picks', () => {
 
 describe('a permission pick on this device', () => {
   beforeEach(() => {
+    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_PERMISSION_MODES_RUNTIME_CAPABILITY])
     mocks.call.mockReset()
     vi.mocked(mutate).mockReset()
     resetHostModelCatalogSnapshotsForTests()

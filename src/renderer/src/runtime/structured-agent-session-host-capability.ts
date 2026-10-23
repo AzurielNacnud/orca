@@ -1,5 +1,6 @@
 import { AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY } from '../../../shared/agent-session-permission-modes-capability'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useAppStore } from '@/store'
 import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
@@ -12,66 +13,51 @@ import {
 import type { RuntimeClientTarget } from '../../../shared/runtime-client-target'
 import {
   ensureLocalRuntimeCapabilities,
-  readLocalRuntimeCapabilitiesOrUnknown
+  readLocalRuntimeCapabilitiesOrUnknown,
+  subscribeLocalRuntimeCapabilityObservation
 } from './local-runtime-capabilities'
-import { runtimeEnvironmentSupportsCapability } from './runtime-rpc-client'
-import { subscribeRuntimeHostContactRegained } from './runtime-host-contact-regained'
+import {
+  isRuntimeHostContactRevoked,
+  lastVerifiedRuntimeStatus
+} from '../../../shared/runtime-host-status'
 
 export function structuredAgentSessionHostKey(target: RuntimeClientTarget): string {
   return target.kind === 'local' ? 'local' : `environment:${target.environmentId}`
 }
 
-/** `unknown` until the host has answered, and after a failed probe: a failed probe is not
- *  evidence about the host. */
+/** Unknown before verification or after revocation; a contact outage retains the known build. */
 export type StructuredAgentSessionHostCapabilityState = 'unknown' | 'supported' | 'unsupported'
 
-/** Whether the session's host advertises `capability`. A failed probe stays `unknown` and a remote
- *  host is asked again each time this client regains contact with it. */
+/** Displays the existing host status; connection lifecycle owns probing. */
 export function useStructuredAgentSessionHostCapabilityState(
   target: RuntimeClientTarget | null,
   capability: RuntimeCapability
 ): StructuredAgentSessionHostCapabilityState {
-  const key = target ? structuredAgentSessionHostKey(target) : null
-  const [answer, setAnswer] = useState<{
-    key: string | null
-    state: StructuredAgentSessionHostCapabilityState
-  }>(() => ({
-    key,
-    state: target?.kind === 'local' ? localCapabilityState(capability) : 'unknown'
-  }))
   const environmentId = target?.kind === 'environment' ? target.environmentId : null
-  const [contact, setContact] = useState(0)
-  useEffect(() => {
+  const statuses = useAppStore((state) => state.runtimeStatusByEnvironmentId)
+  const remote = useMemo((): StructuredAgentSessionHostCapabilityState => {
     if (environmentId === null) {
-      return
+      return 'unknown'
     }
-    return subscribeRuntimeHostContactRegained(environmentId, () => setContact((n) => n + 1))
-  }, [environmentId])
+    const entry = statuses.get(environmentId)
+    const status = isRuntimeHostContactRevoked(entry) ? null : lastVerifiedRuntimeStatus(entry)
+    return status
+      ? status.capabilities?.includes(capability)
+        ? 'supported'
+        : 'unsupported'
+      : 'unknown'
+  }, [statuses, environmentId, capability])
+  const local = useSyncExternalStore(
+    subscribeLocalRuntimeCapabilityObservation,
+    () => localCapabilityState(capability),
+    () => 'unknown' as const
+  )
   useEffect(() => {
-    if (key === null) {
-      return
+    if (target?.kind === 'local') {
+      void ensureLocalRuntimeCapabilities()
     }
-    let cancelled = false
-    const probe: Promise<StructuredAgentSessionHostCapabilityState> =
-      environmentId === null
-        ? ensureLocalRuntimeCapabilities().then(() => localCapabilityState(capability))
-        : runtimeEnvironmentSupportsCapability(environmentId, capability).then((supported) =>
-            supported ? 'supported' : 'unsupported'
-          )
-    void probe
-      .catch((): StructuredAgentSessionHostCapabilityState => 'unknown')
-      .then((state) => {
-        if (!cancelled) {
-          setAnswer((current) =>
-            current.key === key && current.state === state ? current : { key, state }
-          )
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [capability, contact, environmentId, key])
-  return answer.key === key ? answer.state : 'unknown'
+  }, [target?.kind])
+  return !target ? 'unknown' : environmentId === null ? local : remote
 }
 
 function localCapabilityState(

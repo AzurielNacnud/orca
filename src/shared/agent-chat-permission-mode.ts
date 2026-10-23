@@ -127,6 +127,16 @@ export function newChatPermissionMode(
 export type NewChatPermissionSettings = AgentPermissionSettings &
   Partial<Pick<GlobalSettings, 'nativeChatPermissionMode'>>
 
+/** The four-mode value shipped clients understand; delegation has no legacy representation. */
+export function publishedLegacyChatPermissionMode(
+  settings: NewChatPermissionSettings
+): AgentChatPermissionMode {
+  const choice = hasTypedAgentPermission(settings)
+    ? settings.agentPermissionDefault
+    : settings.nativeChatPermissionMode
+  return isAgentChatPermissionMode(choice) ? choice : 'ask'
+}
+
 /** New chats use the same permission as the agent's terminals. */
 export function newChatPermissionModeForSettings(
   agent: string,

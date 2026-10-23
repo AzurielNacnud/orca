@@ -122,16 +122,3 @@ describe('updateSettings terminalMinimumContrastRatio', () => {
     )
   })
 })
-
-describe('legacy chat permission marker', () => {
-  it('retains valid values and refuses unknown modes without adding another chat default', () => {
-    const operations = settingsOperations({ nativeChatPermissionMode: 'full-access' })
-    expect(
-      updateSettings(operations, { nativeChatPermissionMode: 'ask' }).nativeChatPermissionMode
-    ).toBe('ask')
-    expect(
-      updateSettings(operations, { nativeChatPermissionMode: 'full-access' })
-        .nativeChatPermissionMode
-    ).toBe('full-access')
-  })
-})

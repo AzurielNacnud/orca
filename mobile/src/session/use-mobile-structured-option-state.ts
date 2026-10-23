@@ -1,3 +1,6 @@
+import { useSyncExternalStore, useMemo } from 'react'
+import { mobileStructuredSessionStatusFeed } from './mobile-structured-session-status-feed'
+import { projectRuntimePermission } from '../../../src/shared/structured-agent-session-permission-option'
 import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
 import type {
   AgentSessionOptionsResult,
@@ -43,6 +46,16 @@ export function useMobileStructuredOptionState(args: {
     worktree,
     coherentCatalog: hostCoherentCatalog = false
   } = args
+  const feed = useMemo(() => (client ? mobileStructuredSessionStatusFeed(client) : null), [client])
+  const summary = useSyncExternalStore(feed?.subscribe ?? (() => () => {}), () =>
+    sessionId ? feed?.getSnapshot().get(sessionId) : undefined
+  )
+  const connected = useSyncExternalStore(
+    client?.onStateChange ?? (() => () => {}),
+    () => client?.getState() === 'connected'
+  )
+  const projectPermission = <T extends { reportedPermissionMode?: string | null }>(state: T): T =>
+    projectRuntimePermission(state, summary, fence)
   const coherentCatalog = usesInstalledAgentModelCatalog(agent ?? '', hostCoherentCatalog)
   const [optionState, setOptionState] = useState(() =>
     createStructuredAgentSessionOptionState(agent ?? 'codex', optionCatalog)
@@ -59,7 +72,7 @@ export function useMobileStructuredOptionState(args: {
     },
     []
   )
-  const contextKey = JSON.stringify([agent, sessionId, newLaunch, worktree, fence])
+  const contextKey = JSON.stringify([agent, sessionId, newLaunch, worktree, fence, connected])
   const contextRef = useRef({ key: contextKey, client })
   useEffect(() => {
     contextRef.current = { key: contextKey, client }
@@ -194,6 +207,7 @@ export function useMobileStructuredOptionState(args: {
   ])
 
   return {
+    projectPermission,
     conversationSupport,
     imageSupport,
     awaitingOptions,

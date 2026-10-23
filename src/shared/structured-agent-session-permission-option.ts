@@ -73,7 +73,7 @@ export function structuredAgentSessionPermissionDescriptor(state: {
   record: StructuredAgentSessionOptionRecord
   permissionMode: string | null
   pendingId?: string | null
-  permissionOwnSupported?: boolean
+  permissionOwnSupported?: boolean | null
   reportedPermissionMode?: string | null
 }): SessionOptionDescriptor | null {
   const support = agentChatPermissionModes(state.record.agent)
@@ -120,7 +120,8 @@ export function structuredAgentSessionPermissionDescriptor(state: {
     },
     valueSource: 'applied',
     transport: 'agent-session',
-    settable: !own || state.reportedPermissionMode !== undefined
+    settable:
+      state.permissionOwnSupported !== null && (!own || state.reportedPermissionMode !== undefined)
   }
 }
 
@@ -149,4 +150,27 @@ export function legacyHostPermissionDescriptor(): SessionOptionDescriptor {
     transport: 'agent-session',
     settable: false
   }
+}
+
+/** Absent producers retain options fallback; present evidence owns the description, even cleared. */
+export function projectRuntimePermission<T extends { reportedPermissionMode?: string | null }>(
+  state: T,
+  summary: unknown,
+  fence: number | null
+): T {
+  if (typeof summary !== 'object' || summary === null || !('runtimePermission' in summary)) {
+    return state
+  }
+  const report = summary.runtimePermission
+  const valid =
+    typeof report === 'object' &&
+    report !== null &&
+    'fence' in report &&
+    Number.isSafeInteger(report.fence) &&
+    typeof report.fence === 'number' &&
+    report.fence >= 0 &&
+    report.fence === fence &&
+    'mode' in report &&
+    (report.mode === null || typeof report.mode === 'string')
+  return { ...state, reportedPermissionMode: valid ? report.mode : undefined }
 }

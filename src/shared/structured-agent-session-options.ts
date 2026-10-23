@@ -66,7 +66,7 @@ export type StructuredAgentSessionOptionState = {
   /** The permission mode the host or launch last stated; null shows no picker. */
   permissionMode: string | null
   reportedPermissionMode?: string | null
-  permissionOwnSupported?: boolean
+  permissionOwnSupported?: boolean | null
   pendingId: string | null
   listingInProgress?: boolean
   fastModeRestricted?: boolean
