@@ -38,6 +38,7 @@ async function wiredSession() {
       const item = run.journalItems.get(itemId)
       return item ? { ...item, revision: 1, observedAt: run.now() } : null
     },
+    context: { floor: () => null },
     // No Stop was ever pressed here.
     stopMarks: { latest: () => null, revision: () => 0 },
     // One generation produced everything here, and every send was accepted by this process.
@@ -58,7 +59,7 @@ async function wiredSession() {
       [
         parent.sessionId,
         {
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture supplies the feed's cursor, clock, Stop marks, snapshot, submissions, item and provenance reads.
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture supplies the feed's cursor, clock, Stop marks, context floor, snapshot, submissions, item and provenance reads.
           journal: journal as unknown as Journal,
           params: {
             location: {

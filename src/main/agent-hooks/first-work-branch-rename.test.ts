@@ -102,9 +102,10 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       // A real journal's sequence only ever advances, so the feed's projection
       // cache must miss on every publish here: this test is about the rename.
       let sequence = 0
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only cursor(), lastActivityAt(), stopMarks, snapshot(), the provenance reads and runningTurn() of a journal.
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only cursor(), lastActivityAt(), stopMarks, context.floor(), snapshot(), the provenance reads and runningTurn() of a journal.
       const journal = {
         snapshot: () => ({ items, submissions: [] }),
+        context: { floor: () => null },
         stopMarks: { latest: () => null, revision: () => 0 },
         lastActivityAt: () => 1,
         cursor: () => ({ epoch: 1, sequence: (sequence += 1) }),
@@ -194,9 +195,10 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     const { deps, setDisplayName, setRenameError } = makeDeps({
       getRepo: () => ({ id: REPO_ID, kind: 'folder', path: '/workspace/platform' }) as Repo
     })
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only cursor(), lastActivityAt(), stopMarks, snapshot(), the provenance reads and runningTurn() of a journal.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only cursor(), lastActivityAt(), stopMarks, context.floor(), snapshot(), the provenance reads and runningTurn() of a journal.
     const journal = {
       lastActivityAt: () => 1,
+      context: { floor: () => null },
       stopMarks: { latest: () => null, revision: () => 0 },
       cursor: () => ({ epoch: 1, sequence: 1 }),
       snapshot: () => ({
