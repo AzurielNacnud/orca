@@ -88,7 +88,11 @@ export async function captureWslMoveRestoreHints(
 }
 
 // The bridge's UNC spelling, or a Linux path from a session known to run in the moved distro.
-export function wslMoveHostLinuxCwd(cwd: string, pane: WslMoveRestoreHintPane, distro: string): string | null {
+export function wslMoveHostLinuxCwd(
+  cwd: string,
+  pane: WslMoveRestoreHintPane,
+  distro: string
+): string | null {
   const fromUnc = wslUncPathToLinux(cwd, distro)
   if (fromUnc) {
     return fromUnc

@@ -193,7 +193,9 @@ export async function readWslMoveSleptScrollbackFromHistory(
       }
       // A checkpoint behind an unreadable log is older than the pane: moving it would lose the rest.
       if (detection.status === 'unreadable' || detection.hasUnreadableRecovery) {
-        problems.push(`saved terminal history Orca could not fully read for the tab ${tabName(leaf.tabId)}`)
+        problems.push(
+          `saved terminal history Orca could not fully read for the tab ${tabName(leaf.tabId)}`
+        )
         continue
       }
       const shellCwd = pane.shellCwd && /^\/(?!\/)/.test(pane.shellCwd) ? pane.shellCwd : null
@@ -208,7 +210,9 @@ export async function readWslMoveSleptScrollbackFromHistory(
       }
       const bytes = Buffer.from(JSON.stringify(document), 'utf8')
       if (bytes.length > MAX_HISTORY_BYTES) {
-        problems.push(`more saved terminal history than one move carries for the tab ${tabName(leaf.tabId)}`)
+        problems.push(
+          `more saved terminal history than one move carries for the tab ${tabName(leaf.tabId)}`
+        )
         continue
       }
       const path = join(spoolRoot, `${index}.json`)

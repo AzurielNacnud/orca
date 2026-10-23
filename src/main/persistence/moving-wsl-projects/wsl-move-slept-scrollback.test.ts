@@ -133,7 +133,9 @@ describe("a paused pane's daemon history", () => {
         detectColdRestoreState: async () =>
           withModes(restored('$ make\r\nok\r\n', 'TUI FRAME'), true)
       },
-      [{ paneKey: PANE_KEY, sessionId: 'pty-1', wslDistro: 'Ubuntu', shellCwd: '/home/me/deep/er' }],
+      [
+        { paneKey: PANE_KEY, sessionId: 'pty-1', wslDistro: 'Ubuntu', shellCwd: '/home/me/deep/er' }
+      ],
       'Ubuntu',
       spoolRoot()
     )
