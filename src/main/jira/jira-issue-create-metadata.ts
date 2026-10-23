@@ -175,7 +175,7 @@ export async function searchUsers(query?: string, siteId?: string | null): Promi
       clearToken(entry.site.id)
       throw error
     }
-    // Browse-users permission is optional; the dialog falls back to a text field.
+    // Browse-users permission is optional; the dialog allows explicit known user IDs.
     console.warn('[jira] searchUsers failed:', error)
     return []
   } finally {

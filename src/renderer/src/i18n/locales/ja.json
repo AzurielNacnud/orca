@@ -3543,12 +3543,15 @@
             "restoring": "ターミナルを復元中…"
           },
           "AgentLaunchPaneNotice": {
-            "commandNotFound": "このマシンでコマンドが見つかりませんでした。",
+            "agent": "Agent",
+            "commandNotFound": "このマシンでコマンドが見つからないため、{{agent}} を起動できませんでした。",
             "copyPrompt": "プロンプトをコピー",
-            "exitedDuringStart": "起動中に終了しました。",
-            "notStarted": "Agent を起動できませんでした。",
-            "unconfirmed": "Agent が起動したか確認できませんでした。",
-            "workspaceGone": "ワークスペースは利用できなくなりました。"
+            "exitedDuringStart": "{{agent}} は起動中に終了しました。",
+            "notStarted": "{{agent}} を起動できませんでした。",
+            "restoreWorkspace": "ワークスペースのフォルダーを復元するか、利用可能なワークスペースを開いてから、もう一度お試しください。",
+            "tryInTerminal": "このフォルダーのターミナルで実行して原因を確認し、再試行してください。",
+            "unconfirmed": "{{agent}} が起動したか確認できませんでした。再試行する前にターミナルを確認してください。",
+            "workspaceGone": "ワークスペースが利用できなくなったため、{{agent}} を起動できませんでした。"
           },
           "TerminalSleepingPaneOverlay": {
             "pausedDetail": "ホストが予期せず停止したため、自動復元は一時停止しています。セッションは保存されています。",
@@ -19713,7 +19716,8 @@
     "jiraUserPicker": {
       "select": "{{value0}} を選択してください",
       "search": "ユーザーを検索する",
-      "empty": "ユーザーが見つかりませんでした"
+      "empty": "ユーザーが見つかりませんでした",
+      "useKnownId": "既知のユーザー ID「{{value0}}」を使用"
     },
     "status": {
       "bar": {

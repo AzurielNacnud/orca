@@ -15701,12 +15701,15 @@
             "restoring": "Restaurando terminal…"
           },
           "AgentLaunchPaneNotice": {
-            "commandNotFound": "O comando dele não foi encontrado nesta máquina.",
+            "agent": "O agente",
+            "commandNotFound": "Não foi possível iniciar {{agent}} porque seu comando não foi encontrado neste computador.",
             "copyPrompt": "Copiar prompt",
-            "exitedDuringStart": "Ele encerrou durante a inicialização.",
-            "notStarted": "Não foi possível iniciar o agente.",
-            "unconfirmed": "Não foi possível confirmar que o agente iniciou.",
-            "workspaceGone": "O espaço de trabalho dele não está mais disponível."
+            "exitedDuringStart": "{{agent}} foi encerrado durante a inicialização.",
+            "notStarted": "Não foi possível iniciar {{agent}}.",
+            "restoreWorkspace": "Restaure a pasta do espaço de trabalho ou abra um espaço de trabalho disponível e tente novamente.",
+            "tryInTerminal": "Execute-o em um terminal nesta pasta para descobrir o motivo e tente novamente.",
+            "unconfirmed": "Não foi possível confirmar que {{agent}} iniciou. Verifique seu terminal antes de tentar novamente.",
+            "workspaceGone": "Não foi possível iniciar {{agent}} porque seu espaço de trabalho não está mais disponível."
           },
           "TerminalSleepingPaneOverlay": {
             "pausedDetail": "As restaurações automáticas estão pausadas porque o host parou inesperadamente. Sua sessão está salva.",
@@ -19109,7 +19112,8 @@
     "jiraUserPicker": {
       "select": "Selecionar {{value0}}",
       "search": "Pesquisar usuários",
-      "empty": "Nenhum usuário encontrado"
+      "empty": "Nenhum usuário encontrado",
+      "useKnownId": "Usar o ID de usuário conhecido \"{{value0}}\""
     },
     "native-chat": {
       "taskList": {

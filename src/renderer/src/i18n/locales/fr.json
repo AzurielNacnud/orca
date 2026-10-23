@@ -3702,12 +3702,15 @@
             "restoring": "Restauration du terminal…"
           },
           "AgentLaunchPaneNotice": {
-            "commandNotFound": "Sa commande est introuvable sur cette machine.",
+            "agent": "L’agent",
+            "commandNotFound": "{{agent}} n’a pas pu démarrer car sa commande est introuvable sur cet ordinateur.",
             "copyPrompt": "Copier le prompt",
-            "exitedDuringStart": "Il s'est arrêté pendant le démarrage.",
-            "notStarted": "L'agent n'a pas pu démarrer.",
-            "unconfirmed": "Impossible de confirmer que l'agent a démarré.",
-            "workspaceGone": "Son espace de travail n'est plus disponible."
+            "exitedDuringStart": "{{agent}} s’est arrêté pendant le démarrage.",
+            "notStarted": "{{agent}} n’a pas pu démarrer.",
+            "restoreWorkspace": "Restaurez le dossier de l’espace de travail ou ouvrez un espace de travail disponible, puis réessayez.",
+            "tryInTerminal": "Lancez-le dans un terminal dans ce dossier pour en connaître la raison, puis réessayez.",
+            "unconfirmed": "Impossible de confirmer le démarrage de {{agent}}. Vérifiez son terminal avant de réessayer.",
+            "workspaceGone": "{{agent}} n’a pas pu démarrer car son espace de travail n’est plus disponible."
           },
           "TerminalSleepingPaneOverlay": {
             "pausedDetail": "Les restaurations automatiques sont en pause car l'hôte s'est arrêté de façon inattendue. Votre session est enregistrée.",
@@ -19862,7 +19865,8 @@
     "jiraUserPicker": {
       "select": "Sélectionnez {{value0}}",
       "search": "Rechercher des utilisateurs",
-      "empty": "Aucun utilisateur trouvé"
+      "empty": "Aucun utilisateur trouvé",
+      "useKnownId": "Utiliser l’identifiant utilisateur connu « {{value0}} »"
     },
     "terminalPane": {
       "TerminalContextMenu": {

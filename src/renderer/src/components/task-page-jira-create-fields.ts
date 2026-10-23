@@ -83,6 +83,9 @@ export function buildJiraCreateFieldValue(field: JiraCreateField, draftValue: st
   if (!trimmed) {
     return undefined
   }
+  if (isJiraScalarUserCreateField(field)) {
+    return trimmed
+  }
   if (field.schema?.type === 'array') {
     const parts = trimmed
       .split(',')
