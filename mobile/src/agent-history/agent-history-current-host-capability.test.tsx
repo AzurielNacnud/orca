@@ -1,3 +1,4 @@
+import { mobileStructuredSessionStatusFeed } from '../session/mobile-structured-session-status-feed'
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { expect, it, vi } from 'vitest'
@@ -40,9 +41,17 @@ function fakeClient(sendRequest: RpcClient['sendRequest'], generation?: () => nu
   }
 }
 
-it('updates a mounted History card from its client naming feed without another query', async () => {
+it.each([10, 100])('reconciles mounted History with bounded visits over %i rows', async (count) => {
   let emit = (_value: unknown): void => {}
+  const nameEvent = (conversationName: string | null, sessionId = `host-session-${count - 1}`) =>
+    emit({
+      type: 'snapshot',
+      sessions: [],
+      namingActiveSessionIds: [],
+      conversationNames: [{ sessionId, conversationName }]
+    })
   let retired = false
+  let visits = 0
   const send = vi.fn<RpcClient['sendRequest']>(async (method) => ({
     id: 'reply',
     ok: true,
@@ -51,21 +60,22 @@ it('updates a mounted History card from its client naming feed without another q
         ? { capabilities: ['aiVault.v1'] }
         : {
             issues: [],
-            sessions: [
-              {
-                id: 'row',
-                agent: 'codex',
-                sessionId: 'provider-id',
-                title: retired ? 'Provider title' : 'Before',
-                cwd: null,
-                modifiedAt: '2026-10-21',
-                previewMessages: [],
-                messageCount: 1,
-                ...(retired
-                  ? {}
-                  : { structuredSession: { sessionId: 'host-session', workspaceId: 'workspace' } })
+            sessions: Array.from({ length: count }, (_, index) => ({
+              id: 'row',
+              agent: 'codex',
+              sessionId: 'provider-id',
+              title: retired ? 'Provider title' : 'Before',
+              cwd: null,
+              modifiedAt: '2026-10-21',
+              previewMessages: [],
+              messageCount: 1,
+              get structuredSession() {
+                visits++
+                return this.title === 'Provider title'
+                  ? undefined
+                  : { sessionId: `host-session-${index}`, workspaceId: 'workspace' }
               }
-            ]
+            }))
           }
   }))
   const subscribe = vi.fn<RpcClient['subscribe']>((_method, _params, listener) => {
@@ -76,14 +86,16 @@ it('updates a mounted History card from its client naming feed without another q
   connection.state = 'connected'
   const worktrees: Worktree[] = []
   let hostId = 'host'
+  let history: MobileAgentHistoryState | null = null
   function Card() {
-    const { screenState } = useMobileAgentHistoryState({
+    history = useMobileAgentHistoryState({
       hostId,
       worktreeId: 'workspace',
       worktrees,
       worktreesLoaded: true
     })
-    const session = screenState.kind === 'ready' ? screenState.sessions[0] : null
+    const { screenState } = history
+    const session = screenState.kind === 'ready' ? screenState.sessions.at(-1) : null
     return createElement(
       'span',
       null,
@@ -97,34 +109,51 @@ it('updates a mounted History card from its client naming feed without another q
   try {
     expect(JSON.stringify(tree?.toJSON())).toContain('Before')
     await act(async () => {
-      emit({
-        type: 'snapshot',
-        sessions: [],
-        namingActiveSessionIds: [],
-        conversationNames: [{ sessionId: 'host-session', conversationName: 'After' }]
-      })
+      nameEvent('After')
     })
     expect(JSON.stringify(tree?.toJSON())).toContain('After')
     expect(send).toHaveBeenCalledTimes(2)
     expect(subscribe).toHaveBeenCalledOnce()
+    const feed = mobileStructuredSessionStatusFeed(connection.client)
+    const previous = vi.spyOn(feed.getNamingSnapshot(), 'get')
+    visits = 0
+    await act(async () => nameEvent('After'))
+    expect(visits).toBe(0)
+    expect(send).toHaveBeenCalledTimes(2)
+    previous.mockClear()
+    await act(async () => nameEvent('Unrelated', 'unrelated'))
+    expect(previous.mock.calls.filter(([id]) => id.startsWith('host-session-'))).toHaveLength(count)
+    expect(visits - count - 1).toBe(count) // Final projection, separate from effect and named-row copy.
+    expect(send).toHaveBeenCalledTimes(2)
+    visits = 0
     retired = true
-    await act(async () =>
-      emit({
-        type: 'snapshot',
-        sessions: [],
-        conversationNames: [{ sessionId: 'host-session', conversationName: null }]
-      })
-    )
+    await act(async () => nameEvent(null))
     expect(JSON.stringify(tree?.toJSON())).toContain('Provider title')
     expect(send).toHaveBeenCalledTimes(4)
-    await act(async () =>
-      emit({
-        type: 'snapshot',
-        sessions: [],
-        conversationNames: [{ sessionId: 'host-session', conversationName: null }]
-      })
-    )
+    expect(visits).toBe(4 * count)
+    visits = 0
+    await act(async () => nameEvent(null))
     expect(send).toHaveBeenCalledTimes(4)
+    expect(visits).toBe(0)
+    const statusCalls = () => send.mock.calls.filter(([method]) => method === 'status.get').length
+    const listCalls = () =>
+      send.mock.calls.filter(([method]) => method === 'aiVault.listSessions').length
+    expect([statusCalls(), listCalls()]).toEqual([2, 2])
+    const oldScope = Promise.withResolvers<RpcResponse>()
+    send.mockImplementationOnce(async () => ({
+      id: 'status',
+      ok: true,
+      result: { capabilities: ['aiVault.v1'] }
+    }))
+    send.mockImplementationOnce(() => oldScope.promise)
+    await act(async () => history?.onSelectScope('all'))
+    await act(async () => history?.onSelectScope('workspace'))
+    expect([statusCalls(), listCalls()]).toEqual([4, 4])
+    const currentView = JSON.stringify(tree?.toJSON())
+    await act(async () =>
+      oldScope.resolve({ id: 'late', ok: true, result: { issues: [], sessions: [] } })
+    )
+    expect(JSON.stringify(tree?.toJSON())).toBe(currentView)
     connection.client = {
       ...fakeClient(async (method) =>
         method === 'status.get'
@@ -135,18 +164,16 @@ it('updates a mounted History card from its client naming feed without another q
     }
     hostId = 'host-b'
     await act(async () => tree?.update(createElement(Card)))
-    await act(async () =>
-      emit({
-        type: 'snapshot',
-        sessions: [],
-        namingActiveSessionIds: [],
-        conversationNames: [{ sessionId: 'host-session', conversationName: 'Other host' }]
-      })
-    )
+    await act(async () => nameEvent('Other host'))
     expect(JSON.stringify(tree?.toJSON())).toContain('Provider title')
     expect(JSON.stringify(tree?.toJSON())).not.toContain('Other host')
   } finally {
     await act(async () => tree?.unmount())
+    const before = send.mock.calls.length
+    visits = 0
+    await act(async () => nameEvent('Late name'))
+    expect(visits).toBe(0)
+    expect(send).toHaveBeenCalledTimes(before)
   }
 })
 

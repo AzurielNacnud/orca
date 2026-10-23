@@ -1,3 +1,4 @@
+import { submission as journalSubmission } from '../native-chat/agent-session-wire/structured-agent-session-restart-resume-test-harness'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../shared/constants'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
@@ -61,72 +62,58 @@ describe('structured chat naming runtime', () => {
     'scopes naming prompts with linear visits over %i retained items',
     async (count) => {
       let visits = 0
+      const message: AgentJournalRenderItem = {
+        itemId: 'fresh',
+        sequence: count + 2,
+        revision: 1,
+        observedAt: 200,
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'New task' }] }
+      }
       const items: AgentJournalRenderItem[] = Array.from({ length: count }, (_, index) => ({
+        ...message,
         itemId: `old-${index}`,
         get sequence() {
           visits++
           return index + 1
         },
-        revision: 1,
-        observedAt: 200,
         body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'Old task' }] }
       }))
       items.push(
         {
+          ...message,
           itemId: 'clear',
           sequence: count + 1,
-          revision: 1,
-          observedAt: 200,
           body: {
             kind: 'status',
             text: 'Context cleared',
             contextClear: { operationId: 'clear', afterFence: 1, clearedAt: 200 }
           }
         },
-        {
-          itemId: 'fresh',
-          sequence: count + 2,
-          revision: 1,
-          observedAt: 201,
-          body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'New task' }] }
-        }
+        message
       )
       let submissionVisits = 0
+      const submission: AgentJournalSubmission = {
+        ...journalSubmission('fresh', 'accepted', 'fresh'),
+        acceptedSequence: count + 2,
+        submittedAt: 200
+      }
       const oldSubmissions: AgentJournalSubmission[] = Array.from(
         { length: count },
         (_, index) => ({
+          ...submission,
           clientMessageId: `old-${index}`,
           providerItemId: `old-${index}`,
           get acceptedSequence() {
             submissionVisits++
             return index + 1
-          },
-          fence: 1,
-          payloadFingerprint: 'old',
-          dispatchState: 'accepted',
-          submittedAt: 200,
-          resolvedAt: null,
-          reason: null
+          }
         })
       )
       mocks.journalSnapshot.mockResolvedValue({
         sessionId: 'chat',
         cursor: { epoch: 'epoch', sequence: count + 2 },
         items,
-        submissions: [
-          ...oldSubmissions,
-          {
-            clientMessageId: 'fresh',
-            providerItemId: 'fresh',
-            acceptedSequence: count + 2,
-            fence: 1,
-            payloadFingerprint: 'fresh',
-            dispatchState: 'accepted',
-            submittedAt: 201,
-            resolvedAt: null,
-            reason: null
-          }
-        ]
+        submissions: [...oldSubmissions, submission]
       })
       const { deps } = rig()
       expect(await deps.readFirstPrompt('chat', 100)).toBe('New task')
@@ -154,7 +141,8 @@ describe('structured chat naming runtime', () => {
     expect(mocks.generate).toHaveBeenLastCalledWith(
       { firstPrompt: 'Repair login' },
       expect.objectContaining({ agentId: 'codex' }),
-      { kind: 'local', cwd: '/workspace/folder' }
+      { kind: 'local', cwd: '/workspace/folder' },
+      undefined
     )
     state.settings.sourceControlAi = {
       ...normalizeSourceControlAiSettings(state.settings.sourceControlAi),
@@ -174,7 +162,8 @@ describe('structured chat naming runtime', () => {
         commandInputTemplate: 'Short name for {firstPrompt}',
         agentArgs: '--model haiku'
       }),
-      expect.anything()
+      expect.anything(),
+      undefined
     )
   })
 

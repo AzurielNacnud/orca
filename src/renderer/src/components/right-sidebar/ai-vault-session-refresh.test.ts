@@ -46,27 +46,6 @@ async function fireWindowFocused(): Promise<void> {
   await flushMicrotasks()
 }
 
-const naming = vi.hoisted(() => ({
-  names: new Map<string, { sessionId: string; conversationName: string | null }>(),
-  listeners: new Set<() => void>(),
-  activations: 0
-}))
-vi.mock('@/runtime/structured-agent-session-status-feed', () => ({
-  getStructuredAgentSessionStatusFeed: () => ({
-    getNamingSnapshot: () => naming.names,
-    subscribe: (listener: () => void) => {
-      naming.listeners.add(listener)
-      return () => naming.listeners.delete(listener)
-    },
-    activate: () => {
-      naming.activations++
-      return () => {
-        naming.activations--
-      }
-    }
-  })
-}))
-
 const initialAppState = useAppStore.getInitialState()
 
 describe('isAiVaultScanCancellation', () => {
@@ -209,7 +188,6 @@ function lastCallArgs(): unknown {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  naming.names = new Map()
   listSessionsMock.mockReset().mockResolvedValue(EMPTY_RESULT)
   cancelListSessionsMock.mockReset().mockResolvedValue()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test-only window.api shim
@@ -233,73 +211,6 @@ afterEach(() => {
 })
 
 describe('useAiVaultSessionRefresh refocus behavior', () => {
-  it('reconciles loaded native ownership once when an authoritative name clears', async () => {
-    const row = {
-      ...makeVaultSession(1),
-      executionHostId: 'local' as const,
-      structuredSession: { sessionId: 'chat', workspaceId: 'workspace' },
-      title: 'Old name'
-    }
-    naming.names = new Map([['chat', { sessionId: 'chat', conversationName: 'Old name' }]])
-    listSessionsMock.mockResolvedValueOnce({ ...EMPTY_RESULT, sessions: [row] })
-    await renderHook()
-    await flushMicrotasks()
-    const { structuredSession: _owner, ...historical } = row
-    listSessionsMock.mockResolvedValue({
-      ...EMPTY_RESULT,
-      sessions: [{ ...historical, title: 'Provider title' }]
-    })
-    await act(async () => {
-      naming.names = new Map([['chat', { sessionId: 'chat', conversationName: null }]])
-      naming.listeners.forEach((listener) => listener())
-    })
-    await flushMicrotasks()
-    expect(listSessionsMock).toHaveBeenCalledTimes(2)
-    expect(lastCallArgs()).toMatchObject({ force: undefined })
-    expect(latest?.sessions[0]?.title).toBe('Provider title')
-    expect(latest?.sessions[0]?.structuredSession).toBeUndefined()
-    await act(async () => naming.listeners.forEach((listener) => listener()))
-    expect(listSessionsMock).toHaveBeenCalledTimes(2)
-    act(() => roots.pop()!.unmount())
-    expect(naming.listeners.size).toBe(0)
-    expect(naming.activations).toBe(0)
-    await renderHook()
-    await flushMicrotasks()
-    expect(latest?.sessions[0]?.structuredSession).toBeUndefined()
-    expect(latest?.sessions[0]?.title).toBe('Provider title')
-  })
-
-  it.each([10, 100])('bounds naming-feed owner visits with %i loaded rows', async (count) => {
-    const rows = Array.from({ length: count }, (_, index) => ({
-      ...makeVaultSession(index),
-      executionHostId: 'local' as const,
-      structuredSession: { sessionId: `chat-${index}`, workspaceId: 'workspace' }
-    }))
-    for (const row of rows) {
-      const sessionId = row.structuredSession.sessionId
-      naming.names.set(sessionId, { sessionId, conversationName: 'Old task' })
-    }
-    listSessionsMock.mockResolvedValueOnce({ ...EMPTY_RESULT, sessions: rows })
-    await renderHook()
-    await flushMicrotasks()
-    const previousReads = vi.spyOn(naming.names, 'get')
-    await act(async () => {
-      for (let index = 0; index < 10; index++) {
-        naming.listeners.forEach((listener) => listener())
-      }
-    })
-    expect(previousReads).not.toHaveBeenCalled()
-    const changed = new Map(naming.names)
-    changed.set(`chat-${count - 1}`, { sessionId: `chat-${count - 1}`, conversationName: null })
-    await act(async () => {
-      naming.names = changed
-      naming.listeners.forEach((listener) => listener())
-    })
-    await flushMicrotasks()
-    expect(previousReads).toHaveBeenCalledTimes(count)
-    expect(listSessionsMock).toHaveBeenCalledTimes(2)
-  })
-
   it('uses the shared scan cache on local panel entry', async () => {
     await renderHook()
     await flushMicrotasks()

@@ -48,7 +48,7 @@ export function structuredChatNamingDeps(
         : ''
     },
     workerTaskTitle: runtime.workerTaskTitle,
-    generate: async (record, firstPrompt) => {
+    generate: async (record, firstPrompt, shouldExecute) => {
       // Unsupported execution contexts keep the seed regardless of native naming settings.
       if (record.location.wslDistro !== null) {
         return null
@@ -77,7 +77,8 @@ export function structuredChatNamingDeps(
       const result = await generateConversationNameFromContext(
         { firstPrompt },
         settings.params,
-        target
+        target,
+        shouldExecute
       )
       if (result.success) {
         return { name: result.name }

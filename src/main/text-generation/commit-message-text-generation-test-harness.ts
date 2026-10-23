@@ -1,23 +1,17 @@
-import { EventEmitter } from 'node:events'
+import { ChildProcess } from 'node:child_process'
+import { PassThrough } from 'node:stream'
 import { expect, vi } from 'vitest'
 
-export type MockDiscoveryChild = EventEmitter & {
-  pid: number
-  kill: ReturnType<typeof vi.fn>
-  stdout: EventEmitter
-  stderr: EventEmitter
-  stdin: { end: ReturnType<typeof vi.fn> }
+export function createMockDiscoveryChild() {
+  return Object.assign(new ChildProcess(), {
+    pid: 123,
+    kill: vi.fn(() => true),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    stdin: Object.assign(new PassThrough(), { end: vi.fn() })
+  })
 }
-
-export function createMockDiscoveryChild(): MockDiscoveryChild {
-  const child = new EventEmitter() as MockDiscoveryChild
-  child.pid = 123
-  child.kill = vi.fn()
-  child.stdout = new EventEmitter()
-  child.stderr = new EventEmitter()
-  child.stdin = { end: vi.fn() }
-  return child
-}
+export type MockDiscoveryChild = ReturnType<typeof createMockDiscoveryChild>
 
 export function withPlatform<T>(platform: NodeJS.Platform, fn: () => T): T {
   const original = process.platform
