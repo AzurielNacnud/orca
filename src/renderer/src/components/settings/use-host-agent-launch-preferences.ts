@@ -247,23 +247,24 @@ export function useHostAgentMenuSettings(
 ) {
   const host = parseExecutionHostId(owner?.executionHostId)
   const environmentId = host?.kind === 'runtime' ? host.environmentId : undefined
-  const { pairingRevision, runtimeId } = owner ?? {}
+  const { pairingRevision, runtimeId, contact } = owner ?? {}
   // Contact and reopen changes renew the subscription, not the resource identity.
-  const subscription = useMemo(() => ({ owner, active, open }), [owner, active, open])
+  const subscription = useMemo(
+    () => ({ environmentId, pairingRevision, runtimeId, contact, active, open }),
+    [environmentId, pairingRevision, runtimeId, contact, active, open]
+  )
   const key = snapshotKey(environmentId, pairingRevision, runtimeId)
   const snapshot = useSyncExternalStore(
     useCallback(
       (listener: () => void) => {
-        const captured = subscription.owner
-        const host = parseExecutionHostId(captured?.executionHostId)
-        if (host?.kind !== 'runtime' || !subscription.active) {
+        if (!subscription.environmentId || !subscription.active) {
           return () => {}
         }
         return acquire(
           resource({
-            environmentId: host.environmentId,
-            pairingRevision: captured?.pairingRevision,
-            runtimeId: captured?.runtimeId ?? undefined
+            environmentId: subscription.environmentId,
+            pairingRevision: subscription.pairingRevision,
+            runtimeId: subscription.runtimeId ?? undefined
           }),
           listener,
           true
