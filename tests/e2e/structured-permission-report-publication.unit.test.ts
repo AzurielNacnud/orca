@@ -3,36 +3,36 @@ import { act, renderHook, waitFor, cleanup } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import type { SDKStatusMessage } from '@anthropic-ai/claude-agent-sdk'
 const transport = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn() }))
-vi.mock('../../../../../mobile/src/platform/random-v4-uuid', async () => {
+vi.mock('../../mobile/src/platform/random-v4-uuid', async () => {
   const { createBrowserUuid } = await import('@/lib/browser-uuid')
   return { randomV4Uuid: createBrowserUuid }
 })
-vi.mock('../../../../../mobile/node_modules/react', async () => import('react'))
+vi.mock('../../mobile/node_modules/react', async () => import('react'))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: transport.call,
   subscribeStructuredAgentSessionStatus: transport.subscribe
 }))
-import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
-import { useMobileStructuredAgentOptions } from '../../../../../mobile/src/session/use-mobile-structured-agent-options'
-import type { RpcClient } from '../../../../../mobile/src/transport/rpc-client'
+import { useStructuredAgentSessionOptions } from '../../src/renderer/src/components/native-chat/use-structured-agent-session-options'
+import { useMobileStructuredAgentOptions } from '../../mobile/src/session/use-mobile-structured-agent-options'
+import type { RpcClient } from '../../mobile/src/transport/rpc-client'
 import {
   adapterAtPublishFor,
   fakeClaude,
   claudeFrame,
   USER_MESSAGE,
   PROVIDER_SESSION_ID
-} from '../../../../main/claude/claude-structured-session-test-support'
-import type { ClaudeStructuredSessionEvent } from '../../../../main/claude/claude-structured-session-state'
-import { structuredClaudeLifecycleEvent } from '../../../../main/runtime/structured-claude-runtime-adapter'
+} from '../../src/main/claude/claude-structured-session-test-support'
+import type { ClaudeStructuredSessionEvent } from '../../src/main/claude/claude-structured-session-state'
+import { structuredClaudeLifecycleEvent } from '../../src/main/runtime/structured-claude-runtime-adapter'
 import {
   hostTestState,
   attachParams,
   CALLER
-} from '../../../../main/native-chat/agent-session-wire/structured-agent-session-host-test-harness'
-import { HOST_TEST_SESSION as sessionId } from '../../../../main/native-chat/agent-session-wire/structured-agent-session-host-test-data'
+} from '../../src/main/native-chat/agent-session-wire/structured-agent-session-host-test-harness'
+import { HOST_TEST_SESSION as sessionId } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
-import { AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY } from '../../../../shared/agent-session-permission-modes-capability'
+import { AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY } from '../../src/shared/agent-session-permission-modes-capability'
 import { resetStructuredAgentSessionStatusFeedsForTests } from '@/runtime/structured-agent-session-status-feed'
 import { resetHostModelCatalogSnapshotsForTests } from '@/runtime/host-model-catalog-snapshots'
 
@@ -67,7 +67,7 @@ it.each([1, 10, 100])(
             attachParams({
               provider: 'claude',
               agent: 'claude',
-              providerHandle: null,
+              providerHandle: undefined,
               accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/accounts/claude' },
               options: { permissionMode: 'own' }
             })

@@ -24,7 +24,7 @@ it.each([
   (_name, args, raw, choice) => {
     // Recorded Goose process environment: ticket 1447, PID 20979, creation validated around capture.
     const recordedGooseEnv = { GOOSE_MODE: 'auto', QA_GOOSE_NOTE: 'ordinary70a4' }
-    const stored: Partial<GlobalSettings> = {
+    const stored: Partial<GlobalSettings> & { agentNativeChatPermissionModes: unknown } = {
       agentDefaultArgs: { claude: args, codex: '' },
       agentDefaultEnv: { goose: recordedGooseEnv },
       nativeChatPermissionMode: 'ask',
@@ -38,7 +38,10 @@ it.each([
     expect(loaded.agentDefaultArgs?.codex).toBe('')
     expect(resolveTuiAgentLaunchArgs('claude', loaded)).toBe(args)
     expect(loaded.nativeChatPermissionMode).toBe('ask')
-    expect(loaded.agentNativeChatPermissionModes).toEqual(stored.agentNativeChatPermissionModes)
+    expect(loaded).toHaveProperty(
+      'agentNativeChatPermissionModes',
+      stored.agentNativeChatPermissionModes
+    )
     expect(resolveAgentPermission('goose', loaded).choice).toBe('full-access')
     expect(loaded.agentDefaultEnv?.goose).toEqual({ QA_GOOSE_NOTE: 'ordinary70a4' })
     expect(resolveTuiAgentLaunchEnv('goose', loaded)).toEqual(recordedGooseEnv)

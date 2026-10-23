@@ -2,15 +2,15 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultPersistedState } from '../../../shared/constants'
-import type { PersistedState } from '../../../shared/persisted-state-types'
-import { normalizeLoadedGlobalSettings } from '../../../main/persistence/loading-store/normalize-loaded-global-settings'
-import { prepareLoadedTerminalSettings } from '../../../main/persistence/loading-store/prepare-loaded-terminal-settings'
-import { prepareLoadedProfileSettings } from '../../../main/persistence/loading-store/prepare-loaded-profile-settings'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultPersistedState } from '../../src/shared/constants'
+import type { PersistedState } from '../../src/shared/persisted-state-types'
+import { normalizeLoadedGlobalSettings } from '../../src/main/persistence/loading-store/normalize-loaded-global-settings'
+import { prepareLoadedTerminalSettings } from '../../src/main/persistence/loading-store/prepare-loaded-terminal-settings'
+import { prepareLoadedProfileSettings } from '../../src/main/persistence/loading-store/prepare-loaded-profile-settings'
 import { useNativeChatHostPermissionGate } from '@/components/native-chat/use-native-chat-host-permission-gate'
 import * as runtimeRpc from '@/runtime/runtime-rpc-client'
 import type * as HostPermission from '@/runtime/structured-chat-host-permission'
-import type { Worktree } from '../../../shared/worktree/types'
+import type { Worktree } from '../../src/shared/worktree/types'
 
 const mocks = vi.hoisted(() => ({
   createSupport: vi.fn(),
@@ -51,14 +51,14 @@ vi.mock('@/runtime/runtime-layout-client', async (importOriginal) =>
 )
 
 import { useAppStore } from '@/store'
-import { adoptAgentSessionLaunchVerdict } from './agent-session-launch-plan'
-import { beginStructuredAgentSessionProvisionalLaunch } from './structured-agent-session-provisional-tab'
-import { beginDirectWorkItemStructuredLaunch } from './launch-work-item-direct-agent-routing'
-import { getStructuredAgentLaunchStatus } from './structured-agent-session-launch-status'
-import { getStructuredAgentSessionLaunchSelection } from './structured-agent-session-launch-options'
+import { adoptAgentSessionLaunchVerdict } from '../../src/renderer/src/lib/agent-session-launch-plan'
+import { beginStructuredAgentSessionProvisionalLaunch } from '../../src/renderer/src/lib/structured-agent-session-provisional-tab'
+import { beginDirectWorkItemStructuredLaunch } from '../../src/renderer/src/lib/launch-work-item-direct-agent-routing'
+import { getStructuredAgentLaunchStatus } from '../../src/renderer/src/lib/structured-agent-session-launch-status'
+import { getStructuredAgentSessionLaunchSelection } from '../../src/renderer/src/lib/structured-agent-session-launch-options'
 import { peekWebSessionFocusIntent } from '@/runtime/web-session-focus-intent'
-import { LOCAL_ADMISSION_WAIT_MS } from './structured-agent-session-host-admission'
-import { launchStructuredAgentFromNewTab } from './launch-agent-in-new-tab-structured-route'
+import { LOCAL_ADMISSION_WAIT_MS } from '../../src/renderer/src/lib/structured-agent-session-host-admission'
+import { launchStructuredAgentFromNewTab } from '../../src/renderer/src/lib/launch-agent-in-new-tab-structured-route'
 import { structuredAgentSessionFocusOwner } from '@/runtime/structured-agent-session-owner'
 import {
   drawTabsFromMain,
