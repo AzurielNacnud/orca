@@ -4,7 +4,6 @@ import {
   compileSessionSearchProjectOwnership,
   sessionSearchProjectOwner
 } from '../ai-vault-search/session-search-project-ownership'
-import { conditionalAiVaultListResult } from './session-list-fingerprint'
 import { claudeProfileHistoryDirs } from '../claude-accounts/claude-profile-installed-router'
 import {
   clearAiVaultBackgroundRestartCircuit,
@@ -222,7 +221,7 @@ async function annotateHistoryOwnership(
   } catch (error) {
     console.error('[ai-vault] history ownership unavailable:', error)
   }
-  return conditionalAiVaultListResult(result, null)
+  return result
 }
 
 // Exported for the subagent-transcript IPC path, which validates

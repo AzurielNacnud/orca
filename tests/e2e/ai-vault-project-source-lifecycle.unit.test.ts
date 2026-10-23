@@ -345,7 +345,8 @@ it('keeps erased never-opened external history unscoped after authoritative prun
   expect(capture).not.toHaveBeenCalled()
   const opted = await listAiVaultSessions({ limit: 2, historyOwnership: {} })
   expect(opted.sessions.map((row) => row.projectOwnerKey)).toEqual([null, projectKey])
-  expect(opted.fingerprint).toMatch(/^[0-9a-f]{64}$/)
+  expect(opted.fingerprint).toBeUndefined()
+  expect(scanTranscripts).toHaveBeenCalledTimes(1)
   const render = (result: AiVaultListResult) =>
     buildAiVaultSessionProjectById({
       repos: read.repos,
@@ -384,7 +385,8 @@ it('keeps erased never-opened external history unscoped after authoritative prun
   })
   const changed = await listAiVaultSessions({ limit: 2, historyOwnership: {} })
   expect(changed.scannedAt).toBe(opted.scannedAt)
-  expect(changed.fingerprint).not.toBe(opted.fingerprint)
+  expect(changed.fingerprint).toBeUndefined()
+  expect(opted.sessions[1].projectOwnerKey).toBe(projectKey)
   expect(changed.sessions[1].projectOwnerKey).toBe('repo:b')
   expect(scanTranscripts).toHaveBeenCalledTimes(1)
   expect((await listAiVaultSessions({ limit: 2 })).sessions).toEqual(transcriptRows)
