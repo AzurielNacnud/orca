@@ -1,9 +1,15 @@
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
+import type * as HostCapability from './structured-agent-session-host-capability'
 // The separate whole-host publication contract covers the status feed; isolate capability display here.
 vi.mock('../components/native-chat/StructuredAgentSessionStatusBridge', () => ({
   useStructuredAgentSessionStatusSummary: () => ({ summary: null, observation: 0 })
+}))
+// Existing non-Own action gates have their own unchanged request/recovery contracts.
+vi.mock('./structured-agent-session-host-capability', async (original) => ({
+  ...(await original<typeof HostCapability>()),
+  useStructuredAgentSessionHostCapability: () => false
 }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 vi.mock('./structured-agent-session-client', () => ({
@@ -19,7 +25,7 @@ import { AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY } from '../../../shared
 import { createCompatibleRuntimeStatusResponse } from './runtime-compatibility-test-fixture'
 import { clearRuntimeCompatibilityCacheForTests } from './runtime-rpc-client'
 import { RuntimeHostStatusOwner } from '../../../shared/runtime-host-status-owner'
-import { useStructuredAgentSessionHostCapabilityState } from './structured-agent-session-host-capability'
+import { useStructuredAgentSessionOwnPermissionState } from './structured-agent-session-host-capability'
 
 const owners: RuntimeHostStatusOwner[] = []
 afterEach(() => {
@@ -78,10 +84,7 @@ it.each([10, 100])(
           hostOptionStamp: 'model-a|ask',
           mutate: vi.fn(async () => null)
         })
-        const state = useStructuredAgentSessionHostCapabilityState(
-          target,
-          AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY
-        )
+        const state = useStructuredAgentSessionOwnPermissionState(target)
         renderCalls += call.mock.calls.length - before
         return { state, picker: options.optionSnapshot.find((row) => row.id === 'permissionMode') }
       })

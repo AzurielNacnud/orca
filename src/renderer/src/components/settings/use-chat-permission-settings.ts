@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { AgentLaunchSettings } from '../../../../shared/agent-launch-settings'
-import { AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY } from '../../../../shared/agent-session-permission-modes-capability'
 import { isWebClientLocation } from '@/lib/web-client-location'
 import { useAppStore } from '@/store'
-import { useStructuredAgentSessionHostCapabilityState } from '@/runtime/structured-agent-session-host-capability'
+import { useStructuredAgentSessionOwnPermissionState } from '@/runtime/structured-agent-session-host-capability'
 import { subscribeRuntimeHostContactRegained } from '@/runtime/runtime-host-contact-regained'
 import {
   readHostAgentLaunchSettings,
@@ -18,9 +17,8 @@ export function useChatPermissionSettings(settings: GlobalSettings) {
   const environmentId = environment?.id
   const pairingRevision = environment?.pairingRevision ?? environment?.createdAt
   const runtimeId = environment?.runtimeId ?? undefined
-  const capability = useStructuredAgentSessionHostCapabilityState(
-    web ? (environmentId ? { kind: 'environment', environmentId } : null) : { kind: 'local' },
-    AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY
+  const capability = useStructuredAgentSessionOwnPermissionState(
+    web ? (environmentId ? { kind: 'environment', environmentId } : null) : { kind: 'local' }
   )
   const key = JSON.stringify([environmentId, pairingRevision, runtimeId])
   const [answer, setAnswer] = useState<{

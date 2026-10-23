@@ -1,5 +1,5 @@
 import { AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY } from '../../../shared/agent-session-permission-modes-capability'
-import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useAppStore } from '@/store'
 import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
@@ -16,6 +16,8 @@ import {
   readLocalRuntimeCapabilitiesOrUnknown,
   subscribeLocalRuntimeCapabilityObservation
 } from './local-runtime-capabilities'
+import { runtimeEnvironmentSupportsCapability } from './runtime-rpc-client'
+import { subscribeRuntimeHostContactRegained } from './runtime-host-contact-regained'
 import {
   isRuntimeHostContactRevoked,
   lastVerifiedRuntimeStatus
@@ -29,10 +31,10 @@ export function structuredAgentSessionHostKey(target: RuntimeClientTarget): stri
 export type StructuredAgentSessionHostCapabilityState = 'unknown' | 'supported' | 'unsupported'
 
 /** Displays the existing host status; connection lifecycle owns probing. */
-export function useStructuredAgentSessionHostCapabilityState(
-  target: RuntimeClientTarget | null,
-  capability: RuntimeCapability
+export function useStructuredAgentSessionOwnPermissionState(
+  target: RuntimeClientTarget | null
 ): StructuredAgentSessionHostCapabilityState {
+  const capability = AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY
   const environmentId = target?.kind === 'environment' ? target.environmentId : null
   const statuses = useAppStore((state) => state.runtimeStatusByEnvironmentId)
   const remote = useMemo((): StructuredAgentSessionHostCapabilityState => {
@@ -58,6 +60,55 @@ export function useStructuredAgentSessionHostCapabilityState(
     }
   }, [target?.kind])
   return !target ? 'unknown' : environmentId === null ? local : remote
+}
+
+/** Whether the session's host advertises `capability`. A failed probe stays `unknown` and a remote
+ *  host is asked again each time this client regains contact with it. */
+export function useStructuredAgentSessionHostCapabilityState(
+  target: RuntimeClientTarget | null,
+  capability: RuntimeCapability
+): StructuredAgentSessionHostCapabilityState {
+  const key = target ? structuredAgentSessionHostKey(target) : null
+  const [answer, setAnswer] = useState<{
+    key: string | null
+    state: StructuredAgentSessionHostCapabilityState
+  }>(() => ({
+    key,
+    state: target?.kind === 'local' ? localCapabilityState(capability) : 'unknown'
+  }))
+  const environmentId = target?.kind === 'environment' ? target.environmentId : null
+  const [contact, setContact] = useState(0)
+  useEffect(() => {
+    if (environmentId === null) {
+      return
+    }
+    return subscribeRuntimeHostContactRegained(environmentId, () => setContact((n) => n + 1))
+  }, [environmentId])
+  useEffect(() => {
+    if (key === null) {
+      return
+    }
+    let cancelled = false
+    const probe: Promise<StructuredAgentSessionHostCapabilityState> =
+      environmentId === null
+        ? ensureLocalRuntimeCapabilities().then(() => localCapabilityState(capability))
+        : runtimeEnvironmentSupportsCapability(environmentId, capability).then((supported) =>
+            supported ? 'supported' : 'unsupported'
+          )
+    void probe
+      .catch((): StructuredAgentSessionHostCapabilityState => 'unknown')
+      .then((state) => {
+        if (!cancelled) {
+          setAnswer((current) =>
+            current.key === key && current.state === state ? current : { key, state }
+          )
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [capability, contact, environmentId, key])
+  return answer.key === key ? answer.state : 'unknown'
 }
 
 function localCapabilityState(
@@ -146,8 +197,5 @@ export function useStructuredAgentSessionHostEditsQueuedImages(
 
 /** The API runtime owns Chat settings; on web the local API forwards to the active paired host. */
 export function useChatSettingsOwnPermissions(): boolean {
-  return useStructuredAgentSessionHostCapability(
-    { kind: 'local' },
-    AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY
-  )
+  return useStructuredAgentSessionOwnPermissionState({ kind: 'local' }) === 'supported'
 }

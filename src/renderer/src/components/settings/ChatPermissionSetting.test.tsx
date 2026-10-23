@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/web-client-location', () => ({ isWebClientLocation: () => mocks.web }))
 vi.mock('@/runtime/structured-agent-session-host-capability', () => ({
-  useStructuredAgentSessionHostCapabilityState: () => mocks.capability
+  useStructuredAgentSessionOwnPermissionState: () => mocks.capability
 }))
 vi.mock('@/runtime/runtime-rpc-client', () => ({
   callRuntimeRpc: mocks.call,

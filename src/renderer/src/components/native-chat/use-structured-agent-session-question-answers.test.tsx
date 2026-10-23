@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
+  subscribeStructuredAgentSessionStatus: vi.fn(async () => ({ unsubscribe: vi.fn() })),
   callStructuredAgentSession: mocks.call,
   supportsStructuredAgentSessionPromptCancel: mocks.promptCancelSupported,
   supportsStructuredAgentSessionQuestionAnswers: mocks.questionAnswersSupported

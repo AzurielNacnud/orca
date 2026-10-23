@@ -3,18 +3,14 @@ import { act, renderHook, waitFor, cleanup } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import type { SDKStatusMessage } from '@anthropic-ai/claude-agent-sdk'
 const transport = vi.hoisted(() => ({ call: vi.fn(), subscribe: vi.fn() }))
-vi.mock('../../mobile/src/platform/random-v4-uuid', async () => {
-  const { createBrowserUuid } = await import('@/lib/browser-uuid')
-  return { randomV4Uuid: createBrowserUuid }
-})
-vi.mock('../../mobile/node_modules/react', async () => import('react'))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: transport.call,
   subscribeStructuredAgentSessionStatus: transport.subscribe
 }))
 import { useStructuredAgentSessionOptions } from '../../src/renderer/src/components/native-chat/use-structured-agent-session-options'
-import { useMobileStructuredAgentOptions } from '../../mobile/src/session/use-mobile-structured-agent-options'
+import { loadMobileStructuredOptions } from './__mocks__/mobile-structured-options'
+const useMobileStructuredAgentOptions = await loadMobileStructuredOptions()
 import type { RpcClient } from '../../mobile/src/transport/rpc-client'
 import {
   adapterAtPublishFor,
