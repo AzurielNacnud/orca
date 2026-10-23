@@ -458,7 +458,7 @@ describe('launchWorkItemDirect', () => {
         launchSource: 'task_page',
         openModalFallback: vi.fn(),
         agentOverride: 'claude',
-        agentLaunchPreferences: { defaultTuiAgent: 'claude' },
+        agentLaunchPreferences: { defaultTuiAgent: 'claude', disabledTuiAgents: undefined },
         item: {
           type: 'issue',
           number: 12,
@@ -846,7 +846,7 @@ describe('launchWorkItemDirect', () => {
       repoId: 'repo-1',
       launchSource: 'task_page',
       openModalFallback: vi.fn(),
-      agentLaunchPreferences: { defaultTuiAgent: 'codex' },
+      agentLaunchPreferences: { defaultTuiAgent: 'codex', disabledTuiAgents: undefined },
       agentArgs: '--model "unterminated',
       resolveSessionOptions: () => ({ model: 'chosen' }),
       item: {

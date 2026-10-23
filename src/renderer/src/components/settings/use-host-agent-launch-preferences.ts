@@ -19,9 +19,10 @@ import {
   subscribeHostAgentLaunchSettings
 } from './agent-launch-settings-transport'
 
-export type AgentLaunchPreferences = Readonly<
-  Partial<Pick<GlobalSettings, 'defaultTuiAgent' | 'disabledTuiAgents'>>
->
+export type AgentLaunchPreferences = Readonly<{
+  defaultTuiAgent: GlobalSettings['defaultTuiAgent'] | undefined
+  disabledTuiAgents: GlobalSettings['disabledTuiAgents'] | undefined
+}>
 type Snapshot = AgentLaunchPreferences | 'desktop'
 type Resource = {
   key: string
