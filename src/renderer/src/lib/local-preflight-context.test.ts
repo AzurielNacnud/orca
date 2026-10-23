@@ -22,7 +22,7 @@ function legacySettings() {
 }
 
 type PreflightState = Parameters<typeof getLocalPreflightContext>[0] &
-  Pick<AppState, 'endpointProjectHostSetups'>
+  Pick<AppState, 'endpointProjects' | 'endpointProjectHostSetups'>
 function project(overrides: Pick<Project, 'id'> & Partial<Project>): Project {
   return {
     displayName: '',

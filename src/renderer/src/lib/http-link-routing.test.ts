@@ -9,7 +9,7 @@ import {
 } from './http-link-routing'
 
 import type { Repo } from '../../../shared/repo-types'
-import type { Project } from '../../../shared/project-types'
+import type { Project, ProjectHostSetup } from '../../../shared/project-types'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 
 const toastErrorMock = vi.hoisted(() => vi.fn())
@@ -30,6 +30,7 @@ function noActiveWorkspace(): {
 }
 
 const endpointProjects: Project[] = []
+const endpointProjectHostSetups: ProjectHostSetup[] = []
 const storeState = {
   settings: undefined as
     | {
@@ -45,6 +46,7 @@ const storeState = {
   createBrowserTab: createBrowserTabMock,
   repos: [] as Repo[],
   endpointProjects,
+  endpointProjectHostSetups,
   worktreesByRepo: {} as Record<
     string,
     { id: string; projectId?: string; repoId?: string; displayName?: string }[]

@@ -25,22 +25,20 @@ function getDerivedProjection(repos: AppState['repos']): ProjectHostSetupProject
 }
 
 export type ProjectCatalogReadState = Pick<AppState, 'repos'> &
-  Partial<Pick<AppState, 'endpointProjects' | 'endpointProjectHostSetups'>> & {
-    projectHostSetupProjection?: ProjectHostSetupProjection
-  }
+  (
+    | { projectHostSetupProjection: ProjectHostSetupProjection }
+    | Pick<AppState, 'endpointProjects' | 'endpointProjectHostSetups'>
+  )
 
 // Why: this is a zustand selector compared with Object.is, so the result must be
 // reference-stable per (repos, projects, setups) input or every render re-renders.
 export function getProjectHostSetupProjectionFromState(
   state: ProjectCatalogReadState
 ): ProjectHostSetupProjection {
-  if (state.projectHostSetupProjection) {
+  if ('projectHostSetupProjection' in state) {
     return state.projectHostSetupProjection
   }
   const { repos, endpointProjects: projects, endpointProjectHostSetups: setups } = state
-  if (!projects || !setups) {
-    return getDerivedProjection(repos)
-  }
   let byProjects = resolvedProjectionByCatalog.get(repos)
   if (!byProjects) {
     byProjects = new WeakMap()
@@ -78,18 +76,19 @@ const compatibilityByCanonical = new WeakMap<
   ProjectHostSetupProjection
 >()
 export function getProjectHostSetupCompatibilityFromState(
-  state: ProjectCatalogReadState
+  state: Pick<AppState, 'repos' | 'endpointProjects' | 'endpointProjectHostSetups'>
 ): ProjectHostSetupProjection {
   const canonical = getProjectHostSetupProjectionFromState({
-    ...state,
-    projectHostSetupProjection: undefined
+    repos: state.repos,
+    endpointProjects: state.endpointProjects,
+    endpointProjectHostSetups: state.endpointProjectHostSetups
   })
   let compatibility = compatibilityByCanonical.get(canonical)
   if (!compatibility) {
     compatibility = resolveCompatibility(
       state.repos,
-      state.endpointProjects ?? [],
-      state.endpointProjectHostSetups ?? []
+      state.endpointProjects,
+      state.endpointProjectHostSetups
     )
     compatibilityByCanonical.set(canonical, compatibility)
   }

@@ -3,6 +3,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
+import type * as NewWorkspace from '@/lib/new-workspace'
+import { getDefaultSettings } from '../../../shared/constants'
+
+vi.mock('@/lib/new-workspace', async (importOriginal) => ({
+  ...(await importOriginal<typeof NewWorkspace>()),
+  CLIENT_PLATFORM: 'win32'
+}))
 import { EMPTY_RETIRED_NAME_REGISTRY } from '../../../shared/worktree/retired-name-registry'
 import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
 import type { CreateWorktreeResult } from '../../../shared/worktree/create-types'
@@ -187,6 +194,123 @@ describe('useComposerState integrated lifecycle', () => {
       useAppStore.setState(original, true)
     }
   })
+
+  it.each(['claude', 'codex'] as const)(
+    'uses the live Project runtime for the %s quick-create startup request',
+    async (agent) => {
+      const original = useAppStore.getState()
+      useAppStore.setState(useAppStore.getInitialState(), true)
+      const repo: Repo = { id: 'b', path: 'C:/app-b', displayName: 'B', badgeColor: '', addedAt: 1 }
+      const catalog = projectHostSetupProjectionFromRepos([repo])
+      const settings = {
+        ...getDefaultSettings('/tmp'),
+        terminalWindowsShell: 'powershell.exe',
+        localWindowsRuntimeDefault: { kind: 'windows-host' as const },
+        agentDefaultArgs: { claude: '', codex: '' },
+        agentDefaultEnv: { claude: {}, codex: {} }
+      }
+      useAppStore.setState({
+        repos: [repo],
+        endpointProjects: catalog.projects.map((project) => ({
+          ...project,
+          localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
+        })),
+        endpointProjectHostSetups: [...catalog.setups],
+        settings,
+        sparsePresetsByRepo: { b: [] }
+      })
+      const responses: ReturnType<typeof Promise.withResolvers<CreateWorktreeResult>>[] = []
+      const create = vi.fn<Window['api']['worktrees']['create']>().mockImplementation(() => {
+        const response = Promise.withResolvers<CreateWorktreeResult>()
+        responses.push(response)
+        return response.promise
+      })
+      Object.defineProperty(window, 'api', {
+        configurable: true,
+        value: {
+          ...window.api,
+          gh: { repoSlug: vi.fn().mockResolvedValue(null) },
+          worktrees: { ...window.api.worktrees, create }
+        }
+      })
+      const composer = renderHook(() =>
+        useComposerState({
+          initialRepoId: 'b',
+          initialName: 'topic',
+          persistDraft: false,
+          initialLinkedWorkItem: {
+            provider: 'linear',
+            type: 'issue',
+            number: 0,
+            title: 'Typed task',
+            url: ''
+          }
+        })
+      )
+      try {
+        act(() => composer.result.current.cardProps.onNoteChange(`fix it's "quoted" $HOME`))
+        for (const windows of [false, true]) {
+          if (windows) {
+            act(() =>
+              useAppStore.setState((state) => ({
+                endpointProjects: state.endpointProjects.map((project) => ({
+                  ...project,
+                  localWindowsRuntimePreference: { kind: 'windows-host' }
+                })),
+                endpointProjectHostSetups: state.endpointProjectHostSetups.map((setup) => ({
+                  ...setup,
+                  updatedAt: setup.updatedAt + 1
+                })),
+                settings: {
+                  ...settings,
+                  localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Ubuntu' }
+                }
+              }))
+            )
+          }
+          expect(composer.result.current.cardProps.selectedRepo).toBe(repo)
+          expect(composer.result.current.cardProps.selectedProjectId).toBe('repo:b')
+          expect(composer.result.current.cardProps.selectedRepoExecutionHostId).toBe('local')
+          expect(composer.result.current.cardProps.selectedRepoPath).toBe('C:/app-b')
+          await act(async () => composer.result.current.submitQuick(agent))
+          await waitFor(() => expect(create).toHaveBeenCalledTimes(windows ? 2 : 1))
+          const pending = Object.values(useAppStore.getState().pendingWorktreeCreations)[0]
+          expect(pending.request.workspaceRunContext).toMatchObject({
+            repoId: 'b',
+            projectId: 'repo:b',
+            projectHostSetupId: catalog.setups[0].id,
+            hostId: 'local',
+            path: 'C:/app-b'
+          })
+          const quoted = windows ? `'fix it''s "quoted" $HOME'` : `'fix it'"'"'s "quoted" $HOME'`
+          expect(pending.request.startup?.command).toBe(
+            agent === 'claude' ? `claude ${quoted}` : `codex ${quoted}`
+          )
+          expect(pending.request.startupPlan?.launchCommand).toBe(pending.request.startup?.command)
+          act(() => useAppStore.getState().removePendingWorktreeCreation(pending.creationId))
+          await act(async () =>
+            responses[windows ? 1 : 0].resolve({
+              worktree: makeWorktree({
+                id: `b::topic-${windows}`,
+                repoId: 'b',
+                path: 'C:/app-b-topic'
+              })
+            })
+          )
+        }
+      } finally {
+        composer.unmount()
+        await act(async () => {
+          for (const response of responses) {
+            response.resolve({
+              worktree: makeWorktree({ id: 'b::cleanup', repoId: 'b', path: 'C:/app-b-topic' })
+            })
+          }
+        })
+        useAppStore.setState(original, true)
+      }
+    }
+  )
 
   it('composes two live composers and exposes the parent-worktree control state', () => {
     useAppStore.setState({

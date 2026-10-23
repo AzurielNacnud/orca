@@ -17,6 +17,7 @@ function makeState(worktreeHostId?: string): ResumeShellState {
     folderWorkspaces: [],
     projectGroups: [],
     repos: [{ ...TEST_REPO, id: 'repo-1', path: '/home/alice/repo' }],
+    endpointProjectHostSetups: [],
     endpointProjects: [
       {
         id: 'repo-1',

@@ -1,7 +1,4 @@
-import {
-  getProjectHostSetupCompatibilityFromState,
-  type ProjectCatalogReadState
-} from '@/store/project-host-setup-selector'
+import { getProjectHostSetupCompatibilityFromState } from '@/store/project-host-setup-selector'
 import type { AppState } from '../../../types'
 import type { ProjectHostSetup } from '../../../../../../shared/project-types'
 import type { DetectedWorktreeListResult, Worktree } from '../../../../../../shared/worktree/types'
@@ -126,7 +123,7 @@ export function toVisibleWorktrees(
 }
 
 export function getProjectHostSetupForRepoHost(
-  state: ProjectCatalogReadState,
+  state: Parameters<typeof getProjectHostSetupCompatibilityFromState>[0],
   repoId: string,
   hostId: ExecutionHostId
 ): ProjectHostSetup | undefined {

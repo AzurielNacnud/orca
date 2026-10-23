@@ -21,7 +21,10 @@ const linuxFile = '/home/example/.gemini/antigravity-ide/brain/copied-id/transcr
 const debianFile =
   '//wsl.localhost/Debian/home/example/.gemini/antigravity-ide/brain/copied-id/transcript_full.jsonl'
 
-function stateFor(host: ExecutionHostId, distro?: string): State {
+function stateFor(
+  host: ExecutionHostId,
+  distro?: string
+): Extract<State, { endpointProjects: unknown }> {
   const worktree = makeWorktree({
     id: 'repo::workspace',
     repoId: 'repo',

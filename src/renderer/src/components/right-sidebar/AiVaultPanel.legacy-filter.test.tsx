@@ -11,6 +11,8 @@ const mockState: {
   folderWorkspaces: never[]
   projectGroups: never[]
   repos: never[]
+  endpointProjects: never[]
+  endpointProjectHostSetups: never[]
   worktreesByRepo: Record<string, never>
 } = {
   settings: {},
@@ -18,6 +20,8 @@ const mockState: {
   folderWorkspaces: [],
   projectGroups: [],
   repos: [],
+  endpointProjects: [],
+  endpointProjectHostSetups: [],
   worktreesByRepo: {}
 }
 const updateSettingsOrThrow = vi.fn(async (next: { aiVaultSearch: { enabled: boolean } }) => {
