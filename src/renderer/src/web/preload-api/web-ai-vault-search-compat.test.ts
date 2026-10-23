@@ -39,6 +39,23 @@ describe('web session search preload compatibility', () => {
     expect(await api.searchStatus()).toEqual(unavailableSessionSearchStatus())
     expect(callRuntimeResult).toHaveBeenLastCalledWith('aiVault.searchStatus', {})
   })
+  it('forwards returned-row ownership intent without changing the concrete list scope', async () => {
+    callRuntimeResult.mockResolvedValue({ sessions: [], issues: [], scannedAt: 'same' })
+    await createWebAiVaultApi().listSessions({
+      historyOwnership: {},
+      scopePaths: ['/repo'],
+      limit: 25
+    })
+    expect(callRuntimeResult).toHaveBeenCalledExactlyOnceWith(
+      'aiVault.listSessions',
+      expect.objectContaining({
+        historyOwnership: {},
+        scopePaths: ['/repo'],
+        limit: 25,
+        executionHostId: 'runtime:owning-host'
+      })
+    )
+  })
   it('treats an old host as unavailable but propagates transport failures', async () => {
     const api = createWebAiVaultApi()
     callRuntimeResult.mockRejectedValue(

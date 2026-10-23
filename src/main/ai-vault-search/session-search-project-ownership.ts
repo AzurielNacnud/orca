@@ -31,13 +31,12 @@ export type SessionSearchProjectOwnership = {
 }
 const compare = (a: string, b: string) => Buffer.compare(Buffer.from(a), Buffer.from(b))
 const key = (path: string) => normalizeRuntimePathForComparison(path).toWellFormed()
-export const sessionSearchCatalogFingerprint = (catalog: SessionSearchScopeCatalog | null) =>
-  createHash('sha256').update(JSON.stringify(catalog)).digest('base64url')
-
-export async function compileSessionSearchProjectOwnership(
-  catalog: SessionSearchScopeCatalog,
-  projectKey: string
-): Promise<SessionSearchProjectOwnership> {
+export function materializeSessionSearchOwnership(
+  catalog: SessionSearchScopeCatalog | null
+): Rule[] | null {
+  if (!catalog) {
+    return null
+  }
   const projection = resolveProjectHostSetupProjection(
     catalog.repos,
     catalog.projects,
@@ -104,6 +103,15 @@ export async function compileSessionSearchProjectOwnership(
       }
     }
   }
+  return rules
+}
+
+export async function compileSessionSearchProjectOwnership(
+  catalog: SessionSearchScopeCatalog,
+  projectKey: string,
+  input = materializeSessionSearchOwnership(catalog) ?? []
+): Promise<SessionSearchProjectOwnership> {
+  const rules = [...input]
   const pathByKey = new Map<string, string>()
   for (const rule of rules) {
     const normalized = key(rule.path)
@@ -175,10 +183,22 @@ export async function compileSessionSearchProjectOwnership(
       ranges.push(['/mnt/', '/mnt0'])
     }
   }
+  ranges.sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]))
+  const union: [string, string][] = []
+  for (const range of ranges) {
+    const prior = union.at(-1)
+    if (prior && compare(range[0], prior[1]) <= 0) {
+      if (compare(range[1], prior[1]) > 0) {
+        prior[1] = range[1]
+      }
+    } else {
+      union.push([...range])
+    }
+  }
   const fingerprint = createHash('sha256')
     .update(JSON.stringify([compiled, aliases.links]))
     .digest('base64url')
-  return { projectKey, fingerprint, planes: compiled, ranges }
+  return { projectKey, fingerprint, planes: compiled, ranges: union }
 }
 
 function intervals(roots: Map<string, { owner: string | null; priority: number }>): Interval[] {
@@ -215,11 +235,12 @@ function intervals(roots: Map<string, { owner: string | null; priority: number }
 }
 
 /** Binary searches precompiled ownership, never the catalog, for each indexed candidate. */
-export function sessionSearchProjectOwns(
+export function sessionSearchProjectOwner(
   selection: SessionSearchProjectOwnership,
   cwd: string,
   filePath: string
-): boolean {
+): string | null {
+  cwd = key(cwd)
   const find = (plane: string, value: string): Interval | undefined => {
     const entries = selection.planes[plane] ?? []
     let low = 0,
@@ -250,5 +271,13 @@ export function sessionSearchProjectOwns(
       best = [best[0], best[1], null, best[3]]
     }
   }
-  return best?.[2] === selection.projectKey
+  return best?.[2] ?? null
+}
+
+export function sessionSearchProjectOwns(
+  selection: SessionSearchProjectOwnership,
+  cwd: string,
+  filePath: string
+): boolean {
+  return sessionSearchProjectOwner(selection, cwd, filePath) === selection.projectKey
 }

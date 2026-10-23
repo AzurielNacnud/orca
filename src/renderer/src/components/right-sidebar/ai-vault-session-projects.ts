@@ -6,7 +6,7 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { managedWorktreeDirectories } from '../../../../shared/worktree/ownership'
 import { splitWorktreeIdForFilesystem } from '../../../../shared/worktree/id'
 import { resolveActiveProjectKey } from './ai-vault-project-key'
-import { toAiVaultProjectKey } from '../../../../shared/ai-vault-project-key'
+import { isAiVaultProjectKey, toAiVaultProjectKey } from '../../../../shared/ai-vault-project-key'
 import {
   getRepoExecutionHostId,
   normalizeExecutionHostId,
@@ -19,6 +19,7 @@ import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { normalizeRuntimePathForComparison } from '../../../../shared/cross-platform-path'
 import {
+  folderProject,
   aiVaultSessionProjectCwdKey,
   matchAiVaultProjectCandidates,
   makeProjectCandidate,
@@ -26,11 +27,7 @@ import {
   hasCandidatePath,
   type SessionProjectCandidate
 } from './ai-vault-session-project-candidates'
-import {
-  folderGroupKey,
-  folderLabel,
-  type AiVaultSessionProject
-} from '../../../../shared/ai-vault-session-filters'
+import type { AiVaultSessionProject } from '../../../../shared/ai-vault-session-filters'
 
 // Preserve renderer imports of the renderer-free descriptor.
 export type { AiVaultSessionProject } from '../../../../shared/ai-vault-session-filters'
@@ -102,6 +99,18 @@ export function buildAiVaultSessionProjectById({
     Map<string | null, AiVaultSessionProject>
   >()
   for (const session of sessions) {
+    if (session.projectOwnerKey === null || isAiVaultProjectKey(session.projectOwnerKey)) {
+      const key = session.projectOwnerKey
+      sessionProjectById.set(
+        session.id,
+        key === null
+          ? session.cwd
+            ? folderProject(session.cwd)
+            : { kind: 'unknown', key: 'unknown', label: '' }
+          : { kind: 'repo', key, label: projectLabelByKey.get(key) ?? key }
+      )
+      continue
+    }
     const host = normalizeExecutionHostId(session.executionHostId)
     let projectsByCwd = projectsByHostAndCwd.get(host)
     if (!projectsByCwd) {
@@ -314,12 +323,4 @@ function compareCandidates(left: SessionProjectCandidate, right: SessionProjectC
     return 0
   }
   return left.source === 'worktree' ? -1 : 1
-}
-
-function folderProject(cwd: string): AiVaultSessionProject {
-  return {
-    kind: 'folder',
-    key: folderGroupKey(cwd),
-    label: folderLabel(cwd)
-  }
 }

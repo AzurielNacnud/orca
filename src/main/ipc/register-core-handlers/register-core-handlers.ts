@@ -1,4 +1,6 @@
 import { app } from 'electron'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
+import { sessionSearchScopeCatalogFromStore } from '../../ai-vault-search/session-search-store-scope-catalog'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
 import { registerAppHandlers } from '../app'
 import { registerCliHandlers } from '../cli'
@@ -282,6 +284,8 @@ export function registerCoreHandlers(
   })
   registerAiVaultHandlers({
     ensureStructuredSessionOwnership,
+    getProjectOwnershipCatalog: () =>
+      sessionSearchScopeCatalogFromStore(store, LOCAL_EXECUTION_HOST_ID),
     getAdditionalCodexHomePaths: lifecycleOptions.getAdditionalAiVaultCodexHomePaths,
     prepareSessionResume: lifecycleOptions.prepareAiVaultSessionResume,
     getActiveRuntimeAiVaultHostInfos: () =>

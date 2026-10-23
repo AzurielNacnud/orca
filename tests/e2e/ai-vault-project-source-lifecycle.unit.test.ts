@@ -52,7 +52,33 @@ import {
 } from '../../src/main/ai-vault-search/session-search-engine-test-fixture'
 import { AiVaultSearchRequestSchema } from '../../src/shared/ai-vault-search-contract'
 import { pruneMetadataMissingFromAuthoritativeLocalScan } from '../../src/main/ipc/worktrees/listing/authoritative-local-worktree-metadata-pruning'
+import {
+  configureAiVaultSessionSources,
+  listAiVaultSessions,
+  resetAiVaultSessionListCacheForTests
+} from '../../src/main/ai-vault/cached-session-list'
+import { parseAiVaultListResult } from '../../src/main/ai-vault/session-list-result-validation'
+import {
+  restampAiVaultListResult,
+  mergeAiVaultListResults
+} from '../../src/main/ai-vault/session-list-results'
+import { filterAiVaultSessions } from '../../src/shared/ai-vault-session-filters'
+import type { AiVaultListResult } from '../../src/shared/ai-vault-types'
 import { getLocalWorktreeScanGeneration } from '../../src/main/local-worktree-scan-generation'
+
+const { scanTranscripts } = vi.hoisted(() => ({
+  scanTranscripts: vi.fn<() => Promise<AiVaultListResult>>()
+}))
+vi.mock('../../src/main/ai-vault/session-scanner-service-spawn', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  scanAiVaultSessionsInService: scanTranscripts
+}))
+vi.mock('../../src/main/claude-accounts/claude-profile-installed-router', () => ({
+  claudeProfileHistoryDirs: () => []
+}))
+vi.mock('../../src/main/ai-vault/opencode-wsl-runtime-preparation', () => ({
+  prepareOpenCodeWslReaders: async () => []
+}))
 
 const a: Repo = {
   id: 'a',
@@ -67,6 +93,8 @@ let root: string | undefined
 let harness: SessionSearchHarness | undefined
 
 afterEach(async () => {
+  resetAiVaultSessionListCacheForTests()
+  scanTranscripts.mockReset()
   vi.restoreAllMocks()
   setSessionSearchService(null)
   resetSessionSearchScopeCatalogForTests()
@@ -298,26 +326,133 @@ it('keeps erased never-opened external history unscoped after authoritative prun
     endpointProjects: store.getProjects(),
     endpointProjectHostSetups: store.getProjectHostSetups()
   }
-  const rows = buildAiVaultSessionProjectById({
-    repos: read.repos,
-    projectHostSetupProjection: getProjectHostSetupProjectionFromState(read),
-    worktrees: [
-      makeWorktree({
-        id: retained,
-        repoId: a.id,
-        path: `${root}/workspaces/app/retained`,
-        ...store.getWorktreeMeta(retained)
-      })
-    ],
-    settings: store.getSettings(),
-    sessions: [
-      aiVaultSearchHitToSession(
-        { ...searchHit(), sessionId: 'erased', cwd: `${root}/workspaces/app/topic` },
-        'local'
-      )
-    ]
+  const transcriptRows = ['topic', 'retained'].map((name) =>
+    aiVaultSearchHitToSession(
+      { ...searchHit(), sessionId: name, cwd: `${root}/workspaces/app/${name}` },
+      'local'
+    )
+  )
+  scanTranscripts.mockResolvedValue({
+    sessions: transcriptRows,
+    issues: [],
+    scannedAt: 'same-scan'
   })
-  expect([...rows.values()][0].key).toMatch(/^folder:/)
+  const capture = vi.fn(() => sessionSearchScopeCatalogFromStore(store, 'local'))
+  configureAiVaultSessionSources({ getProjectOwnershipCatalog: capture })
+  // Non-opted list shares the parse cache but neither captures nor annotates ownership.
+  const legacy = await listAiVaultSessions({ limit: 2 })
+  expect(legacy.sessions).toEqual(transcriptRows)
+  expect(capture).not.toHaveBeenCalled()
+  const opted = await listAiVaultSessions({ limit: 2, historyOwnership: {} })
+  expect(opted.sessions.map((row) => row.projectOwnerKey)).toEqual([null, projectKey])
+  expect(opted.fingerprint).toMatch(/^[0-9a-f]{64}$/)
+  const render = (result: AiVaultListResult) =>
+    buildAiVaultSessionProjectById({
+      repos: read.repos,
+      projectHostSetupProjection: getProjectHostSetupProjectionFromState(read),
+      worktrees: [], // Successful Git listing has no retained actionable workspace.
+      sessions: result.sessions
+    })
+  const decoded = parseAiVaultListResult(restampAiVaultListResult(opted, 'runtime:answering'))
+  const merged = mergeAiVaultListResults([decoded], 2)
+  const rows = render(merged)
+  expect([...rows.values()].map((row) => row.key)).toEqual([
+    expect.stringMatching(/^folder:/),
+    projectKey
+  ])
+  const filter = (activeProjectKey: string) =>
+    filterAiVaultSessions(merged.sessions, {
+      query: '',
+      agents: ['codex'],
+      scope: 'project',
+      sort: 'updated',
+      activeWorktreePaths: [],
+      activeProjectKey,
+      sessionProjectById: rows,
+      hideEmptySessions: false
+    })
+  expect(filter(projectKey).map((row) => row.sessionId)).toEqual(['retained'])
+  expect(filter('repo:b')).toEqual([])
+  expect(merged.sessions[1]).toMatchObject({
+    cwd: transcriptRows[1].cwd,
+    filePath: transcriptRows[1].filePath,
+    executionHostId: 'runtime:answering'
+  })
+  store.setWorktreeMeta(hostWorktreeTarget({ id: retained, hostId: 'local' }), {
+    projectHostSetupId: 'b',
+    projectId: 'repo:b'
+  })
+  const changed = await listAiVaultSessions({ limit: 2, historyOwnership: {} })
+  expect(changed.scannedAt).toBe(opted.scannedAt)
+  expect(changed.fingerprint).not.toBe(opted.fingerprint)
+  expect(changed.sessions[1].projectOwnerKey).toBe('repo:b')
+  expect(scanTranscripts).toHaveBeenCalledTimes(1)
+  expect((await listAiVaultSessions({ limit: 2 })).sessions).toEqual(transcriptRows)
+  // A malformed optional owner costs its annotation, never the transcript.
+  const malformed = parseAiVaultListResult({
+    ...opted,
+    sessions: [{ ...transcriptRows[0], projectOwnerKey: 42 }]
+  })
+  expect(malformed.sessions).toHaveLength(1)
+  expect(malformed.sessions[0].projectOwnerKey).toBeUndefined()
+  const report = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  capture.mockImplementationOnce(() => {
+    throw new Error('ownership source unavailable')
+  })
+  const fallback = await listAiVaultSessions({ limit: 2, historyOwnership: {} })
+  expect(fallback.sessions).toEqual(transcriptRows)
+  expect(report).toHaveBeenCalledOnce()
+
+  const explicitUnknown = render({
+    ...opted,
+    sessions: [{ ...transcriptRows[0], cwd: a.path, projectOwnerKey: null }]
+  })
+  expect([...explicitUnknown.values()][0].kind).toBe('folder')
+})
+
+it('ignores real Store activity during a held native reply while preserving governing changes', async () => {
+  const store = await seededStore('activity')
+  const target = hostWorktreeTarget({ id: `b::${b.path}`, hostId: 'local' })
+  store.setWorktreeMeta(target, { lastActivityAt: 100 })
+  let entered = () => {},
+    release = () => {}
+  const reached = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  setSessionSearchService({
+    reconcile: async () => {},
+    status: async () => {
+      throw new Error('unused')
+    },
+    search: async () => {
+      entered()
+      await held
+      return {
+        kind: 'results',
+        hits: [],
+        page: { cursor: null, hasMore: false },
+        generation: 1,
+        durationMs: 0,
+        truncated: { candidates: false, snippets: 0, query: false, freshness: false }
+      }
+    }
+  })
+  installSessionSearchScopeCatalogSource(() => sessionSearchScopeCatalogFromStore(store, 'local'))
+  const pending = searchSessionService(
+    {
+      query: 'needle',
+      within: { kind: 'project', projectKey: 'repo:b', canonicalProjectKey: 'repo:b' }
+    },
+    'ipc'
+  )
+  await reached
+  store.setWorktreeMeta(target, { lastActivityAt: 101 })
+  expect(store.getWorktreeMeta(target.id)?.lastActivityAt).toBe(101)
+  release()
+  expect(await pending).toMatchObject({ kind: 'results' })
 })
 
 it('preserves actual discovered selected-source legacy keys across supported catalog ingress controls', async () => {

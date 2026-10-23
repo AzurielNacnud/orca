@@ -84,6 +84,7 @@ export function createWebAiVaultApi(): NonNullable<Partial<PreloadApi>['aiVault'
         ...(requestedScope === executionHostId && args?.afterFingerprint !== undefined
           ? { afterFingerprint: args.afterFingerprint }
           : {}),
+        historyOwnership: args?.historyOwnership,
         scopePaths: args?.scopePaths,
         executionHostId
       })

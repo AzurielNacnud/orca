@@ -1,4 +1,10 @@
 import { join } from 'node:path'
+import type { SessionSearchScopeCatalogSource } from '../ai-vault-search/session-search-scope-catalog'
+import {
+  compileSessionSearchProjectOwnership,
+  sessionSearchProjectOwner
+} from '../ai-vault-search/session-search-project-ownership'
+import { conditionalAiVaultListResult } from './session-list-fingerprint'
 import { claudeProfileHistoryDirs } from '../claude-accounts/claude-profile-installed-router'
 import {
   clearAiVaultBackgroundRestartCircuit,
@@ -51,6 +57,7 @@ export class AiVaultLocalScanError extends Error {
 // path — `orca serve` never runs that path, so sourcing it there would silently
 // drop managed-Codex sessions from remote/SSH results.
 export type AiVaultSessionSources = {
+  getProjectOwnershipCatalog?: SessionSearchScopeCatalogSource
   getAdditionalCodexHomePaths?: () => readonly string[]
 }
 
@@ -125,14 +132,17 @@ export async function listAiVaultSessions(
     cachedList.expiresAt > now &&
     aiVaultCachedDepthServes(cachedList.depth, depth, args?.scopePaths)
   ) {
-    return truncateAiVaultListResult(cachedList.result, depth, args?.scopePaths)
+    return annotateHistoryOwnership(
+      truncateAiVaultListResult(cachedList.result, depth, args?.scopePaths),
+      args
+    )
   }
   // Captured here, not inside start(): the coordinator defers start() by a
   // microtask, so an invalidation landing in that gap would otherwise be read
   // as having happened before this scan and leave the stale result cacheable.
   const startGeneration = cacheGeneration
   let progress: LocalAiVaultScanProgressHandle | null = null
-  return scanCoordinator.run({
+  const result = await scanCoordinator.run({
     key: scanKey,
     force: args?.force,
     signal: options.signal,
@@ -182,6 +192,37 @@ export async function listAiVaultSessions(
       return result
     }
   })
+  return annotateHistoryOwnership(result, args)
+}
+
+async function annotateHistoryOwnership(
+  result: AiVaultListResult,
+  args?: AiVaultListArgs
+): Promise<AiVaultListResult> {
+  if (!args?.historyOwnership) {
+    return result
+  }
+  try {
+    const catalog = sources.getProjectOwnershipCatalog?.()
+    if (catalog) {
+      const ownership = await compileSessionSearchProjectOwnership(
+        catalog,
+        args.historyOwnership.projectKey ?? ''
+      )
+      result = {
+        ...result,
+        sessions: result.sessions.map((session) => ({
+          ...session,
+          projectOwnerKey: session.cwd
+            ? sessionSearchProjectOwner(ownership, session.cwd, session.filePath)
+            : null
+        }))
+      }
+    }
+  } catch (error) {
+    console.error('[ai-vault] history ownership unavailable:', error)
+  }
+  return conditionalAiVaultListResult(result, null)
 }
 
 // Exported for the subagent-transcript IPC path, which validates

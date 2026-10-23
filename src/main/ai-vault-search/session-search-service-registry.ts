@@ -10,7 +10,7 @@ import { resolveProjectHostSetupProjection } from '../../shared/project-host-set
 import { getRepoExecutionHostId } from '../../shared/execution-host'
 import {
   compileSessionSearchProjectOwnership,
-  sessionSearchCatalogFingerprint
+  materializeSessionSearchOwnership
 } from './session-search-project-ownership'
 import { resolveSessionSearchScope } from './session-search-scope-resolution'
 import type { AiVaultSearchResponse, AiVaultSearchStatus } from '../../shared/ai-vault-search-types'
@@ -72,11 +72,14 @@ export async function searchSessionService(
     request.freshness === 'wait-until-current'
       ? await reconcileWithin(current, freshnessTimeoutMs)
       : false
-  const catalog = sessionSearchScopeCatalog()
-  const snapshot = sessionSearchCatalogFingerprint(catalog)
   const canonical = within?.kind === 'project' && within.canonicalProjectKey
+  const catalog = within ? sessionSearchScopeCatalog() : null
+  const input = canonical ? materializeSessionSearchOwnership(catalog) : null
+  const snapshot = JSON.stringify(input)
   const selection =
-    canonical && catalog ? await compileSessionSearchProjectOwnership(catalog, canonical) : null
+    canonical && catalog && input
+      ? await compileSessionSearchProjectOwnership(catalog, canonical, input)
+      : null
   const legacy =
     catalog &&
     within &&
@@ -108,7 +111,8 @@ export async function searchSessionService(
     compatibleAgents.length === 0 && hostScope?.kind !== 'unknown'
       ? { kind: 'resolved' as const, paths: [''] }
       : hostScope
-  const moved = () => snapshot !== sessionSearchCatalogFingerprint(sessionSearchScopeCatalog())
+  const moved = () =>
+    snapshot !== JSON.stringify(materializeSessionSearchOwnership(sessionSearchScopeCatalog()))
   if (canonical && moved()) {
     return { kind: 'stale-cursor', generation: 0 }
   }

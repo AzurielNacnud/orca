@@ -1,4 +1,9 @@
 import {
+  folderGroupKey,
+  folderLabel,
+  type AiVaultSessionProject
+} from '../../../../shared/ai-vault-session-filters'
+import {
   createNormalizedAiVaultScopeCwdMatcher,
   sessionFileExecutionNamespace
 } from '../../../../shared/ai-vault-scope-cwd-match'
@@ -100,4 +105,12 @@ export function resolveCandidateHostId(
 
 export function hasCandidatePath(pathValue: string): boolean {
   return pathValue.trim().length > 0
+}
+
+export function folderProject(cwd: string): AiVaultSessionProject {
+  return {
+    kind: 'folder',
+    key: folderGroupKey(cwd),
+    label: folderLabel(cwd)
+  }
 }

@@ -220,3 +220,85 @@ it('bounds actual panel-to-IPC canonical preparation and native cwd seeks at N a
   expect(large.executions).toBeLessThanOrEqual(small.executions + 2)
   console.info('native-trigger-operation-counts', JSON.stringify(observations))
 })
+
+it('does not revisit one SQL cwd range per WSL namespace at N and 10N', async () => {
+  const counts: number[] = []
+  for (const size of [2, 20]) {
+    const repos: Repo[] = Array.from({ length: size }, (_, index) => ({
+      id: `wsl-${index}`,
+      path: `//wsl$/D${index}/home/ada/app`,
+      displayName: 'app',
+      badgeColor: '',
+      addedAt: index,
+      upstream: { owner: 'acme', repo: 'app' },
+      ...(index ? { projectHostSetupMethod: 'provisioned' as const } : {})
+    }))
+    const raw = projectHostSetupCompatibilityFromRepos(repos)
+    harness = await openSessionSearchHarness('sta10541-namespace-union')
+    for (let id = 1; id <= 20; id++) {
+      addSyntheticSession(harness.db, {
+        id,
+        cwd: '/home/ada/app/topic',
+        sessionFilePath: `//wsl$/D${id <= 10 ? 0 : 'outside'}/home/ada/.claude/session${id}`
+      })
+    }
+    const projectKey = `project:${raw.projects[0].id}`
+    const selection = await ownership.compileSessionSearchProjectOwnership(
+      {
+        repos,
+        projects: raw.projects,
+        projectHostSetups: raw.setups,
+        worktreeMeta: {},
+        settings: { workspaceDir: '', nestWorkspaces: false }
+      },
+      projectKey
+    )
+    const predicate = vi.spyOn(ownership, 'sessionSearchProjectOwns')
+    const sqlByStatement = new WeakMap<SqliteStatement, string>()
+    const prepare = SyncDatabase.prototype.prepare
+    vi.spyOn(SyncDatabase.prototype, 'prepare').mockImplementation(function (
+      this: SyncDatabase,
+      sql
+    ) {
+      const statement = prepare.call(this, sql)
+      sqlByStatement.set(statement, sql)
+      return statement
+    })
+    const statements: { sql: string; bindings: SqliteBindings }[] = []
+    const all = NodeSqliteStatement.prototype.all
+    vi.spyOn(NodeSqliteStatement.prototype, 'all').mockImplementation(function (
+      this: NodeSqliteStatement,
+      ...bindings
+    ) {
+      const sql = sqlByStatement.get(this)
+      if (sql?.includes('canonical_project_owns')) {
+        statements.push({ sql, bindings })
+      }
+      return all.apply(this, bindings)
+    })
+    for (const query of ['needle', 'path:app']) {
+      const result = harness.engine.search({ query, limit: 20, filters: { ownership: selection } })
+      expect(result.hits.map((hit) => Number(hit.sessionId)).sort((a, b) => a - b)).toEqual(
+        Array.from({ length: 10 }, (_, i) => i + 1)
+      )
+      expect(result.page.hasMore).toBe(false)
+    }
+    counts.push(predicate.mock.calls.length)
+    vi.restoreAllMocks()
+    expect(statements.length).toBeGreaterThan(0)
+    for (const { sql, bindings } of statements) {
+      expect(
+        harness.db
+          .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+          .all(...bindings)
+          .map((row) => row.detail)
+          .join('\n')
+      ).toMatch(/SEARCH scoped USING (?:COVERING )?INDEX sessions_cwd_key/)
+    }
+    await harness.close()
+    harness = undefined
+  }
+  expect(counts[0]).toBeGreaterThan(0)
+  expect(counts[1]).toBe(counts[0])
+  console.info('namespace-union-scalar-visits', JSON.stringify(counts))
+})
