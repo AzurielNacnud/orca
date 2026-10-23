@@ -1,4 +1,5 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import type { AgentTransitionDetector } from '../agent-hooks/agent-transition-detector'
 import type { RuntimeWorktreeLifecycleEvent } from '../runtime/orca-runtime-core'
 import { DeliveryReceipts, type DeliveryReceiptDb } from './external-conversation-delivery-receipts'
 import type { ExternalConversationLinkStore } from './external-conversation-links'
@@ -29,6 +30,7 @@ export function installExternalConversations(
     subscribeAgentProviderSessionChangesFn:
       | ExternalConversationSeamDeps['onProviderSessionsChanged']
       | null
+    agentTransitions: Pick<AgentTransitionDetector, 'latestRow' | 'subscribe'>
   } & ExternalConversationSeamDeps['sessionRows']
 ): { current(): ExternalConversationSeam | null } {
   if (!store) {
@@ -55,7 +57,9 @@ export function installExternalConversations(
         sessionRows: runtime,
         // A host without a hook store reports no sessions; reopen then refuses for want of one.
         onProviderSessionsChanged: (listener) =>
-          runtime.subscribeAgentProviderSessionChangesFn?.(listener) ?? (() => {})
+          runtime.subscribeAgentProviderSessionChangesFn?.(listener) ?? (() => {}),
+        readHookRow: (paneKey) => runtime.agentTransitions.latestRow(paneKey),
+        onAgentPaneChange: (listener) => runtime.agentTransitions.subscribe(listener)
       })
     } else if (!enabled && seam) {
       seam.dispose('connectors_disabled')

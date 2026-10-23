@@ -12,7 +12,11 @@ export const CONNECTOR_REFUSALS = [
   // The three a closed agent's reopen ends on; each asks the user to open it in Orca.
   'agent_asleep_in_window',
   'no_session_to_reopen',
-  'reopen_refused'
+  'reopen_refused',
+  // An answer's: the prompt was answered or moved on, only Orca can answer it, or no such option.
+  'prompt_not_pending',
+  'prompt_unsupported',
+  'option_not_offered'
 ] as const
 export type ConnectorRefusal = (typeof CONNECTOR_REFUSALS)[number]
 

@@ -3409,3 +3409,28 @@ html.native-shell .app-layout {
 .icon-superscript-count[data-multiple-digits='true'] {
   letter-spacing: -0.02em;
 }
+
+.workspace-reference-title {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* The positioning wrapper must also let pointer events reach the controls below it. */
+[data-radix-popper-content-wrapper]:has(> [data-cursor-tooltip]) {
+  pointer-events: none;
+}
+
+.workspace-reference-title > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .workspace-reference-title[data-overflow='true']:is(:hover, :focus-visible) > span {
+    width: max-content;
+    overflow: visible;
+    transform: translateX(var(--reference-title-offset));
+    transition: transform var(--reference-title-duration) linear 400ms;
+  }
+}

@@ -212,7 +212,13 @@ export const HANDLER_GROUPS: readonly HandlerGroup[] = [
   },
   {
     name: 'connector',
-    keys: ['connector start', 'connector send'],
+    keys: [
+      'connector start',
+      'connector send',
+      'connector prompt',
+      'connector answer',
+      'connector watch'
+    ],
     load: async () => (await import('./handlers/connector.js')).CONNECTOR_HANDLERS
   },
   {

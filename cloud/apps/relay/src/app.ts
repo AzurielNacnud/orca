@@ -31,6 +31,7 @@ import {
   RelayAssignmentRowBusyError,
   RelayCellInReserveModeError,
   RelayHomeCellUnavailableError,
+  type AssignedRelayAssignment,
   type AssignOptions,
   type CellFenceAttemptEvidence,
   type RelayAssignment,
@@ -445,6 +446,13 @@ export function createRelayApp(
         ? requestedRegion
         : RELAY_DEFAULT_REGION
     operations.recordRegionRequest?.(requestedRegion)
+    // Only an answer this call minted can be a fallback: a kept assignment was placed earlier.
+    const recordSelection = (assignment: RelayAssignment, placed: boolean) =>
+      operations.recordRegionSelection?.({
+        targetRegion,
+        selectedRegion: assignment.region,
+        fallback: placed && assignment.region !== targetRegion
+      })
     const signAssignment = async (assignment: RelayAssignment) =>
       await new SignJWT({
         purpose: 'cell-assignment',
@@ -461,7 +469,7 @@ export function createRelayApp(
         .setExpirationTime('5m')
         .sign(config.assignmentSigningKey)
     // Step 5: switched-on cells answer from the map; anything else keeps today's path below.
-    let step5: Pick<AssignOptions, 'epochFloor' | 'placeFresh' | 'regionReserve'> = {}
+    let step5: Pick<AssignOptions, 'epochFloor' | 'placeFresh' | 'regionReserve' | 'reserveSpill'> = {}
     if (operations.reservePlacement && body.data.regionCorrection?.action !== 'report') {
       let plan: ReservePlan
       try {
@@ -476,6 +484,7 @@ export function createRelayApp(
       }
       if (plan.kind === 'answer') {
         operations.recordAssignmentAdmission?.(plan.lane === 'sticky' ? 'sticky' : 'placement')
+        recordSelection(plan.assignment, plan.lane !== 'sticky')
         return context.json({
           v: 1,
           cellUrl: plan.assignment.cellUrl,
@@ -484,6 +493,7 @@ export function createRelayApp(
         })
       }
       if (plan.kind === 'retry') {
+        operations.recordRegionSelection?.({ targetRegion, fallback: false })
         operations.recordAssignmentUnavailable?.(
           plan.reason === 'map-incomplete'
             ? 'reserve-map-incomplete'
@@ -494,7 +504,12 @@ export function createRelayApp(
         context.header('Retry-After', String(plan.retryAfterSeconds))
         return context.json({ error: 'assignment_temporarily_unavailable' }, 503)
       }
-      step5 = { epochFloor: plan.epochFloor, placeFresh: plan.placeFresh, regionReserve: plan.regionReserve }
+      step5 = {
+        epochFloor: plan.epochFloor,
+        placeFresh: plan.placeFresh,
+        regionReserve: plan.regionReserve,
+        reserveSpill: plan.reserveSpill
+      }
     }
     let admission: { release(): void } | null = null
     let lane: AssignmentAdmissionLane = 'placement'
@@ -592,7 +607,7 @@ export function createRelayApp(
         return rejectPublicAssignment(context)
       }
     }
-    let assignment: RelayAssignment
+    let assignment: AssignedRelayAssignment
     let regionCorrection: RegionCorrectionResponse | undefined
     try {
       if (body.data.regionCorrection?.action === 'report') {
@@ -626,6 +641,7 @@ export function createRelayApp(
       }
     } catch (error) {
       if (error instanceof ReservePaceError) {
+        operations.recordRegionSelection?.({ targetRegion, fallback: false })
         operations.recordAssignmentUnavailable?.('reserve-paced')
         context.header('Retry-After', String(error.retryAfterSeconds))
         return context.json({ error: 'assignment_temporarily_unavailable' }, 503)
@@ -671,11 +687,7 @@ export function createRelayApp(
     } finally {
       admission.release()
     }
-    operations.recordRegionSelection?.({
-      targetRegion,
-      selectedRegion: assignment.region,
-      fallback: lane === 'placement' && assignment.region !== targetRegion
-    })
+    recordSelection(assignment, assignment.placed === true)
     // Grant-side counterpart of the rejection log: reconnect grants are rare
     // enough to log and make "which cell is this host on" answerable. The
     // placement-lane ones matter most — they are the only record that a host

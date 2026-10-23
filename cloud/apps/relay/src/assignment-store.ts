@@ -148,6 +148,8 @@ export type AssignOptions = {
   placeFresh?: () => Promise<RelayAssignment | null>
   // A reserve cell in the placement region with room: the database lane leaves the region only after it.
   regionReserve?: () => Promise<RelayAssignment | null>
+  // No database cell had room anywhere: a reserve seat in either region before the refusal.
+  reserveSpill?: (input: { skipOwnRegion: boolean; rowEpoch: number }) => Promise<RelayAssignment | null>
   hostRequested?: boolean
 }
 
@@ -188,6 +190,9 @@ export type RelayAssignment = AssignmentIdentity & {
   leaseExpiresAt: number
   region?: RelayRegion
 }
+
+// `placed`: this assign minted the answer (a new epoch or a reserve booking); absent for the existing row.
+export type AssignedRelayAssignment = RelayAssignment & { placed?: true }
 
 // Set only by reconnect verification, for a host whose home cell is isolated for
 // a roll right now: its next assign re-places it rather than re-granting the pin.
@@ -545,6 +550,15 @@ class AssignmentRegionFull extends Error {
   // Set when the host is leaving a roll-isolated cell in that region.
   constructor(readonly isolatedSource?: { cellId: string; region: RelayRegion }) {
     super('assignment_region_full')
+  }
+}
+
+// No database cell anywhere had room; nothing was written. Same message, so callers and
+// the public answer are unchanged.
+class AssignmentCapacityExhausted extends Error {
+  // The host row's epoch read in that attempt (0 for none): a reserve spill mints above it.
+  constructor(readonly rowEpoch: number) {
+    super('relay_capacity_exhausted')
   }
 }
 
@@ -1015,21 +1029,13 @@ export class RelayAssignmentStore {
     // Step 5: a fresh placement may first be booked on a reserve-mode cell, outside any
     // transaction; and a database mint stays above every epoch the director's map knew.
     step5: AssignOptions = {}
-  ): Promise<RelayAssignment> {
+  ): Promise<AssignedRelayAssignment> {
     const sticky = await this.assignStickyWithLockRetry(identity, lockMode, preferredRegion)
     if (sticky && !('isolatedFrom' in sticky)) return sticky
     let isolatedFrom = sticky?.isolatedFrom
-    // Off a roll-isolated cell: the canary counts the move whichever pool takes it, and a
-    // throttled reserve cell is no room, so the drain does not wait on reserve intake.
-    const bookReserve = async (book: () => Promise<RelayAssignment | null>) => {
-      let reserved: RelayAssignment | null
-      try {
-        reserved = await book()
-      } catch (error) {
-        if (!(isolatedFrom && error instanceof ReservePaceError)) throw error
-        reserved = null
-      }
-      if (reserved && isolatedFrom) {
+    // Off a roll-isolated cell: the canary counts the move whichever pool takes it.
+    const reservedOn = (reserved: RelayAssignment) => {
+      if (isolatedFrom) {
         console.warn(
           JSON.stringify({
             event: 'orca_relay_sticky_replaced_off_isolated_cell',
@@ -1042,7 +1048,20 @@ export class RelayAssignmentStore {
           })
         )
       }
-      return reserved
+      return { ...reserved, placed: true as const }
+    }
+    // A throttled reserve cell is no room, so the drain does not wait on reserve intake.
+    const bookReserve = async (book: () => Promise<RelayAssignment | null>) => {
+      let reserved: RelayAssignment | null
+      try {
+        reserved = await book()
+      } catch (error) {
+        if (!(isolatedFrom && error instanceof ReservePaceError)) {
+          throw error
+        }
+        reserved = null
+      }
+      return reserved && reservedOn(reserved)
     }
     const booked = step5.placeFresh ? await bookReserve(step5.placeFresh) : null
     if (booked) return booked
@@ -1062,15 +1081,32 @@ export class RelayAssignmentStore {
             keepRegion
           )
       )
+    // Its own catch: bookReserve would turn an isolated host's pace into a refusal here.
+    const placeOrSpill = async (skipOwnRegion: boolean) => {
+      try {
+        return await placeOnDatabase(false)
+      } catch (error) {
+        if (!(error instanceof AssignmentCapacityExhausted) || !step5.reserveSpill) {
+          throw error
+        }
+        const spilled = await step5.reserveSpill({ skipOwnRegion, rowEpoch: error.rowEpoch })
+        if (!spilled) {
+          throw error
+        }
+        return reservedOn(spilled)
+      }
+    }
     const regionReserve = step5.regionReserve
-    if (!regionReserve) return await placeOnDatabase(false)
+    if (!regionReserve) {
+      return await placeOrSpill(false)
+    }
     try {
       return await placeOnDatabase(true)
     } catch (error) {
       if (!(error instanceof AssignmentRegionFull)) throw error
       isolatedFrom ??= error.isolatedSource
     }
-    return (await bookReserve(regionReserve)) ?? (await placeOnDatabase(false))
+    return (await bookReserve(regionReserve)) ?? (await placeOrSpill(true))
   }
 
   private async assignStickyWithLockRetry(
@@ -1092,7 +1128,7 @@ export class RelayAssignmentStore {
     epochFloor = 0,
     hostRequested = false,
     keepRegion = false
-  ): Promise<RelayAssignment> {
+  ): Promise<AssignedRelayAssignment> {
     const deadline = Date.now() + ASSIGNMENT_LOCK_RETRY_DEADLINE_MS
     let inventoryScope: AssignmentInventoryScope = 'none'
     while (true) {
@@ -1386,7 +1422,7 @@ export class RelayAssignmentStore {
     hostRequested = false,
     // Refuse to spill out of placementRegion: AssignmentRegionFull instead.
     keepRegion = false
-  ): Promise<RelayAssignment> {
+  ): Promise<AssignedRelayAssignment> {
     const now = this.now()
     // An isolated retry takes its tier's rows before anything reassigns this,
     // so a lock timeout there must retry the same tier, not fall to 'all'.
@@ -1654,7 +1690,9 @@ export class RelayAssignmentStore {
           keepRegion ? 'require' : 'prefer'
         ))
       if (!target) {
-        throw keepRegion ? new AssignmentRegionFull() : new Error('relay_capacity_exhausted')
+        throw keepRegion
+          ? new AssignmentRegionFull()
+          : new AssignmentCapacityExhausted(existing ? integer(existing, 'assignment_epoch') : 0)
       }
       if (deadReserveSource) {
         events.push(
@@ -1771,7 +1809,7 @@ export class RelayAssignmentStore {
         now
       )
       return {
-        assignment: { ...identity, ...target, assignmentEpoch, leaseExpiresAt },
+        assignment: { ...identity, ...target, assignmentEpoch, leaseExpiresAt, placed: true as const },
         events
       }
     }).catch((error: unknown) => {

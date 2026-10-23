@@ -399,12 +399,16 @@ describe('reserve assignment on a director', () => {
   describe('for a region-correction request', () => {
     const request = { reconnect: true, region: US, regionCorrection: true }
 
-    it('leaves the answer to the database lane, offering only the in-region reserve fallback', async () => {
+    it('leaves the answer to the database lane, offering only the in-region reserve fallback and the spill', async () => {
       const row = vi.fn(async () => null)
       // A memory answer would skip the window exchange; the share draw is not offered either.
       const { assignment, reserved } = setup({ feeds: [feed('c1', { full: [seated(7)] }), feed('c2')], row })
       const plan = await assignment.plan(HOST, request)
-      expect(plan).toEqual({ kind: 'database', regionReserve: expect.any(Function) })
+      expect(plan).toEqual({
+        kind: 'database',
+        regionReserve: expect.any(Function),
+        reserveSpill: expect.any(Function)
+      })
       expect(reserved).toEqual([])
       expect(row).not.toHaveBeenCalled()
       await expect(plan.kind === 'database' ? plan.regionReserve?.() : null).resolves.toMatchObject({
@@ -412,12 +416,17 @@ describe('reserve assignment on a director', () => {
       })
     })
 
-    it('keeps today’s path for a host the map never saw, without reading its row', async () => {
+    it('keeps today’s path for a host the map never saw, without reading its row, but may spill', async () => {
       const row = vi.fn(async () => ({ cellId: 'c1', assignmentEpoch: 3 }))
       const { assignment, reserved } = setup({ row })
-      expect(await assignment.plan(HOST, request)).toEqual({ kind: 'database' })
+      const plan = await assignment.plan(HOST, request)
+      expect(plan).toEqual({ kind: 'database', reserveSpill: expect.any(Function) })
       expect(row).not.toHaveBeenCalled()
       expect(reserved).toEqual([])
+      // The database lane read the row: the spill mints above it.
+      await expect(
+        plan.kind === 'database' ? plan.reserveSpill?.({ skipOwnRegion: false, rowEpoch: 3 }) : null
+      ).resolves.toMatchObject({ assignmentEpoch: 4 })
     })
 
     it('keeps today’s path while the map is incomplete, and in dry run', async () => {
@@ -426,6 +435,114 @@ describe('reserve assignment on a director', () => {
       const dryRun = setup({ mode: 'dry-run', feeds: [feed('c1', { full: [seated(4)] }), feed('c2')] })
       expect(await dryRun.assignment.plan(HOST, request)).toEqual({ kind: 'database' })
       expect([...gated.reserved, ...dryRun.reserved]).toEqual([])
+    })
+  })
+
+  describe('after the database lane found no cell anywhere', () => {
+    const ASIA = 'asia-east2' as const
+    const paced = { intake: { perSec: 1, burst: 20, tokens: 0 } }
+    const fullCounts = { counts: { seats: 500, controls: 500, bookings: 0, units: 500, ceiling: 500 } }
+    // The host sits on an Asia database cell, so the plan goes to the database lane.
+    const setupSpill = (asiaReserve: Partial<SeatFeedResponse>, usReserve: Partial<SeatFeedResponse> = {}, log?: (line: string) => void) =>
+      setup({
+        ...(log ? { log } : {}),
+        cells: [...cellList(['asia-r', 'asia-db'], ASIA), ...cellList(['us-r'])],
+        feeds: [
+          feed('asia-r', asiaReserve),
+          feed('asia-db', { admitMode: 'db', full: [seated(4)] }),
+          feed('us-r', usReserve)
+        ]
+      })
+    const spillOf = async (harness: ReturnType<typeof setup>, request: { regionCorrection?: boolean } = {}) => {
+      const plan = await harness.assignment.plan(HOST, { reconnect: true, region: ASIA, ...request })
+      expect(plan.kind).toBe('database')
+      return plan.kind === 'database' ? plan.reserveSpill : undefined
+    }
+
+    it('books its own region first, minting above the row the database lane read', async () => {
+      const harness = setupSpill({})
+      const spill = await spillOf(harness)
+      await expect(spill?.({ skipOwnRegion: false, rowEpoch: 9 })).resolves.toMatchObject({
+        cellId: 'asia-r',
+        region: ASIA,
+        assignmentEpoch: 10
+      })
+      expect(harness.reserved).toEqual([{ cellId: 'asia-r', epoch: 10, sticky: false, dryRun: false }])
+    })
+
+    it('books the other region when its own is full, or already tried', async () => {
+      const full = setupSpill(fullCounts)
+      await expect((await spillOf(full))?.({ skipOwnRegion: false, rowEpoch: 0 })).resolves.toMatchObject({
+        cellId: 'us-r',
+        region: US,
+        assignmentEpoch: 5
+      })
+      const tried = setupSpill({})
+      await expect((await spillOf(tried))?.({ skipOwnRegion: true, rowEpoch: 0 })).resolves.toMatchObject({
+        cellId: 'us-r'
+      })
+      expect(tried.reserved.map((call) => call.cellId)).toEqual(['us-r'])
+    })
+
+    it('tries the other region after a pace, and answers the pace only if nothing places', async () => {
+      const abroad = setupSpill(paced)
+      await expect((await spillOf(abroad))?.({ skipOwnRegion: false, rowEpoch: 0 })).resolves.toMatchObject({
+        cellId: 'us-r'
+      })
+      const nowhere = setupSpill(paced, fullCounts)
+      await expect((await spillOf(nowhere))?.({ skipOwnRegion: false, rowEpoch: 0 })).rejects.toBeInstanceOf(
+        ReservePaceError
+      )
+    })
+
+    it('returns null with no reserve seat anywhere, so the refusal stands', async () => {
+      const harness = setupSpill(fullCounts, fullCounts)
+      await expect((await spillOf(harness))?.({ skipOwnRegion: false, rowEpoch: 0 })).resolves.toBeNull()
+      expect(harness.reserved).toEqual([])
+    })
+
+    it('is not offered while the map is incomplete', async () => {
+      const gated = setup({
+        cells: [...cellList(['asia-r', 'asia-db'], ASIA), ...cellList(['us-r'])],
+        feeds: [feed('asia-r'), feed('asia-db', { admitMode: 'db', full: [seated(4)] })],
+        startedAt: 100_500
+      })
+      const plan = await gated.assignment.plan(HOST, { reconnect: true, region: ASIA })
+      expect(plan).toMatchObject({ kind: 'database' })
+      expect(plan.kind === 'database' && plan.reserveSpill).toBeUndefined()
+      const correction = await gated.assignment.plan(HOST, { reconnect: true, region: ASIA, regionCorrection: true })
+      expect(correction).toEqual({ kind: 'database' })
+    })
+
+    it('answers the shortest pace when every region paces', async () => {
+      const harness = setupSpill(paced, { intake: { perSec: 2, burst: 20, tokens: 0 } })
+      const spill = await spillOf(harness)
+      // Asia refills its token in 4 s, US in 2 s.
+      await expect(spill?.({ skipOwnRegion: false, rowEpoch: 0 })).rejects.toSatisfy(
+        (error) => error instanceof ReservePaceError && error.retryAfterSeconds === 2
+      )
+    })
+
+    it('counts a spill once, not as a database fallback or a pace per region', async () => {
+      for (const [asiaReserve, label] of [
+        [fullCounts, 'full'],
+        [paced, 'paced']
+      ] as const) {
+        const lines: Record<string, unknown>[] = []
+        const harness = setupSpill(asiaReserve, {}, (line) => lines.push(JSON.parse(line)))
+        await (await spillOf(harness))?.({ skipOwnRegion: false, rowEpoch: 0 })
+        harness.now.value += 60_000
+        await harness.assignment.plan(HOST, { reconnect: true, region: ASIA })
+        expect(lines.find((line) => line.event === 'orca_relay_reserve_placement_summary'), label).toMatchObject({
+          spill: 1,
+          placed: 1,
+          database: 0,
+          retries: { paced: 0 }
+        })
+        expect(lines.filter((line) => line.event === 'orca_relay_reserve_spill'), label).toEqual([
+          { event: 'orca_relay_reserve_spill', fromRegion: ASIA, toRegion: US, count: 1 }
+        ])
+      }
     })
   })
 

@@ -199,6 +199,18 @@ function mergeContextRecovery(
   if (!selector) {
     return data
   }
+  if (
+    data &&
+    typeof data === 'object' &&
+    'validSelectorForms' in data &&
+    'nextSteps' in data &&
+    Array.isArray(data.validSelectorForms) &&
+    data.validSelectorForms.every((form: unknown) => typeof form === 'string') &&
+    Array.isArray(data.nextSteps) &&
+    data.nextSteps.every((step: unknown) => typeof step === 'string')
+  ) {
+    return data
+  }
   if (data === null || typeof data !== 'object') {
     return selector
   }
