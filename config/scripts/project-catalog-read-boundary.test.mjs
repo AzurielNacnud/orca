@@ -72,6 +72,17 @@ it('enforces five raw catalog forms with the actual config and narrow file excep
     const uuid = lint(allowed, 'crypto.randomUUID()')
     expect(uuid).toHaveLength(1)
     expect(uuid[0].message).toContain('randomUUID')
+    for (const file of [
+      'src/main/native-chat/agent-session-wire/structured-agent-session-host-test-harness.ts',
+      'src/main/runtime/rpc/methods/structured-chat-tab-table.test-fixture.ts',
+      'mobile/src/test-support/rpc-recording/native-mounting-substitutes.test.ts',
+      'tests/e2e/worktree-smart-sort.spec.ts'
+    ]) {
+      expect(lint(file, 'crypto.randomUUID()')).toEqual([])
+    }
+    const sharedUuid = lint('src/shared/tmux-status.test-fixture.ts', 'crypto.randomUUID()')
+    expect(sharedUuid).toHaveLength(1)
+    expect(sharedUuid[0].help).toContain('src/shared is compiled into the web bundle')
   } finally {
     rmSync(folder, { recursive: true, force: true })
   }

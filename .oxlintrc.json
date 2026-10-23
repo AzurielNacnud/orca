@@ -281,10 +281,10 @@
         "src/renderer/src/store/slices/worktrees/teardown/purge-stale-runtime-host-state.ts",
         "src/renderer/src/store/slices/worktrees/teardown/orphaned-runtime-ssh-project-purge.ts",
         "src/renderer/src/app-shell/use-runtime-graph-sync.ts",
-        "**/*.test.{ts,tsx}",
-        "**/*.spec.{ts,tsx}",
-        "**/*-test-*.ts",
-        "**/*.test-fixture.ts",
+        "src/renderer/src/**/*.test.{ts,tsx}",
+        "src/renderer/src/**/*.spec.{ts,tsx}",
+        "src/renderer/src/**/*-test-*.ts",
+        "src/renderer/src/**/*.test-fixture.ts",
         "src/renderer/src/components/automations/automations-page-runtime-fixtures.ts"
       ],
       "rules": {
