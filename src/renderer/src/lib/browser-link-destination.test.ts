@@ -3,6 +3,7 @@ import { buildBrowserPage, buildWorkspaceFromPage } from '@/store/slices/browser
 import {
   browserLinkPageMatches,
   browserLinkUrlIdentity,
+  browserOpenResultForPage,
   selectBrowserLinkDestination
 } from './browser-link-destination'
 import {
@@ -13,7 +14,9 @@ import {
   type BrowserLinkTestStore
 } from './browser-link-open-test-harness'
 import { captureLinkOpenIntent } from './link-open-intent'
-import { makeUnifiedTab } from '@/store/slices/store-test-helpers'
+import { makeUnifiedTab, makeWorktree } from '@/store/slices/store-test-helpers'
+import { makeFolderWorkspace } from '@/store/slices/worktrees-slice-test-fixtures'
+import { canOfferHttpLinkGroupAction } from './http-link-in-group-availability'
 
 let store: BrowserLinkTestStore
 beforeEach(() => {
@@ -42,6 +45,195 @@ it('normalizes only explicit HTTP URLs and keeps path, query and fragment identi
 })
 
 describe('browser destination scope', () => {
+  it.each([
+    ['worktree', 'local', undefined, 'local'],
+    ['worktree', 'ssh:target', undefined, 'ssh:target'],
+    ['worktree', 'runtime:server', undefined, 'runtime:server'],
+    ['worktree', 'ssh:target', 'server', 'ssh:target'],
+    ['worktree', 'ssh:target', 'server', 'runtime:server'],
+    ['folder', 'local', undefined, 'local'],
+    ['folder', 'runtime:server', undefined, 'runtime:server']
+  ] as const)(
+    'places a hostless %s source owned by %s (%s) on %s',
+    (kind, hostId, runtimeOwner, destinationHostId) => {
+      const workspaceId = kind === 'folder' ? 'folder:legacy' : WORKSPACE
+      store.setState((state) => ({
+        activeWorktreeId: workspaceId,
+        activeWorkspaceExecutionHostId: hostId,
+        worktreesByRepo: {
+          repo1: [
+            makeWorktree({
+              id: WORKSPACE,
+              repoId: 'repo1',
+              hostId,
+              runtimeOwnerEnvironmentId: runtimeOwner
+            })
+          ]
+        },
+        folderWorkspaces: [makeFolderWorkspace({ id: 'legacy', executionHostId: hostId })],
+        unifiedTabsByWorktree: {
+          [workspaceId]: state.unifiedTabsByWorktree[WORKSPACE]!.map((tab) => ({
+            ...tab,
+            worktreeId: workspaceId,
+            executionHostId: undefined
+          }))
+        },
+        groupsByWorktree: { [workspaceId]: state.groupsByWorktree[WORKSPACE]! },
+        layoutByWorktree: { [workspaceId]: state.layoutByWorktree[WORKSPACE]! },
+        activeGroupIdByWorktree: { [workspaceId]: 'c' }
+      }))
+      const state = store.getState()
+      expect(
+        selectBrowserLinkDestination(
+          state,
+          browserLinkTestDestination({
+            worktreeId: workspaceId,
+            executionHostId: destinationHostId
+          }),
+          captureLinkOpenIntent(state, workspaceId, 'source')
+        )
+      ).toMatchObject({ status: 'ready', groupId: 'b', match: null })
+    }
+  )
+
+  it('places hostless sources beside their group and reuses hostless browser wrappers', () => {
+    const existing = store.getState().createBrowserTab(WORKSPACE, URL_TO_OPEN, {
+      targetGroupId: 'b',
+      executionHostId: 'local',
+      browserRuntimeEnvironmentId: null,
+      sessionProfileId: null,
+      activate: false
+    })
+    store.setState((state) => ({
+      unifiedTabsByWorktree: {
+        [WORKSPACE]: state.unifiedTabsByWorktree[WORKSPACE]!.map((tab) => ({
+          ...tab,
+          executionHostId: undefined
+        }))
+      }
+    }))
+    const state = store.getState()
+    const intent = captureLinkOpenIntent(state, WORKSPACE, 'source')
+    const destination = browserLinkTestDestination()
+    expect(selectBrowserLinkDestination(state, destination, intent)).toMatchObject({
+      status: 'ready',
+      groupId: 'b',
+      match: { browserWorkspaceId: existing.id, browserPageId: existing.activePageId }
+    })
+    expect(
+      browserOpenResultForPage(state, destination, existing.id, existing.activePageId!)
+    ).toMatchObject({ groupId: 'b', browserWorkspaceId: existing.id })
+
+    store.setState({ browserTabsByWorktree: {} })
+    expect(selectBrowserLinkDestination(store.getState(), destination, intent)).toMatchObject({
+      status: 'ready',
+      groupId: 'b',
+      match: null
+    })
+  })
+
+  it.each(['listed', 'detected'] as const)(
+    'refuses hostless ownership for %s twins even when the active workspace names one host',
+    (catalog) => {
+      const existing = store.getState().createBrowserTab(WORKSPACE, URL_TO_OPEN, {
+        targetGroupId: 'b',
+        executionHostId: 'local',
+        browserRuntimeEnvironmentId: null,
+        sessionProfileId: null,
+        activate: false
+      })
+      store.setState((state) => ({
+        ...(catalog === 'listed'
+          ? {
+              worktreesByRepo: {
+                repo1: [
+                  ...state.worktreesByRepo.repo1!,
+                  makeWorktree({ id: WORKSPACE, repoId: 'repo1', hostId: 'runtime:other' })
+                ]
+              }
+            }
+          : {
+              detectedWorktreesByRepo: {
+                repo1: {
+                  repoId: 'repo1',
+                  authoritative: true,
+                  source: 'git' as const,
+                  worktrees: [
+                    {
+                      ...makeWorktree({ id: WORKSPACE, repoId: 'repo1', hostId: 'runtime:other' }),
+                      ownership: 'external' as const,
+                      selectedCheckout: false,
+                      visible: true
+                    }
+                  ]
+                }
+              }
+            }),
+        unifiedTabsByWorktree: {
+          [WORKSPACE]: state.unifiedTabsByWorktree[WORKSPACE]!.map((tab) => ({
+            ...tab,
+            executionHostId: undefined
+          }))
+        }
+      }))
+      const state = store.getState()
+      const destination = browserLinkTestDestination()
+      expect(
+        selectBrowserLinkDestination(
+          state,
+          destination,
+          captureLinkOpenIntent(state, WORKSPACE, 'source')
+        )
+      ).toMatchObject({ status: 'ready', groupId: 'c', match: null })
+      expect(
+        browserOpenResultForPage(state, destination, existing.id, existing.activePageId!)
+      ).toBeNull()
+      expect(
+        canOfferHttpLinkGroupAction(state, {
+          workspaceId: WORKSPACE,
+          sourceTabId: 'source',
+          sourceOwner: { kind: 'local' },
+          url: URL_TO_OPEN
+        })
+      ).toBe(false)
+      expect(
+        selectBrowserLinkDestination(
+          state,
+          browserLinkTestDestination(),
+          captureLinkOpenIntent(state, WORKSPACE, 'source', { explicitSourceGroup: true })
+        )
+      ).toEqual({ status: 'refused' })
+    }
+  )
+
+  it('refuses hostless folder twins despite an active host selection', () => {
+    const workspaceId = 'folder:legacy'
+    store.setState((state) => ({
+      activeWorktreeId: workspaceId,
+      folderWorkspaces: [
+        makeFolderWorkspace({ id: 'legacy', executionHostId: 'local' }),
+        makeFolderWorkspace({ id: 'legacy', executionHostId: 'runtime:other' })
+      ],
+      unifiedTabsByWorktree: {
+        [workspaceId]: state.unifiedTabsByWorktree[WORKSPACE]!.map((tab) => ({
+          ...tab,
+          worktreeId: workspaceId,
+          executionHostId: undefined
+        }))
+      },
+      groupsByWorktree: { [workspaceId]: state.groupsByWorktree[WORKSPACE]! },
+      layoutByWorktree: { [workspaceId]: state.layoutByWorktree[WORKSPACE]! }
+    }))
+    const state = store.getState()
+    expect(
+      selectBrowserLinkDestination(
+        state,
+        browserLinkTestDestination({ worktreeId: workspaceId }),
+        captureLinkOpenIntent(state, workspaceId, 'source', { explicitSourceGroup: true })
+      )
+    ).toEqual({ status: 'refused' })
+  })
+
   it('compares effective partition and profile without changing the existing profile', () => {
     const page = buildBrowserPage('browser', WORKSPACE, URL_TO_OPEN, undefined, null)
     const workspace = buildWorkspaceFromPage('browser', WORKSPACE, page, [page.id], null)

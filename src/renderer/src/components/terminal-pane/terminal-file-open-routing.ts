@@ -1,6 +1,4 @@
 import { downloadAndOpenRemoteTerminalFile } from './terminal-remote-file-download-open'
-import { findWorkspaceFileRoute } from '@/lib/runtime-workspace-file-route'
-import { isPathInsideWorktree, toWorktreeRelativePath } from '@/lib/terminal-links'
 import { canClientOsOpenWorkspaceFile } from '@/lib/workspace-file-host-routing'
 import { isMissingRuntimePathError } from '@/runtime/runtime-file-metadata-client'
 import { useAppStore } from '@/store'
@@ -26,13 +24,16 @@ import {
   resolveHostWorkspaceFile,
   type HostWorkspaceFile
 } from './terminal-host-workspace-file'
-import { isFloatingWorkspaceId } from '../../../../shared/floating-workspace-worktree'
 import { captureEditorOpenLinkIntent } from '@/store/slices/editor/tabs/editor-open-target-group'
 import { reserveDetectedFilePathOpenTurn } from './terminal-file-open-turn'
 import { openTerminalHtmlFileInBrowser } from './terminal-file-link-browser-open'
 export { isHtmlFilePath } from './local-html-file-destinations'
 import { refuseOpenInGroupRequest } from './terminal-file-open-in-group-toast'
-import { isExplicitEditorScopeKept, openLinkedFileInEditor } from './terminal-file-link-editor-open'
+import {
+  isExplicitEditorScopeKept,
+  openLinkedFileInEditor,
+  resolveTerminalFileEditorTarget
+} from './terminal-file-link-editor-open'
 
 export {
   getTerminalFileContext,
@@ -274,37 +275,24 @@ export function openDetectedFilePath(
       return
     }
 
-    const store = useAppStore.getState()
-    let targetWorktreeId = worktreeId
     const runtimeOwnerId = runtimeTargetEnvironmentId(fileContext.target) ?? sourceRuntimeOwnerId
-    let targetExecutionHostId =
+    const fileExecutionHostId =
       hostWorkspaceFile?.executionHostId ??
       (runtimeOwnerId
         ? toRuntimeExecutionHostId(runtimeOwnerId)
         : getConnectionExecutionHostId(fileContext.connectionId))
-    let relativePath = mappedFilePath
-    if (worktreePath && isPathInsideWorktree(mappedFilePath, worktreePath)) {
-      const maybeRelative = toWorktreeRelativePath(mappedFilePath, worktreePath)
-      // Why: a link out of the project keeps its absolute path, so the tab reads it as the file
-      // the user named, before and after a restart, instead of being refused as a project file.
-      if (maybeRelative !== null && maybeRelative.length > 0 && !statResult.escapesWorktree) {
-        relativePath = maybeRelative
-      }
-    } else if (
-      hostGrantId === null &&
-      !isFloatingWorkspaceId(worktreeId) &&
-      store.openFiles.some(
-        (openFile) => openFile.filePath === mappedFilePath && openFile.worktreeId !== worktreeId
-      )
-    ) {
-      // Why: early resolution is only needed to avoid an existing sibling-tab collision.
-      const siblingRoute = findWorkspaceFileRoute(store, targetExecutionHostId, mappedFilePath)
-      if (siblingRoute) {
-        targetWorktreeId = siblingRoute.worktreeId
-        targetExecutionHostId = siblingRoute.executionHostId
-        relativePath = siblingRoute.relativePath
-      }
-    }
+    const {
+      worktreeId: targetWorktreeId,
+      executionHostId: targetExecutionHostId,
+      relativePath
+    } = resolveTerminalFileEditorTarget({
+      filePath: mappedFilePath,
+      worktreeId,
+      worktreePath,
+      executionHostId: fileExecutionHostId,
+      hostGrantId,
+      escapesWorktree: statResult.escapesWorktree
+    })
 
     if (
       explicitGroupRequest &&
