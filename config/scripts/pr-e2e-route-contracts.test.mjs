@@ -377,8 +377,7 @@ describe('orcad-e2e-routing', () => {
         'tests/e2e/helpers/orcad-convert-flow.ts',
         'tests/e2e/helpers/orcad-convert-host.ts'
       ],
-      ORCAD_IDLE_EXIT_E2E_SPEC,
-      ORCAD_OPEN_IN_OWNER_E2E_SPEC
+      ORCAD_IDLE_EXIT_E2E_SPEC
     )
   })
 

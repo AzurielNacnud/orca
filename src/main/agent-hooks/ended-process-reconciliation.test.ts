@@ -4,22 +4,29 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { AgentHookServer } from './server'
+import { buildBody, postHookEvent } from './server.test-fixtures'
 
 const LEAF = '11111111-1111-4111-8111-111111111111'
 const PANE = makePaneKey('tab-1', LEAF)
 
 let dir: string
+const servers = new Set<AgentHookServer>()
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'orca-ended-process-'))
 })
 
 afterEach(() => {
+  for (const server of servers) {
+    server.stop()
+  }
+  servers.clear()
   rmSync(dir, { recursive: true, force: true })
 })
 
 async function startServer(): Promise<AgentHookServer> {
   const server = new AgentHookServer()
+  servers.add(server)
   await server.start({ env: 'production', userDataPath: dir })
   return server
 }
@@ -87,6 +94,9 @@ describe('reconcileEndedProcessForPaneKeys', () => {
 
       expect(server._getStateForTests().claudeRunningNonAgentTaskPaneKeys.has(PANE)).toBe(false)
       expect(server._getStateForTests().claudeActiveSessionCronPaneKeys.has(PANE)).toBe(false)
+      const response = await postHookEvent(server, buildBody({ hook_event_name: 'Stop' }))
+      expect(response.status).toBe(204)
+      expect(paneState(server)).toBe('done')
     } finally {
       server.stop()
     }
@@ -160,6 +170,20 @@ describe('reconcileEndedProcessForPaneKeys', () => {
       server.reconcileEndedProcessForPaneKeys([PANE])
 
       expect(server._getStateForTests().claudeSessionOwnerByPaneKey.has(PANE)).toBe(false)
+      // A fresh unanchored cron must survive the new owner's first lead event.
+      for (const payload of [
+        { hook_event_name: 'Stop', session_crons: [{ id: 'new-cron' }] },
+        { hook_event_name: 'PostToolUse', session_id: 'session-b', tool_name: 'Bash' },
+        { hook_event_name: 'Stop', session_id: 'session-b' }
+      ]) {
+        const response = await postHookEvent(server, buildBody(payload))
+        expect(response.status).toBe(204)
+      }
+      expect(server.getStatusSnapshotForPane(PANE)[0]).toMatchObject({
+        state: 'working',
+        workingMode: 'monitoring',
+        mainAgent: { state: 'done' }
+      })
     } finally {
       server.stop()
     }

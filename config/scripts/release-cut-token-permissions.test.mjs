@@ -32,9 +32,7 @@ const EXPECTED_MATRIX = {
       'persistence'
     ].map((job) => [
       `.github/workflows/release-mac-build.yml#qualification-template -> .github/workflows/qualified-orcad-template.yml#qualify -> .github/workflows/node-server-tests.yml#${job}`,
-      ['persistence', 'linux_glibc_floor', 'linux_musl'].includes(job)
-        ? { actions: 'read', contents: 'read' }
-        : { contents: 'read' }
+      job === 'desktop_template' ? { actions: 'read', contents: 'read' } : { contents: 'read' }
     ])
   ),
   ...Object.fromEntries(
@@ -53,6 +51,12 @@ const EXPECTED_MATRIX = {
   [`${RELEASE_WORKFLOW}#verify-mac-build`]: { actions: 'read', contents: 'read' },
   [`${RELEASE_WORKFLOW}#create-release`]: { contents: 'write' },
   [`${RELEASE_WORKFLOW}#cut`]: { contents: 'write' },
+  [`${RELEASE_WORKFLOW}#dependency-security`]: { contents: 'read' },
+  [`${RELEASE_WORKFLOW}#dependency-security -> .github/workflows/dependency-security.yml#javascript`]:
+    { contents: 'read' },
+  [`${RELEASE_WORKFLOW}#dependency-security -> .github/workflows/dependency-security.yml#rust`]: {
+    contents: 'read'
+  },
   [`${RELEASE_WORKFLOW}#docs-production-dispatch`]: { actions: 'write' },
   [`${RELEASE_WORKFLOW}#homebrew-bump`]: { contents: 'read' },
   [`${RELEASE_WORKFLOW}#homebrew-bump -> .github/workflows/homebrew-bump.yml#bump-cask`]: {
@@ -70,6 +74,7 @@ const EXPECTED_MATRIX = {
     },
   [`${RELEASE_WORKFLOW}#orcad-template -> .github/workflows/qualified-orcad-template.yml#qualify -> .github/workflows/node-server-tests.yml#desktop_template`]:
     {
+      actions: 'read',
       contents: 'read'
     },
   [`${RELEASE_WORKFLOW}#orcad-template -> .github/workflows/qualified-orcad-template.yml#qualify -> .github/workflows/node-server-tests.yml#linux_glibc217_compat`]:
@@ -78,12 +83,10 @@ const EXPECTED_MATRIX = {
     },
   [`${RELEASE_WORKFLOW}#orcad-template -> .github/workflows/qualified-orcad-template.yml#qualify -> .github/workflows/node-server-tests.yml#linux_glibc_floor`]:
     {
-      actions: 'read',
       contents: 'read'
     },
   [`${RELEASE_WORKFLOW}#orcad-template -> .github/workflows/qualified-orcad-template.yml#qualify -> .github/workflows/node-server-tests.yml#linux_musl`]:
     {
-      actions: 'read',
       contents: 'read'
     },
   [`${RELEASE_WORKFLOW}#orcad-template -> .github/workflows/qualified-orcad-template.yml#qualify -> .github/workflows/node-server-tests.yml#mobile_web_bundle`]:
@@ -92,7 +95,6 @@ const EXPECTED_MATRIX = {
     },
   [`${RELEASE_WORKFLOW}#orcad-template -> .github/workflows/qualified-orcad-template.yml#qualify -> .github/workflows/node-server-tests.yml#persistence`]:
     {
-      actions: 'read',
       contents: 'read'
     },
   [`${RELEASE_WORKFLOW}#post-release-e2e`]: { actions: 'write' },

@@ -147,7 +147,8 @@ describe('OpenCode 2 recordings through the adapter', () => {
     )
     expect((await rowsOf(rig, 'tool-call')).at(-1)?.body).toMatchObject({
       state: 'completed',
-      exitCode: 0
+      exitCode: 0,
+      output: { head: 'TOOL-OK\n', truncated: false }
     })
   })
 

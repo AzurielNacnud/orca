@@ -66,7 +66,7 @@ describe('Grok recordings through the adapter', () => {
     expect(rig.settled).toMatchObject([{ clientMessageId: 'send-1', providerIdentity: {} }])
   })
 
-  it('s2: an allowed and then a rejected permission are each answered once, after the commit', async () => {
+  it('s2: an allowed and then a rejected permission keep their recorded replies', async () => {
     const { rig, replay } = await replaying('s2-permission')
     const answer = async (optionId: string, index: number) => {
       const approval = await waitFor(async () => {

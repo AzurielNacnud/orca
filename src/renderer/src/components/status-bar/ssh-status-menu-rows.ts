@@ -1,8 +1,8 @@
 import type { SshConnectionStatus } from '../../../../shared/ssh-types'
+import { boundHostList, type BoundedHostList } from '../host-picker/bounded-host-list'
 
 // Why: a generated ~/.ssh/config can import >10k hosts; a row each made one open cost GBs of DOM.
 export const SSH_STATUS_MENU_IDLE_ROW_LIMIT = 25
-export const SSH_HOST_FIND_RESULT_LIMIT = 50
 
 export type SshStatusMenuTarget = { id: string; label: string; status: SshConnectionStatus }
 
@@ -40,32 +40,14 @@ export function splitSshStatusMenuRows(
   }
 }
 
-/**
- * Not-connected hosts matching `query`, exact names first, then prefixes, then substrings, so any
- * host is reachable by typing its full name however many others share its prefix.
- */
+/** Not-connected hosts matching `query`, through the shared host-list bound and ranking. */
 export function findSshHostMatches(
   targets: readonly SshStatusMenuTarget[],
   query: string,
-  limit = SSH_HOST_FIND_RESULT_LIMIT
-): { matches: SshStatusMenuTarget[]; moreCount: number } {
-  const needle = query.trim().toLowerCase()
-  const exact: SshStatusMenuTarget[] = []
-  const prefix: SshStatusMenuTarget[] = []
-  const contains: SshStatusMenuTarget[] = []
-  for (const target of targets) {
-    if (target.status === 'connected') {
-      continue
-    }
-    const label = target.label.toLowerCase()
-    if (label === needle) {
-      exact.push(target)
-    } else if (label.startsWith(needle)) {
-      prefix.push(target)
-    } else if (label.includes(needle)) {
-      contains.push(target)
-    }
-  }
-  const all = [...exact, ...prefix, ...contains]
-  return { matches: all.slice(0, limit), moreCount: Math.max(0, all.length - limit) }
+  limit?: number
+): BoundedHostList<SshStatusMenuTarget> {
+  return boundHostList(
+    targets.filter((target) => target.status !== 'connected'),
+    { query, limit }
+  )
 }

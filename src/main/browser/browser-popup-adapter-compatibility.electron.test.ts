@@ -98,7 +98,7 @@ describe('Electron popup adapter API limits (not an admission safety gate)', () 
   it.each(creationPaths)(
     'records same-parent identical URLs with foreground, background and window intent: %s',
     async (path) => {
-      expect(status().electronVersion).toBe('43.7.8')
+      expect(status().electronVersion).toBe('43.8.1')
       const page = guest('probe-one')
       await configure(page, path)
       for (const modifier of [null, 'Shift', 'ControlOrMeta'] as const) {
@@ -236,15 +236,15 @@ describe('Electron popup adapter API limits (not an admission safety gate)', () 
   )
 
   it.each(creationPaths)(
-    'exposes inherited flags on native OpenURL link options only: %s',
+    'preserves inherited link restrictions without exposing sandbox flags: %s',
     async (path) => {
       const records = await exerciseSandboxControls(path, 'link')
       const preferences = records.map((record) => record.optionsPreferences)
-      expect(preferences[0]).toHaveProperty('openerSandboxFlags', expect.any(Number))
+      expect(preferences[0]).not.toHaveProperty('openerSandboxFlags')
       expect(preferences[1]).not.toHaveProperty('openerSandboxFlags')
       expect(preferences[2]).not.toHaveProperty('openerSandboxFlags')
       if (path === 'adopted') {
-        expect(records.every((record) => record.event === 'createWindow-missing')).toBe(true)
+        expect(records.every((record) => record.event === 'createWindow')).toBe(true)
       }
     }
   )
@@ -334,27 +334,9 @@ async function exerciseSandboxControls(
     const destination = `${origin}/sandbox-${path}-${kind}-${sandbox}`
     const offset = status().adapterProbe?.length ?? 0
     await installSandboxFrame(page, sandbox, destination, kind)
-    const initialReceipt = receipts.length
     const open = page.frameLocator('#sandbox-probe').locator('#open')
     await waitForHiddenFrameInput(open)
     await open.click(kind === 'link' ? { modifiers: ['Shift'] } : {})
-    if (path === 'adopted' && kind === 'link') {
-      await expect
-        .poll(() => eventsSince(offset).some((event) => event.event === 'createWindow-missing'))
-        .toBe(true)
-      const creation = eventsSince(offset).find((event) => event.event === 'createWindow-missing')
-      if (!creation) {
-        throw new Error('Missing OpenURL options')
-      }
-      records.push(creation)
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      expect(
-        receipts.slice(initialReceipt).some((receipt) => destination.endsWith(receipt.path))
-      ).toBe(false)
-      snapshots.push(status())
-      await page.evaluate('console.log("orca-popup-fixture:probe-cleanup")')
-      continue
-    }
     const child = await childAt(destination)
     expect(await child.evaluate('window.opener === null')).toBe(true)
     const before = receipts.length
@@ -382,13 +364,7 @@ async function exerciseSandboxControls(
     }
     await page.evaluate('console.log("orca-popup-fixture:snapshot")')
     const creation = eventsSince(offset).find(
-      (event) =>
-        event.event ===
-        (path === 'adopted'
-          ? kind === 'script'
-            ? 'createWindow'
-            : 'createWindow-missing'
-          : 'did-create-window')
+      (event) => event.event === (path === 'adopted' ? 'createWindow' : 'did-create-window')
     )
     if (!creation) {
       throw new Error('Missing creation event')

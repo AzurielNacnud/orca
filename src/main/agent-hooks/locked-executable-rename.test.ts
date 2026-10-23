@@ -90,5 +90,6 @@ describe.each([
 
     expect(readFileSync(target, 'utf8')).toBe('running build')
     expect(existsSync(aside)).toBe(false)
+    expect(readFileSync(tmp, 'utf8')).toBe('next build')
   })
 })

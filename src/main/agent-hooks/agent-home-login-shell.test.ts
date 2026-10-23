@@ -74,9 +74,12 @@ describe.runIf(process.platform !== 'win32')('resolveLoginShellGrokHome', () => 
 
   // Why: this is the branch that made the old test flaky — pin it so a probe failure is
   // an asserted fallback rather than an invisible substitution for a real answer.
-  it('falls back when the probe fails or times out', async () => {
+  it.each([
+    new Error('spawn failed'),
+    Object.assign(new Error('spawn timed out'), { killed: true })
+  ])('falls back when the probe fails or times out: %s', async (error) => {
     vi.stubEnv('SHELL', '/bin/sh')
-    stubProbeFailure(Object.assign(new Error('spawn timed out'), { killed: true }))
+    stubProbeFailure(error)
 
     await expect(resolveLoginShellGrokHome('/home/orca')).resolves.toBe('/home/orca/.grok')
   })

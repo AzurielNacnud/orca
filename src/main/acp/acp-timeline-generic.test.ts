@@ -8,7 +8,7 @@ import {
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import { AcpAgentError } from './acp-errors'
-import { AcpTimelineTranslator, acpTurnEnd } from './acp-timeline-translator'
+import { AcpTimelineTranslator } from './acp-timeline-translator'
 
 afterEach(closeProviderTimelineRigs)
 
@@ -195,9 +195,8 @@ describe('generic ACP translation', () => {
     }
   )
 
-  it('keeps unknown verdicts unknown and preserves unknown frames without opening a turn', async () => {
+  it('bounds unknown frames without opening a turn and leaves unknown stop outcomes unset', async () => {
     const { rig, translator, apply } = await genericRig()
-    expect(acpTurnEnd('turn', 'future_stop', 1200)).not.toHaveProperty('outcome')
     apply(
       translator.sessionEvent(
         {
@@ -219,6 +218,11 @@ describe('generic ACP translation', () => {
     })
     expect(rows[0]!.turnScope).toEqual({ kind: 'thread' })
     expect(await rig.turns()).toEqual([])
+    apply(translator.openPrompt('future', 1200).events)
+    apply(translator.promptResult('future', { stopReason: 'future_stop' }, 1300))
+    const [turn] = await rig.turns()
+    expect(turn).toMatchObject({ state: 'completed' })
+    expect(turn).not.toHaveProperty('outcome')
   })
 
   it('ignores live user echoes and options metadata, and rejects cross-session requests', async () => {
@@ -295,7 +299,7 @@ describe('generic ACP translation', () => {
     apply(translator.promptResult('send-1', { stopReason: 'end_turn' }, 1200))
     expect((await rig.rows()).some((row) => messageText(row.body) === 'typed')).toBe(true)
   })
-  it('evicts completed snapshots during long turns while preserving active tool input', async () => {
+  it('preserves active tool input during long turns with many completed snapshots', async () => {
     const { rig, translator, apply, update } = await genericRig()
     apply(translator.openPrompt('send-1', 1000).events)
     update({
