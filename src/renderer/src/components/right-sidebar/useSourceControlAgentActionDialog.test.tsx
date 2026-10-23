@@ -54,11 +54,13 @@ it('starts and saves a live pick from the unified picker, keeping the agent-boun
   // An untouched default recipe stays the default and saves no surface of its own.
   expect(result.current.selectedAgent).toBe('claude')
   expect(result.current.recipe).toMatchObject({ agentId: null, launchPreferences })
+  expect(result.current.agentArgsApply).toBe(false)
 
   act(() => result.current.surfaceRows.onPick('codex', 'terminal'))
   expect(result.current.recipe).toMatchObject({ agentId: 'codex', surface: 'terminal' })
   expect(result.current.recipe.launchPreferences).toEqual(launchPreferences)
   expect(result.current.surfaceRows.selection.cli).toBe(true)
+  expect(result.current.agentArgsApply).toBe(true)
   await act(() => result.current.handleStart())
 
   expect(onStart).toHaveBeenCalledWith(
@@ -79,6 +81,7 @@ it('starts and saves a live pick from the unified picker, keeping the agent-boun
   act(() => result.current.surfaceRows.onPick('claude', 'chat'))
   expect(result.current.recipe).toMatchObject({ agentId: 'claude', surface: 'chat' })
   expect(result.current.recipe.launchPreferences).toBeUndefined()
+  expect(result.current.agentArgsApply).toBe(false)
 })
 
 it('saves no surface for a pick made when the picker offers no chats', async () => {
@@ -103,6 +106,7 @@ it('leaves an untouched saved surface in the draft but omits it when saving to a
   })
   await waitFor(() => expect(result.current.canStart).toBe(true))
   expect(result.current.recipe.surface).toBe('terminal')
+  expect(result.current.agentArgsApply).toBe(true)
   act(() => result.current.onCommandTemplateChange('edited {basePrompt}'))
   await act(() => result.current.handleStart())
   const saved = onSaveAgentDefault.mock.calls[0]?.[2]

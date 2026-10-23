@@ -17,8 +17,6 @@ import {
 } from './source-control-agent-action-dialog-support'
 import { useSourceControlAgentActionStart } from './useSourceControlAgentActionStart'
 import { useSourceControlActionAgentChoice } from './use-source-control-action-agent-choice'
-import { sourceControlLaunchAppliesAgentArgs } from './source-control-launch-agent-args-applicability'
-import { getRepoExecutionHostId } from '../../../../shared/execution-host'
 
 const DEFAULT_SAVE_TARGET_VALUE = 'global'
 
@@ -104,16 +102,6 @@ export function useSourceControlAgentActionDialog({
     basePrompt: baseCommandInput
   })
   const trimmedCommandInput = commandInput.trim()
-  // Why: a structured native chat session reads no CLI arguments, so the field is absent on
-  // launches that would take that route and present on the terminal launches that apply them.
-  // Resolved on every render rather than memoised: it reads the live store and the local
-  // runtime's capabilities, neither of which is in a dependency list.
-  const agentArgsApply = sourceControlLaunchAppliesAgentArgs({
-    agent: selectedAgent,
-    worktreeId,
-    repoId,
-    ...(repo ? { executionHostId: getRepoExecutionHostId(repo) } : {})
-  })
   const { deliveryPlan, resetDeliveryPlan, cancelStart, isStarting, handleStart } =
     useSourceControlAgentActionStart({
       open,
@@ -225,7 +213,7 @@ export function useSourceControlAgentActionDialog({
     },
     statusCopy,
     agentArgs,
-    agentArgsApply,
+    agentArgsApply: choice.launchAppliesAgentArgs,
     commandTemplate,
     recipe,
     saveLaunchRecipe,
