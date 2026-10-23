@@ -65,6 +65,8 @@ export class AcpStructuredOptions {
   // A loaded session keeps the model it ran; only a new one resolves the agent's own config.
   private resolvesConfig = false
   readonly picked = new Set<string>()
+  /** Each key's value from Orca's last successful write; never the agent's report. */
+  readonly applied = new Map<string, string>()
   private initialChoice: Readonly<Record<string, string>> = {}
   currentProof = new Set<string>()
   writeRevision = 0
@@ -250,7 +252,7 @@ export function writeAcpSessionOption(
   connection: Pick<AcpStructuredConnection, 'setConfigOption' | 'setModel'>,
   options: AcpStructuredOptions,
   write: AcpOptionWrite,
-  bound: { agent: string; timeoutMs: number; signal?: AbortSignal; key: string }
+  bound: { agent: string; timeoutMs: number; signal?: AbortSignal; key: string; value: string }
 ): Promise<void> {
   const { agent, timeoutMs, signal } = bound
   if (signal?.aborted) {
@@ -267,6 +269,7 @@ export function writeAcpSessionOption(
     }
     apply()
     options.currentProof.add(bound.key)
+    options.applied.set(bound.key, bound.value)
   }
   const applied =
     write.method === 'config'

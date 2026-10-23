@@ -270,6 +270,7 @@ describe('SourceControlAgentActionDialog', () => {
     await vi.waitFor(() =>
       expect(mocks.ensureRuntimeDetectedAgents).toHaveBeenCalledWith('env-1', 'repo-1::wt-1')
     )
+    await flushEffects()
     expect(mocks.onStart).not.toHaveBeenCalled()
     const start = [...container.querySelectorAll('button')].find((button) =>
       button.textContent?.toLowerCase().includes('start agent')

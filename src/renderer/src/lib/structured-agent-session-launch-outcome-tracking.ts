@@ -20,6 +20,7 @@ import {
   retireStructuredAgentSessionLaunchCancellationTombstone,
   type StructuredLaunchState
 } from './structured-agent-session-launch-registry'
+import { recordUnlistedCreatedChat } from './structured-agent-session-unlisted-created-chats'
 
 // How a launch's create outcome settles its callers: published, refused, failed or unknown.
 
@@ -77,6 +78,10 @@ export function trackLaunchSettlement(
         return
       }
       materializeStructuredLaunchSurface(state.intent)
+      if (!state.hostListed) {
+        const { worktreeId, sessionId, executionHostId } = state.intent
+        recordUnlistedCreatedChat(worktreeId, sessionId, executionHostId)
+      }
       if (receipt.configurationFailure) {
         publishStructuredAgentSessionSends(receipt.sessionId, {
           notice: `${getAgentLabel(state.intent.agent)}: ${agentSessionWriteFailureText(receipt.configurationFailure, 'option')}`

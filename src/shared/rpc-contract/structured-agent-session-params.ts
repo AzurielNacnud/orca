@@ -23,7 +23,7 @@ export {
   SessionId
 } from './structured-agent-session-identifiers'
 import { z } from 'zod'
-import { isAgentSessionSurfaceTabId } from '../agent-session-surface-tab-id'
+import { CREATE_TAB_FIELDS } from './structured-agent-session-create-tab-params'
 import { isStructuredAgentId } from '../agent-session-provider-handle-encoding'
 import { normalizeExecutionHostId } from '../execution-host'
 import {
@@ -157,8 +157,7 @@ export const CreateIntentParams = z
     worktree: Identifier('Invalid worktree selector'),
     agent: StructuredAgent,
     resumeFrom: ResumeSource.optional(),
-    /** Strict payload: send only after the host advertises the create-tab-id capability. */
-    tabId: z.string().refine(isAgentSessionSurfaceTabId, 'Invalid chat tab ID').optional(),
+    ...CREATE_TAB_FIELDS,
     /** Both fields require `agentSession.create.message.v1` on the executing host. */
     firstMessage: z
       .object({

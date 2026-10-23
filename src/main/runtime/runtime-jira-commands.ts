@@ -1,7 +1,7 @@
 import type {
   JiraIssueSummaryGenerationRequest,
   JiraIssueSummaryGenerationCancellation
-} from '../../shared/jira-issue-summary-generation'
+} from '../../shared/jira/jira-issue-summary-generation'
 import {
   generateJiraIssueSummaryRequest,
   cancelJiraIssueSummaryRequest,
