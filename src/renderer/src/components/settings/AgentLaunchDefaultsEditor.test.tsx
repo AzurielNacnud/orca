@@ -1,10 +1,44 @@
 // @vitest-environment happy-dom
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentCommandOverrideInput, AgentDefaultArgsInput } from './AgentLaunchDefaultsEditor'
+import { TooltipProvider } from '../ui/tooltip'
 
 afterEach(cleanup)
+
+it('requires two separate Backspaces at the start to remove the permission pill', async () => {
+  const remove = vi.fn()
+  const user = userEvent.setup()
+  render(
+    <TooltipProvider>
+      <AgentDefaultArgsInput
+        defaultArgs=""
+        argsOverride="--verbose"
+        onSaveArgs={vi.fn()}
+        permissionChip={{
+          label: 'Claude',
+          flag: '--dangerously-skip-permissions',
+          onRemove: remove
+        }}
+      />
+    </TooltipProvider>
+  )
+  const input = screen.getByRole('textbox')
+  const chip = screen.getByRole('button', { name: /Remove --dangerously-skip-permissions/ })
+  await user.click(input)
+  await user.keyboard('{Home}{Shift>}{ArrowRight}{/Shift}{Backspace}')
+  expect(document.activeElement).toBe(input)
+  expect(remove).not.toHaveBeenCalled()
+  await user.keyboard('{Home}{Backspace}')
+  expect(document.activeElement).toBe(chip)
+  expect(remove).not.toHaveBeenCalled()
+  fireEvent.keyDown(chip, { key: 'Backspace', repeat: true })
+  expect(remove).not.toHaveBeenCalled()
+  await user.keyboard('{Backspace}')
+  expect(remove).toHaveBeenCalledTimes(1)
+  expect(document.activeElement).toBe(input)
+})
 
 describe('launch field reset ordering', () => {
   it.each(['arguments', 'command'] as const)(

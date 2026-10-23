@@ -1,6 +1,7 @@
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
+import { Textarea } from '../ui/textarea'
 import { translate } from '@/i18n/i18n'
 import {
   parseAgentDefaultEnvDraft,
@@ -8,6 +9,7 @@ import {
   type AgentDefaultEnvDraftInvalidReason
 } from './agent-default-env-draft'
 import { useAgentLaunchFieldWrite } from './use-agent-launch-field-write'
+import { AgentPermissionArgsChip } from './AgentPermissionChoiceControls'
 
 export function AgentCommandOverrideInput({
   defaultCmd,
@@ -91,11 +93,12 @@ export function AgentDefaultArgsInput({
   defaultArgs: string
   argsOverride: string
   onSaveArgs: (value: string) => void | Promise<void>
-  /** The permission flag terminals add ahead of the text, drawn just before the box. */
-  permissionChip?: React.ReactNode
+  permissionChip?: { label: string; flag: string; onRemove: () => void }
   note?: string
 }): React.JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const chipButtonRef = useRef<HTMLButtonElement>(null)
   const argsDraft = draft ?? argsOverride
   const { pending, write } = useAgentLaunchFieldWrite()
   const commitArgs = (): void => {
@@ -120,28 +123,62 @@ export function AgentDefaultArgsInput({
         {translate('auto.components.settings.AgentsPane.cfb3f35775', 'Arguments')}
       </span>
       <div className="flex items-center gap-2">
-        {permissionChip}
-        <Input
-          value={argsDraft}
-          readOnly={pending}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={commitArgs}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              commitArgs()
-              event.currentTarget.blur()
-            }
-            if (event.key === 'Escape') {
-              setDraft(null)
+        <div
+          className="flex min-h-7 min-w-0 flex-1 items-start gap-2 rounded-md border border-input px-3 py-0.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              inputRef.current?.focus()
             }
           }}
-          placeholder={
-            defaultArgs ||
-            translate('auto.components.settings.AgentsPane.6f99bf5dd0', 'No default arguments')
-          }
-          spellCheck={false}
-          className="h-7 flex-1 font-mono text-xs"
-        />
+        >
+          {permissionChip && (
+            <AgentPermissionArgsChip
+              {...permissionChip}
+              buttonRef={chipButtonRef}
+              onRemove={() => {
+                inputRef.current?.focus()
+                permissionChip.onRemove()
+              }}
+            />
+          )}
+          <Textarea
+            ref={inputRef}
+            rows={1}
+            value={argsDraft}
+            readOnly={pending}
+            onChange={(event) => setDraft(event.target.value.replace(/[\r\n]/g, ''))}
+            onBlur={commitArgs}
+            onKeyDown={(event) => {
+              if (
+                permissionChip &&
+                event.key === 'Backspace' &&
+                !event.repeat &&
+                !event.altKey &&
+                !event.ctrlKey &&
+                !event.metaKey &&
+                event.currentTarget.selectionStart === 0 &&
+                event.currentTarget.selectionEnd === 0
+              ) {
+                event.preventDefault()
+                chipButtonRef.current?.focus()
+              }
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                commitArgs()
+                event.currentTarget.blur()
+              }
+              if (event.key === 'Escape') {
+                setDraft(null)
+              }
+            }}
+            placeholder={
+              defaultArgs ||
+              translate('auto.components.settings.AgentsPane.6f99bf5dd0', 'No default arguments')
+            }
+            spellCheck={false}
+            className="max-h-40 min-h-5 flex-1 resize-none rounded-none border-0 p-0 font-mono text-xs shadow-none [field-sizing:content] focus-visible:ring-0 md:text-xs dark:bg-transparent"
+          />
+        </div>
         {(argsOverride !== defaultArgs || argsDraft !== defaultArgs) && (
           <Button
             type="button"

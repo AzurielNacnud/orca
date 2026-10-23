@@ -21,7 +21,6 @@ import {
   AgentDefaultEnvInput
 } from './AgentLaunchDefaultsEditor'
 import {
-  AgentPermissionArgsChip,
   agentPermissionChoiceLabel,
   AgentPermissionMenu,
   type AgentPermissionChoiceRow
@@ -300,13 +299,13 @@ export function AgentCatalogRow({
                   argsOverride={argsOverride}
                   onSaveArgs={onSaveArgs}
                   permissionChip={
-                    permissionChoice?.flag && !permissionChoice.argsSetPermission ? (
-                      <AgentPermissionArgsChip
-                        label={label}
-                        flag={permissionChoice.flag}
-                        onRemove={() => permissionChoice.onSelect('own')}
-                      />
-                    ) : undefined
+                    permissionChoice?.flag && !permissionChoice.argsSetPermission
+                      ? {
+                          label,
+                          flag: permissionChoice.flag,
+                          onRemove: () => permissionChoice.onSelect('own')
+                        }
+                      : undefined
                   }
                   note={
                     permissionChoice?.argsSetPermission

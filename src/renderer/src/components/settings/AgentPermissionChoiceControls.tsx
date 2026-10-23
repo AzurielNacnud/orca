@@ -1,4 +1,5 @@
 import { ChevronDown, X } from 'lucide-react'
+import type { Ref } from 'react'
 import type { AgentChatPermissionMode } from '../../../../shared/agent-chat-permission-mode'
 import type { AgentPermissionChoice } from '../../../../shared/tui-agent-permission-choice'
 import { translate } from '@/i18n/i18n'
@@ -224,20 +225,31 @@ export function AgentPermissionMenu({
 export function AgentPermissionArgsChip({
   label,
   flag,
-  onRemove
+  onRemove,
+  buttonRef
 }: {
   label: string
   flag: string
   onRemove: () => void
+  buttonRef?: Ref<HTMLButtonElement>
 }): React.JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="flex h-5 max-w-[60%] shrink-0 items-center gap-1 rounded bg-muted px-1.5 font-mono text-[11px] text-foreground/80">
+        <span className="flex h-5 max-w-[60%] shrink-0 items-center gap-1 rounded bg-muted px-1.5 font-mono text-[11px] text-foreground/80 focus-within:ring-2 focus-within:ring-ring">
           <span className="truncate">{flag}</span>
           <button
+            ref={buttonRef}
             type="button"
             onClick={onRemove}
+            onKeyDown={(event) => {
+              if (event.key === 'Backspace') {
+                event.preventDefault()
+                if (!event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey) {
+                  onRemove()
+                }
+              }
+            }}
             aria-label={translate(
               'settings.agents.permissionChipRemove',
               "Remove {{flag}} and use {{agent}}'s own settings",

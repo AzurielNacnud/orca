@@ -94,7 +94,7 @@ function AgentsHarness() {
   )
 }
 
-function argumentsInput(label: string): HTMLInputElement {
+function argumentsInput(label: string): HTMLTextAreaElement {
   const row = screen.getByText(label, { selector: 'span' }).closest('div.py-3')
   if (!(row instanceof HTMLElement)) {
     throw new Error('Missing agent row')
@@ -104,7 +104,7 @@ function argumentsInput(label: string): HTMLInputElement {
     fireEvent.click(expand)
   }
   const input = within(row).getByPlaceholderText('No default arguments')
-  if (!(input instanceof HTMLInputElement)) {
+  if (!(input instanceof HTMLTextAreaElement)) {
     throw new Error('Missing Arguments input')
   }
   return input
