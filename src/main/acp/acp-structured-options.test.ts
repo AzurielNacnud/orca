@@ -106,7 +106,7 @@ describe('ACP session options', () => {
     const options = new AcpStructuredOptions()
     options.adoptSession({ configOptions })
     const { models, current } = options.read()
-    // The effort menu belongs to the model running now; nothing is anyone's default.
+    // Current values supply an effort menu, never a catalog default.
     expect(models).toEqual([
       { id: 'model-a', label: 'Model A', isDefault: false, efforts: [] },
       {
@@ -137,7 +137,7 @@ describe('ACP session options', () => {
               reasoningEfforts: [{ value: 'medium', default: true }]
             }
           },
-          // The session's own effort written into the running model's meta is not its default.
+          // Session-selected effort metadata must not become a model default.
           {
             modelId: 'model-b',
             name: 'Model B',

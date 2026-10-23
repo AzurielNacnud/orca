@@ -84,15 +84,3 @@ export function shouldSeedFolderAgentAfterDismissedOnboarding(
     !onboarding.checklist.addedFolder
   )
 }
-
-export function buildDismissedOnboardingFolderAgentStartup(
-  settings: GlobalSettings | null,
-  onboarding: OnboardingState | null,
-  hasExistingProject: boolean,
-  host: OnboardingStartupHost
-): OnboardingFolderAgentStartup | undefined {
-  if (!shouldSeedFolderAgentAfterDismissedOnboarding(onboarding, hasExistingProject)) {
-    return undefined
-  }
-  return buildOnboardingFolderAgentStartup(settings, host)
-}

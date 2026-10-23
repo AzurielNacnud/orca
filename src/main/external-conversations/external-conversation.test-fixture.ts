@@ -171,6 +171,8 @@ export function fakeTerminal() {
   const current = (): string =>
     `inc-${state.ptyId}${state.incarnation > 1 ? `-${state.incarnation}` : ''}`
   const writes: string[] = []
+  /** Raw keys written outside the prompt writer: prompt answers. */
+  const keys: string[] = []
   const waiters = new Set<(error?: Error) => void>()
   const hold = (signal: AbortSignal | undefined): Promise<void> =>
     new Promise((resolve, reject) => {
@@ -210,6 +212,20 @@ export function fakeTerminal() {
       return { handle, accepted: true, bytesWritten: 1 }
     }
   )
+  const sendTerminal = vi.fn(
+    async (
+      handle: string,
+      action: { text?: string },
+      options: { beforeWrite?: (ptyId: string) => unknown }
+    ): Promise<RuntimeTerminalSend> => {
+      if (!state.ptyId) {
+        throw new Error('terminal_not_writable')
+      }
+      await options.beforeWrite?.(state.ptyId)
+      keys.push(action.text ?? '')
+      return { handle, accepted: true, bytesWritten: 1, writeSettlement: { outcome: 'accepted' } }
+    }
+  )
   const resumeAgentSessionInWorkspace = vi.fn(
     async (
       _worktreeId: string,
@@ -234,6 +250,7 @@ export function fakeTerminal() {
       return { ptyId: state.ptyId, processIncarnation: current(), generation: 1 }
     },
     sendTerminalAgentPrompt,
+    sendTerminal,
     readLaunchedAgentForeground: vi.fn(
       async (_ptyId: string): Promise<LaunchedAgentForeground> => 'agent'
     ),
@@ -248,6 +265,8 @@ export function fakeTerminal() {
     terminal,
     state,
     writes,
+    keys,
+    sendTerminal,
     sendTerminalAgentPrompt,
     resumeAgentSessionInWorkspace,
     waitForFreshWorkerComposer,
