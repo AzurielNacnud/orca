@@ -408,7 +408,9 @@ describe('registerPtyHandlers', () => {
       'term_expected'
     )
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('pty:spawned', {
-      id: spawned.id
+      id: spawned.id,
+      incarnationId: expect.any(String),
+      hostId: 'local'
     })
   })
   it('joins an early pane winner without allocating a second Agent Teams leader', async () => {
