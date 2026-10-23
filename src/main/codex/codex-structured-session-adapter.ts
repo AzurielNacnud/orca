@@ -1,3 +1,4 @@
+import { projectCodexSessionOptions } from './codex-structured-service-tier'
 import * as codexRewind from './codex-structured-rewind'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
 import { isCodexAppServerRequestError } from './codex-app-server-connection'
@@ -321,6 +322,9 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
 
   readOptions = (input: { sessionId: string; fence: number }) =>
     readLiveCodexSessionOptions(this.session(input.sessionId), this.deps.requestTimeoutMs)
+
+  projectOptions = (sessionId: string, options: Readonly<Record<string, string>>) =>
+    projectCodexSessionOptions(this.sessions.get(sessionId), options)
 
   prepareReadOptions = (input: { sessionId: string; fence: number }) =>
     prepareLiveCodexSessionOptions(this.session(input.sessionId), this.deps.requestTimeoutMs)

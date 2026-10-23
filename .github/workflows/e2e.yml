@@ -88,17 +88,21 @@ jobs:
             exit 0
           fi
           read -r -a packages <<< "$ORCA_E2E_APT_PACKAGES"
-          # Why apt-mirrors.txt: runner images resolve mirror+file: sources through it, so editing the lists alone leaves Azure in use.
-          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
-            if [ -f "$source" ]; then
-              sudo sed -i 's|https*://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
-            fi
-          done
-          sudo tee /etc/apt/apt.conf.d/99-orca-e2e >/dev/null <<'APTCONF'
+          if [ -f .github/scripts/prepare-ubuntu-apt.sh ]; then
+            bash .github/scripts/prepare-ubuntu-apt.sh
+          else
+            # Dispatched refs can predate the shared preparation script.
+            for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+              if [ -f "$source" ]; then
+                sudo sed -i 's|https*://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' "$source"
+              fi
+            done
+            sudo tee /etc/apt/apt.conf.d/99-orca-ci >/dev/null <<'APTCONF'
           Acquire::http::Timeout "15";
           Acquire::https::Timeout "15";
           Acquire::Retries "1";
           APTCONF
+          fi
           timeout 120 sudo apt-get update
           timeout 300 sudo apt-get install -y "${packages[@]}" || timeout 300 sudo apt-get install -y --fix-missing "${packages[@]}"
 
@@ -490,6 +494,15 @@ jobs:
           ORCA_E2E_ORCAD_SERVE: '1'
           ORCA_E2E_FORWARD_APP_LOGS: '1'
         run: xvfb-run --auto-servernum bash .github/scripts/e2e-with-window-manager.sh pnpm exec playwright test --config tests/playwright.config.ts tests/e2e/orcad-serve-mode-switch.spec.ts --project=electron-headless --workers=1
+      # Only this job builds out/orcad, so the spec's orcad case runs here; the e2e shards run its Electron case.
+      - name: Phone Markdown on headless orcad serve
+        if: >-
+          !cancelled() &&
+          (inputs.test_files == '' || contains(inputs.test_files, 'tests/e2e/headless-serve-mobile-markdown.spec.ts'))
+        env:
+          SKIP_BUILD: '1'
+          ORCA_E2E_FORWARD_APP_LOGS: '1'
+        run: xvfb-run --auto-servernum bash .github/scripts/e2e-with-window-manager.sh pnpm exec playwright test --config tests/playwright.config.ts tests/e2e/headless-serve-mobile-markdown.spec.ts --grep "headless orcad server" --project=electron-headless --workers=1
       # The layout oracle's headless scenarios run on both serve hosts, so they need this job's orcad.
       - name: Layout oracle on headless serve (orcad and Electron)
         if: >-

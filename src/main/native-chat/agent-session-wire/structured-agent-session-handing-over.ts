@@ -1,20 +1,22 @@
 // The sends the host is handing to its child right now: their `dispatch{pending}` row is written
 // before the adapter is called, so the child holds them before it can report so (`heldSends`).
+// Nested late-settlement windows share the count without replacing the input that owns its result.
 
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 
 /** The chat's journal, which identifies the conversation for as long as it is held. */
 type HandoverJournal = object
 
-type Handover = {
+type HandoverInput = {
   owner: () => void
   unadmitted: boolean
   signal?: AbortSignal
   pending?: () => boolean
-  finalization?: { close: () => void; completion: Promise<void> }
+  finalization: { close: () => void; completion: Promise<void> }
 }
+type Handover = { count: number; input?: HandoverInput }
 const handingOver = new WeakMap<HandoverJournal, Map<string, Handover>>()
-const NONE: ReadonlySet<string> = new Set()
+const NONE: ReadonlyMap<string, Handover> = new Map()
 
 /** Outcome responsibility survives cancellation; only its exact owner may bypass delegation. */
 export function finalizingStructuredAgentSessionInput(
@@ -22,7 +24,7 @@ export function finalizingStructuredAgentSessionInput(
   clientMessageId: string,
   except?: () => void
 ): boolean {
-  const input = handingOver.get(journal)?.get(clientMessageId)
+  const input = handingOver.get(journal)?.get(clientMessageId)?.input
   return input?.finalization !== undefined && input.owner !== except
 }
 
@@ -31,7 +33,7 @@ export function closeStructuredAgentSessionHandovers(
   journal: HandoverJournal
 ): Promise<void> | undefined {
   const finalizers = [...(handingOver.get(journal)?.values() ?? [])].flatMap(
-    (input) => input.finalization ?? []
+    (entry) => entry.input?.finalization ?? []
   )
   if (finalizers.length === 0) {
     return undefined
@@ -43,9 +45,10 @@ export function closeStructuredAgentSessionHandovers(
 }
 
 /** The sends this journal's chat is handing over now. */
-export function structuredAgentSessionHandingOver(journal: HandoverJournal): ReadonlySet<string> {
-  const sends = handingOver.get(journal)
-  return sends ? new Set(sends.keys()) : NONE
+export function structuredAgentSessionHandingOver(
+  journal: HandoverJournal
+): ReadonlyMap<string, Handover> {
+  return handingOver.get(journal) ?? NONE
 }
 
 /** Volatile proof owned by the live handover; a crash or cancellation restores ordinary doubt. */
@@ -53,7 +56,7 @@ export function continuingStructuredAgentSessionInput(
   journal: HandoverJournal,
   clientMessageId: string
 ): boolean {
-  const input = handingOver.get(journal)?.get(clientMessageId)
+  const input = handingOver.get(journal)?.get(clientMessageId)?.input
   return input?.unadmitted === true && input.signal?.aborted !== true && input.pending?.() === true
 }
 
@@ -64,7 +67,7 @@ export function markStructuredAgentSessionInputUnadmitted(
   unadmitted: boolean,
   signal?: AbortSignal
 ): void {
-  const input = handingOver.get(journal)?.get(clientMessageId)
+  const input = handingOver.get(journal)?.get(clientMessageId)?.input
   if (input?.owner === owner) {
     Object.assign(input, {
       unadmitted,
@@ -105,12 +108,19 @@ export function beginStructuredAgentSessionHandover(
     sends = new Map()
     handingOver.set(journal, sends)
   }
+  const entry: Handover = sends.get(clientMessageId) ?? { count: 0 }
+  entry.count += 1
+  sends.set(clientMessageId, entry)
   let held = true
   const completed = Promise.withResolvers<void>()
   const release = (): void => {
     if (held) {
       held = false
-      if (sends.get(clientMessageId)?.owner === release) {
+      if (entry.input?.owner === release) {
+        delete entry.input
+      }
+      entry.count -= 1
+      if (entry.count === 0) {
         sends.delete(clientMessageId)
       }
       try {
@@ -120,10 +130,12 @@ export function beginStructuredAgentSessionHandover(
       }
     }
   }
-  sends.set(clientMessageId, {
-    owner: release,
-    unadmitted: false,
-    ...(finalization ? { finalization: { ...finalization, completion: completed.promise } } : {})
-  })
+  if (finalization) {
+    entry.input = {
+      owner: release,
+      unadmitted: false,
+      finalization: { ...finalization, completion: completed.promise }
+    }
+  }
   return release
 }

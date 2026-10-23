@@ -12,6 +12,7 @@ import { advertisedUrlWatcher } from '../../../ports/advertised-url-watcher'
 import type { PtyLivenessVerdict } from '../../../../shared/pty-liveness-verdict'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
 import { exitedSplitPaneFacts } from './exited-split-pane-rule'
+import { closedPaneOfExitedPty, type ClosedPaneOfExit } from './closed-pane-of-exited-pty'
 import type {
   RuntimePtyWorktreeRecord,
   RuntimeLeafRecord
@@ -37,6 +38,22 @@ export abstract class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDi
 
   protected abstract rememberPtyLivenessVerdict(ptyId: string, verdict: PtyLivenessVerdict): void
 
+  /** The pane main's close already dropped, from its closed-pane record; null while main holds it. */
+  private closedPaneOfExit(
+    pty: RuntimePtyWorktreeRecord | undefined,
+    exitIncarnationId: PtyIncarnationId | undefined
+  ): ClosedPaneOfExit | null {
+    if (!ORCA_LAYOUT_OWNER_IS_MAIN || !pty || this.paneOfPty(pty).paneKey) {
+      return null
+    }
+    return closedPaneOfExitedPty(
+      this.store,
+      this.tryGetWorkspaceSessionHostIdForWorktree(pty.worktreeId),
+      pty,
+      exitIncarnationId ?? pty.incarnationId
+    )
+  }
+
   onPtyExit(
     ptyId: string,
     exitCode: number,
@@ -53,9 +70,12 @@ export abstract class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDi
     } = {}
   ): void | Promise<void> {
     const pty = this.ptysById.get(ptyId)
-    if (exitIncarnationId && pty?.incarnationId && exitIncarnationId !== pty.incarnationId) {
+    const pending = this.pendingPtyRegistrationIncarnations.get(ptyId)
+    const candidateIncarnation = pending ? pending.incarnationId : pty?.incarnationId
+    if (exitIncarnationId && candidateIncarnation && exitIncarnationId !== candidateIncarnation) {
       return
     }
+    pending?.exitedIncarnations.add(exitIncarnationId ?? candidateIncarnation ?? null)
     this.invalidatePtyControllerInventoryForLifecycle(ptyId, pty?.connectionId)
     // A bare exit code is not enough to establish why a process ended: older
     // daemons and SSH relays can report 0 for crashes and wrapper exits.
@@ -63,11 +83,6 @@ export abstract class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDi
     const stopNeverConfirmed =
       observedCause.kind === 'unknown' && observedCause.reason === 'stop_unverified'
     const stopRequested = this.stopRequestedPtyIds.has(ptyId)
-    // A raw provider code is not a death: node-pty reports a closed socket as -1 too.
-    const endVouched =
-      stopRequested ||
-      options.hostExitConfirmed === true ||
-      this.ptyLivenessVerdictByPtyId.get(ptyId)?.verdict.status === 'exited'
     const exitCause: TerminalExitCause =
       stopRequested && !stopNeverConfirmed ? OPERATOR_CLOSE_EXIT_CAUSE : observedCause
     this.stopRequestedPtyIds.delete(ptyId)
@@ -79,6 +94,10 @@ export abstract class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDi
     // Why: collect before retirePtyAgentLaunchAuthority, which deletes the restored-authority
     // receipt a receipt-only pane's key comes from.
     const exitPaneKeys = this.collectAgentStatusPaneKeysForPty(ptyId)
+    const closedPane = this.closedPaneOfExit(pty, exitIncarnationId)
+    if (closedPane) {
+      exitPaneKeys.add(closedPane.paneKey)
+    }
     if (preservesAbnormalSshSurface) {
       const prior = this.ptyLivenessVerdictByPtyId.get(ptyId)?.verdict
       this.rememberPtyLivenessVerdict(ptyId, {
@@ -130,29 +149,16 @@ export abstract class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDi
           leafId: leaf.leafId
         })
       }
-      const parsedPaneKey = parsePaneKey(pty?.paneKey ?? '')
-      if (pty?.tabId && parsedPaneKey) {
-        exactSurfaceByKey.set(`${pty.worktreeId}\0${pty.tabId}\0${parsedPaneKey.leafId}`, {
+      const recorded = closedPane ?? this.paneOfPty(pty)
+      const parsedPaneKey = parsePaneKey(recorded.paneKey ?? '')
+      if (pty && recorded.tabId && parsedPaneKey) {
+        exactSurfaceByKey.set(`${pty.worktreeId}\0${recorded.tabId}\0${parsedPaneKey.leafId}`, {
           worktreeId: pty.worktreeId,
-          parentTabId: pty.tabId,
+          parentTabId: recorded.tabId,
           leafId: parsedPaneKey.leafId
         })
       }
       const exactSurfaces = [...exactSurfaceByKey.values()]
-      const pendingIncarnation = this.pendingPtyRegistrationIncarnations.get(ptyId)
-      const exitMatchesPendingRegistration =
-        this.pendingPtyRegistrationIncarnations.has(ptyId) &&
-        (pendingIncarnation === null ||
-          exitIncarnationId === null ||
-          exitIncarnationId === undefined ||
-          pendingIncarnation === exitIncarnationId)
-      if (exitMatchesPendingRegistration) {
-        // Why: reused surfaces can look registered while their replacement incarnation still awaits admission.
-        this.earlyExitedPtyIncarnations.set(
-          ptyId,
-          exitIncarnationId ?? pendingIncarnation ?? pty?.incarnationId ?? null
-        )
-      }
       // Why both kinds: a sleep keeps its wake hint, and a restart's replacement takes the pane.
       const preservesIntentionallyStoppedSurface =
         this.intentionalPtyStops.claimExit(ptyId, exitIncarnationId ?? pty?.incarnationId).length >
@@ -267,11 +273,9 @@ export abstract class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDi
             exactSurfaces,
             // Switch point: main decides an exited split pane's close.
             ORCA_LAYOUT_OWNER_IS_MAIN
-              ? exitedSplitPaneFacts(this.terminalRunFacts, pty, ptyId, exitCode, {
-                  ...options,
-                  endVouched
-                })
-              : undefined
+              ? exitedSplitPaneFacts(this.terminalRunFacts, pty, ptyId, exitCode, options)
+              : undefined,
+            closedPane ?? undefined
           )
         } catch (error) {
           console.error('[runtime] failed to publish terminal retirement:', error)
@@ -303,7 +307,10 @@ export abstract class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDi
     // that teardown, so settle from them too (STA-4603).
     const ptyHandle = this.handleByPtyId.get(ptyId)
     if (ptyHandle && !exitedSurfaces.some((surface) => surface.handle === ptyHandle)) {
-      exitedSurfaces.push({ handle: ptyHandle, paneKey: pty?.paneKey ?? null })
+      exitedSurfaces.push({
+        handle: ptyHandle,
+        paneKey: closedPane?.paneKey ?? this.paneOfPty(pty).paneKey
+      })
     }
     if (!preservesAbnormalSshSurface) {
       for (const surface of exitedSurfaces) {

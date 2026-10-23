@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04-arm, blacksmith-4vcpu-ubuntu-2404]
+        runner: [ubuntu-24.04-arm, blacksmith-8vcpu-ubuntu-2404]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     env:

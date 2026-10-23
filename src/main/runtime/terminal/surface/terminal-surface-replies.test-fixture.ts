@@ -36,6 +36,13 @@ export function surfaceRuntime(
   killed: string[]
   /** Writes the session the way the Store does: then tells its write listeners. */
   setSession: (next: WorkspaceSessionState) => void
+  /** A spawn's binding write, as the PTY host commits it through the Store. */
+  bindPane: (pane: {
+    worktreeId: string
+    tabId: string
+    leafId: string
+    ptyId: string
+  }) => Promise<boolean>
 } {
   const layout = makeHeadlessTerminalLayout(SURFACE_PTYS)
   const harness = makeRuntimeStoreWithWorkspaceSession(
@@ -69,7 +76,19 @@ export function surfaceRuntime(
   }
   const runtimeStore = {
     ...harness.runtimeStore,
+    // The runtime's own session write, as the Store applies it: then tells its write listeners.
+    setWorkspaceSession: vi.fn((next: WorkspaceSessionState) => setSession(next)),
     getWorkspaceSessionHostIds: () => ['local'],
+    // A terminal's binding write, as the Store applies it: then tells its write listeners.
+    persistPtyBinding: async (
+      ...args: Parameters<typeof harness.runtimeStore.persistPtyBinding>
+    ): Promise<boolean> => {
+      const persisted = await harness.runtimeStore.persistPtyBinding(...args)
+      for (const listener of written) {
+        listener('local')
+      }
+      return persisted
+    },
     onWorkspaceSessionWritten: (listener: (hostId: string | null) => void) => {
       written.add(listener)
       return () => written.delete(listener)
@@ -108,6 +127,7 @@ export function surfaceRuntime(
     runtime,
     killed,
     store: harness,
+    bindPane: (pane) => runtimeStore.persistPtyBinding(pane),
     setSession
   }
 }

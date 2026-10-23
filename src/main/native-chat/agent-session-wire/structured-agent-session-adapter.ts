@@ -35,10 +35,7 @@ import type {
   AgentSessionRecord
 } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionAtRestCommands } from './structured-agent-session-at-rest-commands'
-import type {
-  AgentSessionOptionsResult,
-  AgentSessionSlashCommand
-} from '../../../shared/agent-session-wire'
+import type { AgentSessionSlashCommand } from '../../../shared/agent-session-wire'
 import type { AgentSessionThreadGoalChange } from '../../../shared/agent-session-thread-goal-wire'
 import type { AgentSessionRefusalReason } from '../../../shared/agent-session-wire-refusals'
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
@@ -60,18 +57,16 @@ import type {
   StructuredAgentSessionAcquisitionReceipt
 } from './structured-agent-session-startup-attempt-contract'
 import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
-import type { AgentModelCatalogLiveListing } from '../agent-model-catalog/agent-model-catalog-entry'
 import type {
   StructuredAgentSessionProviderOpen,
   StructuredAgentSessionProviderOpenResult
 } from './structured-agent-session-provider-open-contract'
 
-/** A live options read, plus what the child listed for its account's saved catalog. The host
- *  saves that listing and strips it before answering; an adapter whose listing reaches the
- *  catalog another way omits it. */
-export type StructuredAgentSessionLiveOptions = AgentSessionOptionsResult & {
-  catalogListing?: AgentModelCatalogLiveListing
-}
+import type {
+  StructuredAgentSessionLiveOptions,
+  StructuredAgentSessionOptionProjection
+} from './structured-agent-session-option-models'
+export type { StructuredAgentSessionLiveOptions } from './structured-agent-session-option-models'
 
 export class AgentSessionAcquisitionRefusal extends Error {
   readonly code = 'agent_session_operation_invalid'
@@ -285,7 +280,8 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
     body: AgentJournalMessageItem
     /** Immutable choices of this submission; adapters apply them only to this dispatch. */
     executionOptions?: AgentSessionExecutionOptions
-    /** Host-local cancellation while choices are applied before prompt admission. */
+    /** Host-local cancellation while choices are applied before prompt admission. An abort surfaces
+     *  as the signal's own reason, unwrapped and only before the write: the host reads it as unwritten. */
     signal?: AbortSignal
     fence: number
     /** Host clock on the submission row this send came from; the origin the turn
@@ -296,6 +292,10 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
     /** Whether the host still owns this exact child after asynchronous preparation. */
     isCurrent?: () => boolean
     admitFreshInput?: StructuredAgentSessionAdmitFreshInput
+    /** Local preparation boundary before choices can mutate the provider. */
+    onInputPreparation?: () => void
+    /** In-process checkpoint after applying choices, before capturing execution evidence. */
+    onExecutionSnapshot?: () => void
   }): Promise<AgentSessionDispatchOutcome>
   /** How this session narrows its agent's declared rewind; `agent` answers for one with no child
    *  running. The router applies the declaration first, so an adapter's answer never widens it. */
@@ -374,8 +374,8 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   /** The provider reported taking a send it has neither answered nor ended, as a queued follow-up
    *  or a silent retry does. Derived from the live child; false with none. */
   holdsDispatch?(sessionId: string): boolean
-  /** The sends the live child still holds as its own work, by client message id; undefined when
-   *  this adapter cannot say, and the host reads an unanswered send as held. */
+  /** The sends the live child still holds as its own work, by client message id; undefined with
+   *  no live child, and the host then reads an unanswered send as held. */
   heldSends?(sessionId: string): ReadonlySet<string> | undefined
   /** The adapter's own child for this exact acquisition has a pid and its root exit has not been
    *  seen: first-hand proof of life for lease renewal. Absent or false falls back to a PID probe. */
@@ -399,11 +399,16 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   setOption(
     input: StructuredAgentSessionSetOptionInput
   ): Promise<void | Readonly<Record<string, string>>>
+  /** Synchronous capability projection; never acquires inventory or changes saved intent. */
+  projectOptions?(
+    sessionId: string,
+    options: Readonly<Record<string, string>>
+  ): StructuredAgentSessionOptionProjection | undefined
   /** Fetch off the lane, then apply the result under the same child's fence. */
   prepareReadOptions?(input: {
     sessionId: string
     fence: number
-  }): Promise<() => AgentSessionOptionsResult> | undefined
+  }): Promise<() => StructuredAgentSessionLiveOptions> | undefined
   readOptions?(input: {
     sessionId: string
     fence: number

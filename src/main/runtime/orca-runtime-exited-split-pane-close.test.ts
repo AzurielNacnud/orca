@@ -137,17 +137,38 @@ describe('layout-owner build: main closes an exited split pane itself', () => {
     expect(panes(session())).toEqual([LEFT, RIGHT])
   })
 
-  it('closes a split pane on a -1 after a stop was asked for', async () => {
+  // Switch-on variants (ruled behaviour): any negative code keeps the pane, as the window does;
+  // an asked-for close removes the pane through its own close command.
+  it('keeps a split pane on a -1 after a stop was asked for', async () => {
     const { runtime, session } = splitRuntime()
     runtime.markPtyStopRequested('pty-right')
     await runtime.onPtyExit('pty-right', -1)
-    expect(panes(session())).toEqual([LEFT])
+    expect(panes(session())).toEqual([LEFT, RIGHT])
   })
 
-  it('closes a split pane on a -1 the host confirmed', async () => {
+  it('keeps a split pane on a -1 the host confirmed, so recovery can start a shell in it', async () => {
     const { runtime, session } = splitRuntime()
     await runtime.onPtyExit('pty-right', -1, undefined, { hostExitConfirmed: true })
-    expect(panes(session())).toEqual([LEFT])
+    expect(panes(session())).toEqual([LEFT, RIGHT])
+  })
+
+  it('keeps a split pane whose exit came with no code, as when its socket closed', async () => {
+    const { runtime, session } = splitRuntime()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: node-pty reports no exit code on a socket close, despite its types.
+    await runtime.onPtyExit('pty-right', undefined as unknown as number, undefined, {
+      providerExitObserved: true
+    })
+    expect(panes(session())).toEqual([LEFT, RIGHT])
+  })
+
+  it("judges an older daemon's exit, which names no incarnation, by its code alone", async () => {
+    const kept = splitRuntime()
+    await kept.runtime.onPtyExit('pty-right', -1, undefined, { providerExitObserved: true })
+    expect(panes(kept.session())).toEqual([LEFT, RIGHT])
+
+    const closed = splitRuntime()
+    await closed.runtime.onPtyExit('pty-right', 0, undefined, { providerExitObserved: true })
+    expect(panes(closed.session())).toEqual([LEFT])
   })
 
   it('tells the phone a closed pane retired, and sends it nothing for a pane main keeps', async () => {

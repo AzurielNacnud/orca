@@ -40,6 +40,7 @@ export function beginStructuredAgentSessionInputHandover(
   isDisposed: () => boolean
 ): Promise<StructuredAgentSessionPendingHandover | null> {
   let binding = awaitedChild
+  let recorder = deps.recordRanOptions?.(sessionId, binding.fence)
   const ownsInput = () =>
     deps.sessions.get(sessionId) === session &&
     session.journal
@@ -197,6 +198,7 @@ export function beginStructuredAgentSessionInputHandover(
                 )
               }
               binding = current
+              recorder = deps.recordRanOptions?.(sessionId, binding.fence)
               await rebind(current.fence)
               validate(signal)
               return null
@@ -244,8 +246,9 @@ export function beginStructuredAgentSessionInputHandover(
           await deps.settleLeftovers?.(sessionId, owner)
         }
       },
-      recordRanOptions: (handed) =>
-        deps.recordRanOptions?.(sessionId, binding.fence)(handed) ?? Promise.resolve()
+      get recordRanOptions() {
+        return recorder
+      }
     },
     next,
     // Re-read right before the provider call, which runs outside the serialize.

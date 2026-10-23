@@ -4,17 +4,15 @@
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import {
   StructuredAgentSessionInputNotAdmitted,
-  type StructuredAgentSessionAdmitHostInput,
-  type StructuredAgentSessionContinueInput
+  type AgentSessionHandoverContext
 } from './structured-agent-session-input-admission'
 import {
   agentSessionFailureFact,
   providerDiagnosticOf
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionExecutionOptions } from '../../../shared/agent-session-execution-options'
-import type { StructuredAgentSessionHandedOptions } from './structured-agent-session-ran-options'
+import { isAbortSignalReason } from '../../../shared/abort-signal-reason'
 import { isAgentSessionOptionRejectedError } from './structured-agent-session-option-error'
-import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
@@ -26,10 +24,8 @@ import type { AgentSessionDispatchOutcome } from './structured-agent-session-ada
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   handOverStructuredAgentSessionCommand,
-  structuredAgentSessionHandoverOrigin,
-  type StructuredAgentSessionCommandHandoverContext
+  structuredAgentSessionHandoverOrigin
 } from './structured-agent-session-command-turn'
-import type { StructuredAgentSessionDeliveryOrder } from './structured-agent-session-delivery-order'
 import { carriedStoppedHistory } from './structured-agent-session-stopped-history-selection'
 import { withStoppedHistory } from '../../../shared/agent-session-stopped-history'
 import {
@@ -37,18 +33,6 @@ import {
   beginStructuredAgentSessionHandover,
   whileStructuredAgentSessionHandingOver
 } from './structured-agent-session-handing-over'
-
-export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverContext & {
-  admitFreshInput?: StructuredAgentSessionAdmitHostInput
-  continueInput?: StructuredAgentSessionContinueInput
-  acquireAborts?: Pick<StructuredAgentSessionAcquireAborts, 'begin'>
-  deliveryOrder?: StructuredAgentSessionDeliveryOrder
-  workChanged?: () => void
-  holdClosedInput?: (clientMessageId: string, fence: number) => Promise<void>
-  settleEndedInput?: (owner: () => void) => Promise<void>
-  /** A message the agent took: a chat keeps, where it has none saved, the options it ran. */
-  recordRanOptions?: (handed: StructuredAgentSessionHandedOptions) => Promise<void>
-}
 
 /** One input operation runs provider work outside ordering and commits its result inside it. */
 export type StructuredAgentSessionPendingHandover = {
@@ -108,6 +92,7 @@ export async function beginSubmissionHandover(
     }
   )
   const attempt = ctx.acquireAborts?.begin(ctx.sessionId, true)
+  const queued = submission.queuedMessageId !== undefined
   try {
     await ctx.journal.resolveDispatch({
       clientMessageId,
@@ -152,7 +137,7 @@ export async function beginSubmissionHandover(
               )
               unwritten = attempt?.signal.aborted === true
               outcome = unwritten
-                ? cancelledDispatch()
+                ? cancelledDispatch(queued)
                 : ownsChild()
                   ? await dispatchSafely(
                       ctx,
@@ -160,6 +145,7 @@ export async function beginSubmissionHandover(
                       carried ? withStoppedHistory(body, carried.messages) : body,
                       requestedAt,
                       submission.options,
+                      queued,
                       ownsChild,
                       prepareFresh,
                       attempt?.signal
@@ -284,6 +270,7 @@ async function dispatchSafely(
   body: AgentJournalMessageItem,
   requestedAt: number,
   executionOptions: AgentSessionExecutionOptions | undefined,
+  queued: boolean,
   isCurrent: () => boolean,
   prepare: (fence: number) => Promise<AgentJournalMessageItem>,
   signal?: AbortSignal
@@ -301,12 +288,17 @@ async function dispatchSafely(
         : {}),
       isCurrent,
       fence: ctx.fence,
-      requestedAt
+      requestedAt,
+      onInputPreparation: ctx.recordRanOptions?.prepareInput,
+      onExecutionSnapshot: ctx.recordRanOptions?.checkpoint
     })
     return outcome
   } catch (error) {
     if (error instanceof StructuredAgentSessionInputNotAdmitted) {
       throw error
+    }
+    if (isAbortSignalReason(signal, error)) {
+      return cancelledDispatch(queued)
     }
     if (isAgentSessionOptionRejectedError(error)) {
       return {
@@ -321,9 +313,14 @@ async function dispatchSafely(
   }
 }
 
-function cancelledDispatch(): AgentSessionDispatchOutcome {
+/** Only a queued card's hand-off records the proof; on a direct send it would owe the message as
+ *  stopped history. */
+function cancelledDispatch(neverReachedAgent: boolean): AgentSessionDispatchOutcome {
   return {
     state: 'rejected',
-    ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
+    ...agentSessionFailureWords(
+      agentSessionFailureFact('cancelled', neverReachedAgent ? { neverReachedAgent } : {}),
+      { surface: 'rejection' }
+    )
   }
 }

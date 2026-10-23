@@ -102,6 +102,12 @@ const DECLARED_HOST_DIFFERENCES: readonly DeclaredDifference[] = [
       'No startup skill-transaction recovery runs on orcad, so installs need not wait for one.'
   },
   {
+    wiring: 'ctor:workspaceSleepPlatform',
+    missingOn: 'orcad',
+    reason:
+      'Sleep reaches paired servers and suspends VMs from the desktop only; orcad refuses those parts.'
+  },
+  {
     wiring: 'rpc-option:exposeNetworkByDefault',
     missingOn: 'orcad',
     reason: 'orcad pins its bind host instead, so exposure never widens itself.'
@@ -120,11 +126,6 @@ const DECLARED_HOST_DIFFERENCES: readonly DeclaredDifference[] = [
     wiring: 'rpc-option:pinnedBindHost',
     missingOn: 'electron',
     reason: 'The desktop binds loopback until a device pairs (STA-2370).'
-  },
-  {
-    wiring: 'host:setSpeechServiceFactories',
-    missingOn: 'orcad',
-    reason: 'Unwired gap (#31174): speech calls on orcad refuse with speech_unavailable.'
   },
   {
     wiring: 'host:setMainHttpClient',
@@ -442,7 +443,9 @@ describe('runtime composition parity (Electron vs orcad)', () => {
       'ctor-arg:stats',
       'host:setAppEnvironment',
       'host:setSecretStore',
-      'host:setRuntimeBrowserCommandsFactory'
+      'host:setRuntimeBrowserCommandsFactory',
+      // #31174: without it every speech call refuses with speech_unavailable.
+      'host:setSpeechServiceFactories'
     ]) {
       expect(electron, shared).toContain(shared)
       expect(orcad, shared).toContain(shared)

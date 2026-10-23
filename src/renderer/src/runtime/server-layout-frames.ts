@@ -2,19 +2,33 @@
 // this window from its layout stream instead of the session.tabs mirror (design H5). One source per
 // workspace at a time: the mirror stops writing a workspace's layout as the stream's snapshot comes
 // in, and gets it back, with a fresh snapshot, when the stream stops. session.tabs keeps flowing for
-// terminal handles and statuses either way.
+// terminal handles and statuses either way. A workspace with editor tabs only this desktop shows
+// gates once the server's main took them (server-layout-editor-handover.ts).
 
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
 import { lastVerifiedRuntimeStatus } from '../../../shared/runtime-host-status'
-import { LAYOUT_INTENTS_RUNTIME_CAPABILITY } from '../../../shared/workspace-layout/layout-intents-capability'
+import {
+  LAYOUT_INTENTS_RUNTIME_CAPABILITY,
+  LAYOUT_REOPEN_HELD_PANES_CAPABILITY
+} from '../../../shared/workspace-layout/layout-intents-capability'
 import {
   isDisconnectedRuntimeHostState,
   runtimeHostConnectionStateForEntry
 } from './runtime-host-connection-state'
 import { createServerLayoutFrameTranslator } from './server-layout-frame-ids'
+import { routingInputs, sameValues } from './server-layout-frame-routing-inputs'
+import {
+  DESKTOP_CREATED_SERVER_TAB_HOLDS,
+  forgetPublishedServerTabs,
+  pruneDesktopCreatedServerTabs
+} from '@/lib/desktop-created-server-tabs'
+import { serverHeldPanes, showServerLayoutHeldPanes } from './server-held-panes'
 import { createServerViewReport, onServerControlConnected } from './server-layout-view-report'
 import { openWorkspaceLayoutFrameSync } from './workspace-layout-frame-sync'
+import { releaseHeldBrowserTabsTheServerLists } from './web-runtime-browser-tab-staging'
+import { provideServerLayoutApplyRoutes } from './server-layout-apply-routes'
+import { createServerEditorHandover } from './server-layout-editor-handover'
 import { mirroredRuntimeEnvironmentIdForWorkspace } from './web-session-tabs-sync/mirrored-workspace-owner'
 import {
   isFrameDrawnServerWorkspace,
@@ -72,18 +86,45 @@ function openServerFrames(
       })
     }
   }
+  const startHandover = () =>
+    createServerEditorHandover({
+      environmentId,
+      getState: () => store.getState(),
+      serverLayout: (key) => translator.serverLayout(key),
+      onAnswered: () => admitNew()
+    })
+  /** Per connection: a workspace a refusal kept on the mirror tries again on the next one. */
+  let handover = startHandover()
   /** Gates the workspaces the stream holds that are this server's; returns the ones newly gated. */
   const regate = (): string[] => {
-    const keys = new Set(translator.keys().filter(owns))
+    const keys = new Set(
+      translator.keys().filter((key) => owns(key) && (gated.has(key) || handover.admits(key)))
+    )
     const added = [...keys].filter((key) => !gated.has(key))
     if (added.length > 0 || keys.size !== gated.size) {
       gate(keys)
     }
     return added
   }
+  /** The banner shows the held panes of the workspaces these frames draw, when the server can reopen them. */
+  const showHeld = (): void => {
+    const status = lastVerifiedRuntimeStatus(
+      store.getState().runtimeStatusByEnvironmentId.get(environmentId)
+    )
+    const reopens = status?.capabilities?.includes(LAYOUT_REOPEN_HELD_PANES_CAPABILITY) === true
+    showServerLayoutHeldPanes(
+      environmentId,
+      live && reopens
+        ? serverHeldPanes([...gated].flatMap((key) => translator.serverLayout(key) ?? []))
+        : []
+    )
+  }
   const handBack = (): void => {
     live = false
+    handover.close()
+    handover = startHandover()
     gate(new Set())
+    showHeld()
   }
   const draws = serverDraws(environmentId)
   const viewReport = createServerViewReport(environmentId)
@@ -121,8 +162,23 @@ function openServerFrames(
       const ours = draws(state)
       return (key) => gated.has(key) && ours(key)
     },
+    heldTabs: DESKTOP_CREATED_SERVER_TAB_HOLDS,
     translate: (frame) => {
       const translated = translator.translate(frame)
+      // A tab this desktop created that the server now lists is the server's from here on.
+      const serverPageIds = new Map<string, ReadonlySet<string>>()
+      for (const key of translator.keys()) {
+        const layout = translator.serverLayout(key)
+        forgetPublishedServerTabs(
+          key,
+          (layout?.tabs ?? []).flatMap((tab) => [tab.id, tab.entityId])
+        )
+        serverPageIds.set(
+          key,
+          new Set((layout?.browserTabs ?? []).flatMap((tab) => tab.pageIds ?? []))
+        )
+      }
+      releaseHeldBrowserTabsTheServerLists(environmentId, serverPageIds)
       live ||= frame.type === 'snapshot'
       if (frame.type === 'snapshot') {
         viewReport.reset()
@@ -132,6 +188,7 @@ function openServerFrames(
       }
       // Before the frame shows: the mirror must not write a workspace the frames now draw.
       regate()
+      showHeld()
       return translated
     },
     onStatus: (status) => {
@@ -140,6 +197,15 @@ function openServerFrames(
       }
     }
   })
+  /** Gates, then draws, workspaces that may gate only now. */
+  function admitNew(): void {
+    const added = live ? regate() : []
+    showHeld()
+    if (added.length > 0) {
+      // The mirror may have drawn them meanwhile.
+      sync.redraw(added)
+    }
+  }
   // A workspace can turn out to be this server's after its snapshot (pairing just finished): it is
   // gated, then drawn, as the routing that names it arrives.
   let routing: unknown[] = []
@@ -152,11 +218,7 @@ function openServerFrames(
       return
     }
     routing = next
-    const added = live ? regate() : []
-    if (added.length > 0) {
-      // The mirror may have drawn them meanwhile.
-      sync.redraw(added)
-    }
+    admitNew()
   })
   const stopHandles = onMirroredTerminalHandlesChanged((environment, worktreeId) => {
     const frame = environment === environmentId ? translator.rebind(worktreeId) : null
@@ -164,17 +226,34 @@ function openServerFrames(
       sync.receive(frame)
     }
   })
+  // Layout intents for a workspace these frames draw go to this server's main (H5c).
+  const stopRoutes = provideServerLayoutApplyRoutes(environmentId, (worktreeId) =>
+    live && gated.has(worktreeId)
+      ? {
+          environmentId,
+          serverTabId: (desktopTabId) => translator.serverTabId(worktreeId, desktopTabId),
+          desktopTabId: (serverTabId) => translator.desktopTabId(worktreeId, serverTabId),
+          redraw: () => sync.redraw([worktreeId])
+        }
+      : null
+  )
   sync.start()
   return {
     gated: () => gated,
     close: (returnWorkspaces) => {
+      handover.close()
+      stopRoutes()
       stopRouting()
       stopHandles()
       stopControlWatch()
       sync.close()
       if (returnWorkspaces) {
         handBack()
+      } else {
+        showServerLayoutHeldPanes(environmentId, [])
       }
+      // handBack started a fresh one, which a closed stream never uses.
+      handover.close()
     }
   }
 }
@@ -182,6 +261,8 @@ function openServerFrames(
 /** Opens one stream per reachable server advertising the capability; reopens on a new runtime or
  *  pairing, and closes when the server is removed or stops advertising it. */
 export function installServerLayoutFrames(store: FramesStore): () => void {
+  // Before any frame: a held tab the restored session no longer has must not come back.
+  pruneDesktopCreatedServerTabs(store.getState())
   const open = new Map<string, { identity: string; frames: ServerFrames }>()
   let inputs: unknown[] = []
   const reconcile = (state: AppState): void => {
@@ -237,24 +318,6 @@ export function installServerLayoutFrames(store: FramesStore): () => void {
     }
     open.clear()
   }
-}
-
-/** The store slices a workspace's owning server derives from. */
-function routingInputs(state: AppState): unknown[] {
-  return [
-    state.repos,
-    state.worktreesByRepo,
-    state.detectedWorktreesByRepo,
-    state.projectGroups,
-    state.restoredRuntimeHostIdByWorkspaceSessionKey,
-    state.runtimeEnvironments,
-    state.runtimeStatusByEnvironmentId
-  ]
-}
-
-/** Compared by reference: store slices are replaced, never edited in place. */
-function sameValues(a: readonly unknown[], b: readonly unknown[]): boolean {
-  return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
 let installed: (() => void) | null = null

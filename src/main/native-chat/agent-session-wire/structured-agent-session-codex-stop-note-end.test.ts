@@ -393,9 +393,13 @@ it.each(['config', 'order', 'initial'] as const)(
     const deps = host.collaboratorsForTests().conversationDelivery.loop['deps']
     const ran = deps.recordRanOptions!
     const recorded = vi.fn()
-    vi.spyOn(deps, 'recordRanOptions').mockImplementation((id, fence) => async (options) => {
-      recorded(id, fence, options)
-      await ran(id, fence)(options)
+    vi.spyOn(deps, 'recordRanOptions').mockImplementation((id, fence) => {
+      const recorder = ran(id, fence)
+      const record: typeof recorder = async (options) => {
+        recorded(id, fence, options)
+        await recorder(options)
+      }
+      return Object.assign(record, recorder)
     })
     const id = await permissionSend('keep my words', { personality: 'friendly' })
     if (wait === 'order') {

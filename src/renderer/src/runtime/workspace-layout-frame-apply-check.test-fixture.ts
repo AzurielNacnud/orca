@@ -3,7 +3,6 @@
 // for the same cache and the store as the flush found it. Mirrors main's model check.
 
 import { stableJson } from '../../../shared/workspace-layout/workspace-layout-load-report'
-import { isDrawnGroupLayoutHeld, isDrawnTabHeld } from './layout-owner-drawn-tab-holds'
 import { isTabPaneTreeHeld } from './layout-owner-pane-intents'
 import {
   observeLayoutFrameApply,
@@ -79,20 +78,23 @@ export function layoutFrameApplyErrors({
   cache,
   changed,
   fullBuilt,
-  rowFieldsTaken
+  rowFieldsTaken,
+  held,
+  selectTakenMovedTabs
 }: LayoutFrameApplyObservation): string[] {
   const keys = changed.filter((key) => key in cache && !fullBuilt.includes(key))
   if (keys.length === 0) {
     return []
   }
-  const built: AppState = {
+  // The moved tabs the flush selected are selected the same way here, so a wrong one still shows.
+  const built = selectTakenMovedTabs({
     ...before,
     ...fullLayoutFrameBuildPatch(before, cache, keys, {
       keepsTerminalLayout: isTabPaneTreeHeld,
       newRowFields: (tabId) => rowFieldsTaken.get(tabId) ?? null,
-      held: { isTabHeld: isDrawnTabHeld, isGroupLayoutHeld: isDrawnGroupLayoutHeld }
+      held
     })
-  }
+  })
   const whole = fullBuilt.length === 0
   const expected: Record<string, unknown> = whole ? { ...built } : recordsOf(built, keys)
   const shown: Record<string, unknown> = whole ? { ...after } : recordsOf(after, keys)

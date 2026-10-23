@@ -62,8 +62,6 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         await journal.queuedMessages.insert({
           messageId: 'C',
           body: hostTestMessage('waiting C'),
-          fingerprint: 'waiting-C',
-          hostInstance: 'test',
           options: { model: 'model-C' }
         })
       }
