@@ -41,6 +41,27 @@ export function readClaudeInit(message: Record<string, unknown>): ClaudeInitObse
     : null
 }
 
+/** Only system/init reports a permission mode; SessionStart hooks do not. */
+export function readClaudeReportedPermissionMode(
+  message: Record<string, unknown>
+): string | null | undefined {
+  if (message.type !== 'system' || message.subtype !== 'init') {
+    return undefined
+  }
+  switch (message.permissionMode) {
+    case 'default':
+      return 'ask'
+    case 'acceptEdits':
+      return 'accept-edits'
+    case 'auto':
+      return 'auto'
+    case 'bypassPermissions':
+      return 'full-access'
+    default:
+      return null
+  }
+}
+
 export function readClaudeModels(initialization: unknown): unknown[] {
   return isRecord(initialization) && Array.isArray(initialization.models)
     ? initialization.models

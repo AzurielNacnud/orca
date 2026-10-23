@@ -1,3 +1,4 @@
+import { readClaudeReportedPermissionMode } from './claude-structured-init-proof'
 // Claude initialize is awaited by the host after process publication, under its own bound. Settings
 // enrichment follows independently; the host owns a failed open and its single close.
 
@@ -119,6 +120,10 @@ export async function readClaudeStartupFacts(input: {
 }
 
 function applyClaudeInitializeFacts(session: ClaudeSession, facts: ClaudeInitializeFacts): void {
+  const permission = facts.init ? readClaudeReportedPermissionMode(facts.init.message) : undefined
+  if (permission !== undefined) {
+    session.reportedOptions.reportedPermissionMode = permission
+  }
   const { init, initialization } = facts
   // A turn's own init frame may already have reported the running model.
   if (init?.model && session.reportedOptions.model === undefined) {

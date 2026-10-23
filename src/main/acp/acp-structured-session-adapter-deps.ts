@@ -11,7 +11,7 @@ import type { AcpLaunchSpec } from './acp-launch-specs'
 import type { ConnectAcpAgent } from './acp-structured-connection'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
-import type { AgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
+import type { AgentChatPermissionChoice } from '../../shared/agent-chat-permission-mode'
 
 /** How long a Stop, counted from its cancel, lets the agent end its turn before the child goes. */
 export const ACP_STOP_GRACE_MS = 4_000
@@ -25,7 +25,7 @@ export type AcpStructuredSessionAdapterDeps = {
     identity: AgentSessionJournalIdentity
     spawnToken: string
     /** The mode the host decided this start runs with; absent asks. */
-    permissionMode?: AgentChatPermissionMode
+    permissionMode?: AgentChatPermissionChoice
   }) => Promise<AcpStructuredLaunch>
   /** The same launch for a read that starts no child (restart recovery): the agent's env, unsealed. */
   readLaunch: (identity: AgentSessionJournalIdentity) => Promise<AcpStructuredLaunch>

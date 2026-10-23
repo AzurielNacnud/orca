@@ -78,6 +78,7 @@ export function reportedCodexThreadOptions(
   opened: CodexOpenedThread
 ): CodexSession['reportedOptions'] {
   return {
+    reportedPermissionMode: opened.reportedPermissionMode,
     ...(opened.model ? { model: opened.model } : {}),
     ...(opened.effort ? { effort: opened.effort } : {}),
     ...('serviceTier' in opened

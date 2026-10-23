@@ -216,6 +216,15 @@ export class AcpStructuredOptions {
     }
   }
 
+  reportedPermissionMode(
+    values: Readonly<Partial<Record<string, string>>> | undefined
+  ): string | null {
+    const current = this.select('mode')?.currentValue
+    return current && values
+      ? (Object.entries(values).find(([, value]) => value === current)?.[0] ?? null)
+      : null
+  }
+
   /** The session's mode is its `mode`-category select, whatever the agent names it. */
   modeConfigId(): string {
     return this.select('mode')?.id ?? 'mode'
@@ -240,11 +249,20 @@ export async function acpSessionAcceptsImages(session: {
 
 /** A running child's options, and whether a message to it may carry images. */
 export async function readAcpLiveOptions(
-  session: Parameters<typeof acpSessionAcceptsImages>[0] & { options: AcpStructuredOptions }
+  session: Parameters<typeof acpSessionAcceptsImages>[0] & { options: AcpStructuredOptions },
+  permissionModes?: Readonly<Partial<Record<string, string>>>
 ) {
   const acceptsImages = await acpSessionAcceptsImages(session)
   // Only the start says what the config resolved: the session may have moved since.
-  return { ...withLiveCatalogListing(session.options.read()), acceptsImages }
+  const options = withLiveCatalogListing(session.options.read())
+  return {
+    ...options,
+    current: {
+      ...options.current,
+      reportedPermissionMode: session.options.reportedPermissionMode(permissionModes)
+    },
+    acceptsImages
+  }
 }
 
 /** Only the current, still-awaited write may establish reusable option proof. */

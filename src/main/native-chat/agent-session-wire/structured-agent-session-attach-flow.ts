@@ -17,7 +17,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
+import type { AgentChatPermissionChoice } from '../../../shared/agent-chat-permission-mode'
 import {
   admitAttachOrRefuse,
   attachJournal,
@@ -89,7 +89,7 @@ export type AttachFlowInput = {
   /** The permission mode a start of this record launches with; absent or undefined for none. */
   launchPermissionMode?: (
     record: AgentSessionRecord
-  ) => Promise<AgentChatPermissionMode | undefined>
+  ) => Promise<AgentChatPermissionChoice | undefined>
   /** Publishes the journal before clients can send against the new owner. `owner` says whether
    *  this attach spawned the child (then `starting`), kept a live one, or left the chat at rest. */
   onAttached: (

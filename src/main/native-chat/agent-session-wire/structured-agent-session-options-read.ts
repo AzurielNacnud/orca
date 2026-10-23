@@ -214,7 +214,7 @@ export async function readStructuredAgentSessionOptions(
   const capabilities = agents.capabilities(agent)
   const floor = session.journal.context.floor()
   const contextFloor = floor ? { contextFloor: floor } : {}
-  // What a start launches now, live or at rest: a child never reports it.
+  // Intent and the live agent report stay separate: own never claims a mode before startup.
   const permissionMode = record
     ? await structuredAgentSessionLaunchPermission(context.deps, record)
     : null
@@ -299,7 +299,10 @@ export async function readStructuredAgentSessionOptions(
       confirmed,
       ...(options.current.fastModeState ? { fastModeState: options.current.fastModeState } : {}),
       ...(confirmed?.length ? { confirmed } : {}),
-      ...(permissionMode ? { permissionMode } : {})
+      ...(permissionMode ? { permissionMode } : {}),
+      ...(permissionMode === 'own' && live && options.current.reportedPermissionMode !== undefined
+        ? { reportedPermissionMode: options.current.reportedPermissionMode }
+        : { reportedPermissionMode: undefined })
     },
     rewind:
       phase === 'prepared' || phase === 'provider-succeeded'

@@ -15,6 +15,7 @@ import { readCodexThreadId } from './codex-structured-thread-facts'
 
 export type CodexOpenedThread = {
   threadId: string
+  reportedPermissionMode?: string | null
   /** The unsaved thread this new one was started in place of. */
   supersededThreadId?: string
   thread?: Record<string, unknown>
@@ -137,6 +138,7 @@ export async function openCodexThread(
   const serviceTier = nonEmptyString(result.serviceTier)
   return {
     threadId,
+    reportedPermissionMode: reportedCodexPermissionMode(result),
     ...(supersededThreadId === undefined ? {} : { supersededThreadId }),
     thread,
     ...(thread.historyMode === 'legacy' || thread.historyMode === 'paginated'
@@ -146,4 +148,26 @@ export async function openCodexThread(
     ...(effort ? { effort } : {}),
     ...(serviceTierKnown ? { serviceTier } : {})
   }
+}
+
+/** Unrecognized policies remain the agent's settings rather than a guessed Orca mode. */
+function reportedCodexPermissionMode(reply: Record<string, unknown>): string | null {
+  const approval = reply.approvalPolicy ?? reply.approval_policy
+  const reviewer = reply.approvalsReviewer ?? reply.approvals_reviewer
+  const sandbox = reply.sandbox
+  const sandboxType =
+    typeof sandbox === 'object' && sandbox !== null && 'type' in sandbox ? sandbox.type : sandbox
+  if (
+    (sandboxType === 'dangerFullAccess' || sandboxType === 'danger-full-access') &&
+    approval === 'never'
+  ) {
+    return 'full-access'
+  }
+  if (
+    (sandboxType === 'workspaceWrite' || sandboxType === 'workspace-write') &&
+    approval === 'on-request'
+  ) {
+    return reviewer === 'auto_review' ? 'auto' : reviewer === 'user' ? 'ask' : null
+  }
+  return null
 }

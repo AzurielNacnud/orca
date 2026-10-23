@@ -1,3 +1,4 @@
+import { readClaudeReportedPermissionMode } from './claude-structured-init-proof'
 import type {
   AgentSessionAcquisition,
   StructuredAgentSessionAcquireInput
@@ -82,6 +83,7 @@ export async function acquireClaudeSession({
         ? liveSession.backgroundTasks.goalBackgroundWork
         : 'unverifiable'
   )
+  let observedPermissionMode: string | null | undefined
   const onMessage = (message: Record<string, unknown>): void => {
     const init = readClaudeInit(message)
     if (readClaudeFrameString(message, 'session_id') !== expectedProviderSessionId) {
@@ -92,11 +94,14 @@ export async function acquireClaudeSession({
       }
       return
     }
+    const permission = init ? readClaudeReportedPermissionMode(init.message) : undefined
+    observedPermissionMode = permission === undefined ? observedPermissionMode : permission
     const modelChanged =
       liveSession && init?.model ? observeClaudeExecutionModel(liveSession, init.model) : false
     if (init) {
       initProof.resolve(init)
       if (liveSession) {
+        liveSession.reportedOptions.reportedPermissionMode = observedPermissionMode
         liveSession.capabilities = readClaudeCapabilities(liveSession.capabilities, init.message)
       }
     }
@@ -280,6 +285,7 @@ export async function acquireClaudeSession({
       observedAt: deps.now?.() ?? Date.now()
     })
     const session = publication.session
+    session.reportedOptions.reportedPermissionMode = observedPermissionMode
     liveSession = session
     adoptClaudeStructuredSpawnOptions(session, launch.savedOptions)
     acquisitions.deleteIfCurrent(sessionId, attempt)

@@ -1,3 +1,5 @@
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
+import { AGENT_SESSION_PERMISSION_MODES_RUNTIME_CAPABILITY } from '../../../../shared/agent-session-permission-modes-capability'
 // @vitest-environment happy-dom
 
 import { act, renderHook, waitFor } from '@testing-library/react'
@@ -100,6 +102,22 @@ describe('the permission mode another device picks', () => {
     unmount()
   })
 
+  it('waits for the new child’s report after an own-settings chat restarts', async () => {
+    optionsAnswering('own')
+    const read = mocks.call.getMockImplementation()!
+    mocks.call.mockImplementation(async (...args) => {
+      const answer = await read(...args)
+      return { ...answer, current: { ...answer.current, reportedPermissionMode: 'full-access' } }
+    })
+    const { result, rerender, unmount } = renderReopened(1)
+    const row = () => result.current.optionSnapshot.find((entry) => entry.id === 'permissionMode')
+    await waitFor(() => expect(row()).toMatchObject({ description: 'Full access', settable: true }))
+    mocks.call.mockImplementation(() => new Promise(() => {}))
+    rerender({ fence: 2, stamp: 'model-a|own' })
+    expect(row()).toMatchObject({ description: 'Codex settings', settable: false })
+    unmount()
+  })
+
   it('shows no picker for a host that states no mode', async () => {
     optionsAnswering(undefined)
     const { result, unmount } = renderReopened(1)
@@ -119,6 +137,17 @@ describe('a permission pick on this device', () => {
     mocks.call.mockReset()
     vi.mocked(mutate).mockReset()
     resetHostModelCatalogSnapshotsForTests()
+  })
+
+  it('a PR2 client never sends own to a PR1 host', async () => {
+    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_PERMISSION_MODES_RUNTIME_CAPABILITY])
+    optionsAnswering('ask')
+    const { result, unmount } = renderReopened(1)
+    await waitFor(() => expect(permission(result.current.optionSnapshot)).toBe('ask'))
+    expect(await result.current.setStructuredOption('permissionMode', 'own')).toBe(false)
+    expect(mutate).not.toHaveBeenCalled()
+    unmount()
+    setLocalRuntimeCapabilitiesForTests(null)
   })
 
   it('shows at once and stays pickable while the write waits behind a start', async () => {

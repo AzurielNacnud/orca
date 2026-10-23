@@ -106,8 +106,10 @@ export function codexStructuredLaunchPart(
         // Only a thread this session created may still be one Codex never saved: a resumed,
         // forked or adopted head names a conversation Codex held.
         ...(resumeThreadId && head?.origin === 'created' ? { supersedeIfUnsaved: true } : {}),
-        // States every posture outright: a resume inherits the last one for any field left absent.
-        permissionPolicy: codexStructuredPermissionPolicy(basis.permissionMode ?? 'ask'),
+        // Own settings leaves a new thread to config and a resumed thread to its saved policy.
+        ...(basis.permissionMode === 'own'
+          ? {}
+          : { permissionPolicy: codexStructuredPermissionPolicy(basis.permissionMode ?? 'ask') }),
         ...(model ? { model } : {}),
         ...(visuals ? { visuals } : {})
       },

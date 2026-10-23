@@ -274,6 +274,15 @@ describe('codex structured launch resolution', () => {
     expect(launch.permissionPolicy).toEqual(policy)
   })
 
+  it('adds no policy overrides for the agent’s own settings', async () => {
+    const launch = await resolverFor(record())({
+      identity: IDENTITY,
+      spawnToken: TEST_SPAWN_TOKEN,
+      permissionMode: 'own'
+    })
+    expect(launch).not.toHaveProperty('permissionPolicy')
+  })
+
   // The chat's mode replaces Agent Permissions: a Yolo terminal setting grants a chat nothing.
   it('ignores the bypass flag the agent Arguments carry', async () => {
     const launch = await resolverFor(record(), undefined, () => [

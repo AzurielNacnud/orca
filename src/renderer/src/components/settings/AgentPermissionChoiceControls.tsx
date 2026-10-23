@@ -34,11 +34,10 @@ export function agentPermissionChoiceLabel(
     : translate('settings.agents.permissionOwnAll', "Agents' own settings")
 }
 
-// Temporary copy until chats can run an agent's own settings: until then they keep Settings → Chat.
 function ownDescription(): string {
   return translate(
     'settings.agents.permissionOwnDescription',
-    'Orca adds no permission flag in terminals; chats use Settings → Chat.'
+    'Terminals and chats follow the agent’s own permission settings.'
   )
 }
 

@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/agent-session-record'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
-import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
+import type { AgentChatPermissionChoice } from '../../../shared/agent-chat-permission-mode'
 
 /** No start outlives this from its registration; each protocol step has its own shorter bound. */
 export const STRUCTURED_AGENT_SESSION_STARTUP_CEILING_MS = 10 * 60_000
@@ -31,7 +31,7 @@ export type StructuredAgentSessionStartupAttempt = {
   /** The saved options the start launches with, as intent; never a catalog guess. */
   readonly options?: Readonly<Record<string, string>>
   /** The permission mode the start launches with; absent for an agent with none. */
-  readonly permissionMode?: AgentChatPermissionMode
+  readonly permissionMode?: AgentChatPermissionChoice
   /** Provider events may begin before spawn returns. */
   readonly events?: StructuredAgentSessionEventSink
   /** Background work this start's child reports, scoped to the attempt. Unset until the host routes

@@ -214,6 +214,27 @@ describe('NativeChatComposerPermissionPicker', () => {
   })
 
   // A host that states no mode, or an agent with none, gets no pill.
+  it('shows the reported mode while the menu keeps own settings selected', () => {
+    const own = descriptor({
+      description: 'Full access',
+      kind: {
+        type: 'select',
+        currentValue: 'own',
+        choices: [
+          { value: 'own', label: "Codex's own settings", description: 'Now: Full access' },
+          { value: 'full-access', label: 'Full access' }
+        ]
+      }
+    })
+    render(
+      <NativeChatComposerPermissionPicker surface={surface()} snapshot={[own]} agent="codex" />
+    )
+    const trigger = screen.getByRole('button', { name: 'Permissions Full access' })
+    expect(trigger.querySelector('.text-status-warning')?.textContent).toBe('Full access')
+    expect(option('own').getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByText('Now: Full access')).toBeDefined()
+  })
+
   it('renders nothing without a permission descriptor', () => {
     const { container } = render(
       <NativeChatComposerPermissionPicker surface={surface()} snapshot={[]} agent="codex" />

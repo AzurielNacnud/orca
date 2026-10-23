@@ -103,7 +103,7 @@ export async function initializeAcpStructuredSession(
   options.adoptSession(started.response, started.kind === 'new' ? 'new' : 'loaded')
   liveLane.apply(liveLane.translator.contextModels(started.response.models, now()))
   const mode = spec.permissionModeConfig
-  if (mode) {
+  if (mode && acquire.permissionMode !== 'own') {
     // A refusal fails the start: the session would otherwise run another permission mode.
     const requested = mode.values[acquire.permissionMode ?? 'ask'] ?? mode.values.ask
     const configId = options.modeConfigId()

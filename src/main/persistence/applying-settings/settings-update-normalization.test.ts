@@ -123,24 +123,15 @@ describe('updateSettings terminalMinimumContrastRatio', () => {
   })
 })
 
-describe('updateSettings scoped chat defaults', () => {
-  it('clears agent overrides for a shared chat permission choice from any writer', () => {
-    const operations = settingsOperations({
-      nativeChatPermissionMode: 'full-access',
-      agentNativeChatPermissionModes: { codex: 'auto' }
-    })
+describe('legacy chat permission marker', () => {
+  it('retains valid values and refuses unknown modes without adding another chat default', () => {
+    const operations = settingsOperations({ nativeChatPermissionMode: 'full-access' })
     expect(
-      updateSettings(operations, { nativeChatPermissionMode: 'ask' }).agentNativeChatPermissionModes
-    ).toEqual({})
-  })
-
-  it('retains explicit overrides from a bulk mutation or durable rollback', () => {
-    const operations = settingsOperations({ nativeChatPermissionMode: 'ask' })
+      updateSettings(operations, { nativeChatPermissionMode: 'ask' }).nativeChatPermissionMode
+    ).toBe('ask')
     expect(
-      updateSettings(operations, {
-        nativeChatPermissionMode: 'full-access',
-        agentNativeChatPermissionModes: { codex: 'auto' }
-      }).agentNativeChatPermissionModes
-    ).toEqual({ codex: 'auto' })
+      updateSettings(operations, { nativeChatPermissionMode: 'full-access' })
+        .nativeChatPermissionMode
+    ).toBe('full-access')
   })
 })

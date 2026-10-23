@@ -1,3 +1,4 @@
+import { AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY } from '../../../../shared/agent-session-permission-modes-capability'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentSessionConversationCommand } from '../../../../shared/agent-session-conversation-command'
 import type {
@@ -149,7 +150,8 @@ export function useStructuredAgentSessionOptionState(args: {
             ...previous,
             catalogSource: 'host' as const,
             record: cloneStructuredAgentSessionOptionRecord(previous.record),
-            pendingId: null
+            pendingId: null,
+            reportedPermissionMode: undefined
           }
         : seeded
     // The chat's own, which a restart for a new mode keeps: the picker never blanks between them.
@@ -279,6 +281,10 @@ export function useStructuredAgentSessionOptionState(args: {
       }
     }
   }
+  const permissionOwnSupported = useStructuredAgentSessionHostCapability(
+    target,
+    AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY
+  )
   const takesSendOptions = useStructuredAgentSessionHostCapability(
     target,
     AGENT_SESSION_SEND_OPTIONS_RUNTIME_CAPABILITY
@@ -287,7 +293,7 @@ export function useStructuredAgentSessionOptionState(args: {
   return {
     // What the picker shows and a send carries.
     optionView: (...args: Parameters<typeof structuredAgentSessionOptionView>) => {
-      const view = structuredAgentSessionOptionView(...args)
+      const view = { ...structuredAgentSessionOptionView(...args), permissionOwnSupported }
       return pendingOptionsRef.current.model === undefined ? view : { ...view, pendingId: 'model' }
     },
     takesSendOptions,

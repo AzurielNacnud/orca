@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   adapterAtPublishFor,
   fakeClaude,
+  claudeFrame,
   identityFor,
   claudeOpened,
   USER_MESSAGE
@@ -20,6 +21,22 @@ function adapterFor(claude: ReturnType<typeof fakeClaude>) {
 describe('Claude host-awaited open', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
+
+  it('shows Claude’s init permission report rather than the permission Orca requested', async () => {
+    const claude = fakeClaude()
+    const { adapter } = adapterFor(claude)
+    await adapter.acquire(ACQUIRE)
+    await claudeOpened(adapter, 'session-1')
+    claudeFrame(claude.connections[0], {
+      type: 'system',
+      subtype: 'init',
+      permissionMode: 'acceptEdits',
+      model: 'claude-haiku-4-5'
+    })
+    const options = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
+    expect(options.current.reportedPermissionMode).toBe('accept-edits')
+    await adapter.closeAll()
+  })
 
   it('publishes the owned process as starting before initialize answers', async () => {
     const claude = fakeClaude({ initDelayMs: 12_000 })

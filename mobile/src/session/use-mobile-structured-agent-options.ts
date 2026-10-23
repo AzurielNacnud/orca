@@ -45,7 +45,7 @@ export function useMobileStructuredAgentOptions(args: {
   /** What the host advertised; null until its status probe answers. */
   hostSupport: Pick<
     StructuredAgentSessionHostSupport,
-    'permissionModes' | 'coherentModelCatalog'
+    'permissionModes' | 'permissionOwn' | 'coherentModelCatalog'
   > | null
 }) {
   const { agent, client, enabled, fence, mutate, optionStamp, sessionId, hostSupport } = args
@@ -115,16 +115,27 @@ export function useMobileStructuredAgentOptions(args: {
   useLayoutEffect(() => {
     lockSnapshotRef.current = lockSnapshot
   })
-  const shown = lockSnapshot(structuredAgentSessionShownSnapshot(optionState))
+  const shown = lockSnapshot(
+    structuredAgentSessionShownSnapshot({
+      ...optionState,
+      permissionOwnSupported: hostSupport?.permissionOwn === true
+    })
+  )
   const optionSnapshot = legacyHostPermissions
     ? [...shown, legacyHostPermissionDescriptor()]
     : shown
 
   const setStructuredOption = useCallback(
     async (id: string, value: SessionOptionValue): Promise<boolean> => {
-      const currentState = optionStateRef.current
+      const currentState = {
+        ...optionStateRef.current,
+        permissionOwnSupported: hostSupport?.permissionOwn === true
+      }
       const encoded = encodeStructuredAgentSessionOptionValue(id, value)
       if (
+        (id === AGENT_CHAT_PERMISSION_MODE_OPTION_ID &&
+          value === 'own' &&
+          !hostSupport?.permissionOwn) ||
         !isCurrentContext() ||
         pendingOptionRef.current !== null ||
         !client ||
@@ -221,6 +232,7 @@ export function useMobileStructuredAgentOptions(args: {
     [
       agent,
       awaitingOptions,
+      hostSupport?.permissionOwn,
       client,
       createdHere,
       mutate,

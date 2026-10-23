@@ -345,10 +345,7 @@ describe('durable execution-host launch settings', () => {
     expect(readState().settings.nativeChatPermissionMode).toBe(before)
     await controller.mutateAgentLaunch({ type: 'permissions', syncNativeChat: true, mode: 'auto' })
     expect(readState().settings.nativeChatPermissionMode).toBe(before)
-    expect(readState().settings.agentNativeChatPermissionModes).toEqual({
-      claude: 'auto',
-      codex: 'auto'
-    })
+    expect(readState().settings).not.toHaveProperty('agentNativeChatPermissionModes')
   })
 
   it('rolls back a scoped chat default after a failed write and persists a retry', async () => {
@@ -370,14 +367,14 @@ describe('durable execution-host launch settings', () => {
       await store.flushPendingOrThrowAsync().catch(() => {})
     }
     expect(store.getSettings().agentDefaultArgs?.codex).toBe(beforeArgs)
-    expect(store.getSettings().agentNativeChatPermissionModes).toEqual({})
+    expect(store.getSettings()).not.toHaveProperty('agentNativeChatPermissionModes')
     await controller.mutateAgentLaunch({
       type: 'permissions',
       syncNativeChat: true,
       agent: 'codex',
       mode: 'auto'
     })
-    expect(readState().settings.agentNativeChatPermissionModes).toEqual({ codex: 'auto' })
+    expect(readState().settings).not.toHaveProperty('agentNativeChatPermissionModes')
     expect(readState().settings.nativeChatPermissionMode).toBe(beforeNative)
     expect(readState().settings.agentPermissionOverrides).toMatchObject({ codex: 'auto' })
   })

@@ -83,7 +83,8 @@ export function useMobileStructuredOptionState(args: {
             ...previous,
             catalogSource: 'host' as const,
             record: cloneStructuredAgentSessionOptionRecord(previous.record),
-            pendingId: null
+            pendingId: null,
+            reportedPermissionMode: undefined
           }
         : seeded
     // The chat's own, which a restart for a new mode keeps: the pill never blanks between them.

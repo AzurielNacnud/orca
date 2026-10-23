@@ -6,7 +6,7 @@ import {
   chatModelSupportsAutoMode,
   chatPermissionModeNeedsModelSupport,
   effectiveChatPermissionMode,
-  type AgentChatPermissionMode
+  type AgentChatPermissionChoice
 } from '../../../shared/agent-chat-permission-mode'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 
@@ -36,7 +36,7 @@ async function listedAutoModeSupport(
 export async function structuredAgentSessionLaunchPermission(
   deps: Pick<StructuredAgentSessionHostDeps, 'agents' | 'modelCatalog'>,
   record: AgentSessionRecord
-): Promise<AgentChatPermissionMode | null> {
+): Promise<AgentChatPermissionChoice | null> {
   const support = agentChatPermissionModes(record.provider)
   if (!support || !deps.agents.definition(record.provider)) {
     return null

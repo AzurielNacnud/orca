@@ -1,3 +1,4 @@
+import { newChatPermissionModeForSettings } from '../../../shared/agent-chat-permission-mode'
 import { homedir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { getDefaultPersistedState } from '../../../shared/constants'
@@ -144,14 +145,17 @@ describe('chat appearance settings', () => {
 describe('the new-chat permission setting', () => {
   it.each([
     ['manual', 'ask'],
-    ['yolo', 'full-access']
-  ] as const)('seeds a profile without it from %s Agent Permissions', (mode, expected) => {
-    const normalized = normalizeLegacyProfile({
-      nativeChatPermissionMode: undefined,
-      ...applyAgentPermissionMode({ mode })
-    })
-    expect(normalized.nativeChatPermissionMode).toBe(expected)
-  })
+    ['yolo', 'ask']
+  ] as const)(
+    'keeps a valid legacy marker without re-deriving it from %s arguments',
+    (mode, expected) => {
+      const normalized = normalizeLegacyProfile({
+        nativeChatPermissionMode: undefined,
+        ...applyAgentPermissionMode({ mode })
+      })
+      expect(normalized.nativeChatPermissionMode).toBe(expected)
+    }
+  )
 
   // Seeded once: after the next save the setting is the user's, not a mirror of Agent Permissions.
   it('keeps a saved value when Agent Permissions change afterwards', () => {
@@ -164,13 +168,36 @@ describe('the new-chat permission setting', () => {
 })
 
 describe('scoped new-chat permission defaults', () => {
-  it('preserves an agent override across load while rejecting unsupported stored modes', () => {
+  it('retires old chat copies while terminal intent and existing chat choices survive', () => {
     const normalized = normalizeLegacyProfile({
       nativeChatPermissionMode: 'full-access',
       agentNativeChatPermissionModes: { codex: 'auto', claude: 'ask', omp: 'auto', unknown: 'auto' }
     })
-    expect(normalized.agentNativeChatPermissionModes).toEqual({ codex: 'auto', claude: 'ask' })
+    expect(normalized).not.toHaveProperty('agentNativeChatPermissionModes')
     expect(normalized.nativeChatPermissionMode).toBe('full-access')
+  })
+})
+
+it('migrates a shipped split chat/terminal profile using terminal choices while retaining other saved data', () => {
+  const normalized = normalizeLegacyProfile({
+    agentPermissionDefault: undefined,
+    agentPermissionOverrides: undefined,
+    agentPermissionMigrated: false,
+    agentDefaultArgs: { claude: '--model opus --permission-mode acceptEdits', codex: '' },
+    nativeChatPermissionMode: 'ask',
+    agentNativeChatPermissionModes: { claude: 'full-access', codex: 'auto' },
+    nativeChatSessionOptions: {
+      claude: { model: 'opus', valuesByModel: { opus: { effort: 'high' } } }
+    }
+  })
+  expect(normalized).not.toHaveProperty('agentNativeChatPermissionModes')
+  expect(newChatPermissionModeForSettings('claude', normalized)).toBe('accept-edits')
+  expect(newChatPermissionModeForSettings('codex', normalized)).toBe('own')
+  expect(normalized.nativeChatPermissionMode).toBe('ask')
+  expect(normalized.agentDefaultArgs?.claude).toBe('--model opus')
+  expect(normalized.nativeChatSessionOptions?.claude).toEqual({
+    model: 'opus',
+    valuesByModel: { opus: { effort: 'high' } }
   })
 })
 

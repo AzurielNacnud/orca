@@ -38,7 +38,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.supportsCapability.mockResolvedValue(false)
   mocks.settings.nativeChatPermissionMode = 'ask'
-  mocks.settings.agentNativeChatPermissionModes = {}
+  mocks.settings.agentPermissionDefault = undefined
+  mocks.settings.agentPermissionOverrides = {}
 })
 
 describe('the permission verdict on a paired host', () => {
@@ -81,7 +82,8 @@ describe('the permission verdict on a paired host', () => {
 
   it('checks the scoped agent choice instead of a permissive global fallback', async () => {
     mocks.settings.nativeChatPermissionMode = 'full-access'
-    mocks.settings.agentNativeChatPermissionModes = { codex: 'auto' }
+    mocks.settings.agentPermissionDefault = 'full-access'
+    mocks.settings.agentPermissionOverrides = { codex: 'auto' }
     mocks.callRuntimeRpc.mockResolvedValue({ settings: { agentDefaultArgs: {} } })
     await expect(readStructuredChatHostPermissionVerdict(PAIRED, 'codex')).resolves.toEqual({
       kind: 'refused',
