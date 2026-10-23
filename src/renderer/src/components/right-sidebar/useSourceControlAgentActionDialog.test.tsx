@@ -1,3 +1,4 @@
+import type { Repo } from '../../../../shared/repo-types'
 import { projectAgentLaunchSettings } from '../../../../shared/agent-launch-settings'
 import { makeWorktree, TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
 import { getRuntimeAgentInventoryKey } from '@/store/slices/runtime-agent-inventory-key'
@@ -155,7 +156,7 @@ it.each(['codex', null] as const)(
       agentArgs: '--model chosen',
       launchPreferences: { agentId: 'codex' as const, model: 'chosen' }
     }
-    const repo = {
+    const repo: Repo = {
       ...TEST_REPO,
       executionHostId: 'runtime:alpha',
       sourceControlAi: {

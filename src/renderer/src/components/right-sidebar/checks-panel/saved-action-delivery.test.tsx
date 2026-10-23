@@ -4,7 +4,7 @@ import { useChecksPanelCommentResolution } from './use-checks-panel-comment-reso
 import { getRuntimeAgentInventoryKey } from '@/store/slices/runtime-agent-inventory-key'
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
-import type { RefObject } from 'react'
+import type { Dispatch, RefObject, SetStateAction } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
@@ -93,6 +93,12 @@ function fixture(saved = true, paired = false) {
   const resolveThread = vi.fn().mockResolvedValue(true)
   let composerState: ChecksAgentComposerState | null = null
   const composer = vi.fn<(value: ChecksAgentComposerState | null) => void>()
+  const setAgentComposerState: Dispatch<SetStateAction<ChecksAgentComposerState | null>> = (
+    value
+  ) => {
+    composerState = typeof value === 'function' ? value(composerState) : value
+    composer(composerState)
+  }
   const review: HostedReviewInfo = {
     provider: 'github',
     number: 42,
@@ -169,7 +175,7 @@ function fixture(saved = true, paired = false) {
         prNumber: 42,
         repo,
         resolveReviewThread: resolveThread,
-        setAgentComposerState: composer,
+        setAgentComposerState,
         setComments,
         settings,
         sourceControlAiActionsVisible: true,
@@ -194,10 +200,7 @@ function fixture(saved = true, paired = false) {
         prNumber: 42,
         repo,
         resolveCommentsWithAIDisabledReason: resolution.resolveCommentsWithAIDisabledReason,
-        setAgentComposerState: (value) => {
-          composerState = typeof value === 'function' ? value(composerState) : value
-          composer(composerState)
-        },
+        setAgentComposerState,
         sourceControlAiActionsVisible: true,
         stateRequestKey: context.current
       })

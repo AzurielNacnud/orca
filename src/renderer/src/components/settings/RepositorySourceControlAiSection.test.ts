@@ -492,8 +492,7 @@ it.each([1, 10])(
       fireEvent.click(previews()[0])
       fireEvent.click(
         view.getByRole('option', {
-          name: getAgentSessionOptionCatalog('codex')!.models[0].label,
-          exact: true
+          name: getAgentSessionOptionCatalog('codex')!.models[0].label
         })
       )
       expect(edit).toHaveBeenCalledWith(

@@ -50,7 +50,7 @@ export type SourceControlLaunchAgentScope = {
 
 export function resolveSourceControlLaunchAgentScope(input: {
   settings:
-    | Pick<GlobalSettings, 'sourceControlAi' | 'commitMessageAi' | 'defaultTuiAgent'>
+    | Partial<Pick<GlobalSettings, 'sourceControlAi' | 'commitMessageAi' | 'defaultTuiAgent'>>
     | null
     | undefined
   repo?: Pick<Repo, 'sourceControlAi'> | null

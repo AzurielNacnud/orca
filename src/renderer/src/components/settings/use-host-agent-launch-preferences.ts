@@ -20,7 +20,7 @@ import {
 } from './agent-launch-settings-transport'
 
 export type AgentLaunchPreferences = Readonly<
-  Pick<GlobalSettings, 'defaultTuiAgent' | 'disabledTuiAgents'>
+  Partial<Pick<GlobalSettings, 'defaultTuiAgent' | 'disabledTuiAgents'>>
 >
 type Snapshot = AgentLaunchPreferences | 'desktop'
 type Resource = {
