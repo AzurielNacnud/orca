@@ -266,7 +266,12 @@ describe('ACP structured session adapter: turns', () => {
         }
       })
       await waitFor(() =>
-        expect(rig.lifecycle.map((event) => event.type)).toContain('options-reported')
+        expect(rig.lifecycle).toContainEqual(
+          expect.objectContaining({
+            type: 'options-reported',
+            reportedOptions: expect.objectContaining({ model: 'grok-4.6' })
+          })
+        )
       )
       await rig.adapter.dispatch({
         sessionId: SESSION,
