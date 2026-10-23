@@ -235,7 +235,10 @@ function isRepoBackedProjectHostSetup(
 
 export function rebuildRepoBackedProjectState(state: TransferProfileState): TransferProfileState {
   const projection = projectHostSetupProjectionFromRepos(state.repos)
-  const succession = carryProjectStateThroughIdentityChange(projection.projects, state.projects)
+  const succession = carryProjectStateThroughIdentityChange(projection.projects, state.projects, {
+    previous: state.projectHostSetups,
+    current: projection.setups
+  })
   const currentRepoIds = new Set(state.repos.map((repo) => repo.id))
   const projectedProjectIds = new Set(projection.projects.map((project) => project.id))
   const projectedSetupIds = new Set(projection.setups.map((setup) => setup.id))

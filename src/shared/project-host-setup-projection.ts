@@ -7,6 +7,7 @@ import { normalizeGitHubRemoteHost } from './git-remote-host-alias'
 import { githubRepoIdentityKey, isDefaultGitHubHost } from './github/repository-identity-key'
 import type { Project, ProjectHostSetup, ProjectProviderIdentity } from './project-types'
 import type { Repo } from './repo-types'
+import { getRepoSetupOwnerScope } from './repo-host-identity'
 import { getOutclaimedProjectSetups } from './project-checkout-claim'
 
 /**
@@ -313,16 +314,26 @@ function createSetupFromRepo(repo: Repo, projectId: string): ProjectHostSetup {
 
 export function projectHostSetupProjectionFromRepos(
   repos: readonly Repo[],
-  _now?: number
+  _now?: number,
+  setupFacts: readonly ProjectHostSetup[] = []
 ): ProjectHostSetupProjection {
   const projectById = new Map<string, ProjectAccumulator>()
   const setups: ProjectHostSetup[] = []
 
   // Why normalize here: a repo row is untrusted persisted/wire data too, and these
   // constructors copy repo.path / repo.id straight onto fields consumers call .trim() on.
-  const remoteSetups = repos.map((repo) =>
-    normalizeProjectHostSetupRow(createSetupFromRepo(repo, getProjectIdentityKey(repo)))
+  const factsByOwner = new Map(
+    setupFacts.map((setup) => [
+      JSON.stringify([getRepoSetupOwnerScope(setup), setup.repoId]),
+      setup
+    ])
   )
+  const remoteSetups = repos.map((repo) => {
+    const setup = createSetupFromRepo(repo, getProjectIdentityKey(repo))
+    const facts = factsByOwner.get(JSON.stringify([getRepoSetupOwnerScope(setup), repo.id]))
+    const setupMethod = facts?.setupMethod ?? setup.setupMethod
+    return normalizeProjectHostSetupRow({ ...setup, setupMethod })
+  })
   const outclaimed = getOutclaimedProjectSetups(remoteSetups)
   for (const [index, repo] of repos.entries()) {
     const remoteSetup = remoteSetups[index]

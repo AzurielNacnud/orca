@@ -6,6 +6,8 @@ import {
   createCompatibleRuntimeStatusResponseIfNeeded,
   type RuntimeEnvironmentCallRequest
 } from '../../runtime/runtime-compatibility-test-fixture'
+import { getProjectHostSetupProjectionFromState } from '../project-host-setup-selector'
+import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
 import { clearRuntimeCompatibilityCacheForTests } from '../../runtime/runtime-rpc-client'
 
 export function registerReposProjectRuntimeTests(): void {
@@ -105,6 +107,66 @@ export function registerReposProjectRuntimeTests(): void {
       expect(store.getState().isDetectingAgents).toBe(false)
       expect(store.getState().isRefreshingAgents).toBe(false)
       expectInstalledSkillRefreshEvent()
+    })
+
+    it('updates an old endpoint by its concrete advertised project and rehydrates the split view', async () => {
+      const repos = ['a', 'b'].map((id, index) => ({
+        ...localRepo,
+        id,
+        path: `/${id}`,
+        addedAt: index + 1,
+        executionHostId: 'runtime:old' as const,
+        upstream: { owner: 'acme', repo: 'app' }
+      }))
+      const projection = projectHostSetupProjectionFromRepos(repos)
+      const rawProject = {
+        ...projection.projects[0],
+        id: 'github:acme/app',
+        sourceRepoIds: ['a', 'b']
+      }
+      runtimeEnvironmentCall.mockImplementation(async (args) => {
+        expect(args).toMatchObject({
+          selector: 'old',
+          method: 'project.update',
+          params: {
+            projectId: rawProject.id,
+            updates: { localWindowsRuntimePreference: { kind: 'windows-host' } }
+          }
+        })
+        return {
+          id: 'update',
+          ok: true,
+          result: {
+            project: { ...rawProject, localWindowsRuntimePreference: { kind: 'windows-host' } }
+          }
+        }
+      })
+      const store = createTestStore()
+      store.setState({
+        repos,
+        projects: [rawProject],
+        projectHostSetups: projection.setups.map((setup) => ({
+          ...setup,
+          projectId: rawProject.id
+        }))
+      })
+      expect(
+        await store
+          .getState()
+          .updateProject(
+            'repo:b',
+            { localWindowsRuntimePreference: { kind: 'windows-host' } },
+            'runtime:old'
+          )
+      ).toBe(true)
+      const view = getProjectHostSetupProjectionFromState(store.getState())
+      expect(view.setups.find((setup) => setup.repoId === 'b')?.projectId).toBe('repo:b')
+      expect(
+        view.projects.find((project) => project.id === 'repo:b')?.localWindowsRuntimePreference
+      ).toEqual({ kind: 'windows-host' })
+      expect(
+        store.getState().projectHostSetups.every((setup) => setup.projectId === rawProject.id)
+      ).toBe(true)
     })
 
     it('hydrates projects from local IPC when the project API is available', async () => {

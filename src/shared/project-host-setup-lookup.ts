@@ -4,7 +4,7 @@ import {
   toRuntimeExecutionHostId
 } from './execution-host'
 import type { ProjectHostSetup } from './project-types'
-import { getRepoHostIdentityForParts } from './repo-host-identity'
+import { getRepoHostIdentityForParts, getRepoSetupOwnerScope } from './repo-host-identity'
 import type { Repo } from './repo-types'
 import type { WorktreeMeta } from './worktree/meta-types'
 import { projectHostSetupProjectionFromRepos } from './project-host-setup-projection'
@@ -39,11 +39,7 @@ export function getProjectHostSetupLookup(
   const byRepo = new Map<string, SetupOwner | null>()
   const bySetup = new Map<string, SetupOwner | null>()
   const ownerKey = getRepoHostIdentityForParts
-  const scope = (setup: SetupOwner) => {
-    const host = setup.hostId ?? 'local'
-    const execution = getRepoExecutionHostId(setup)
-    return execution.startsWith('ssh:') && execution !== host ? `${host}\0${execution}` : host
-  }
+  const scope = getRepoSetupOwnerScope
   const add = (index: Map<string, SetupOwner | null>, key: string, setup: SetupOwner) => {
     const prior = index.get(key)
     index.set(

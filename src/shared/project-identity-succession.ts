@@ -1,4 +1,5 @@
-import type { Project } from './project-types'
+import { getRepoExecutionHostId } from './execution-host'
+import type { Project, ProjectHostSetup } from './project-types'
 
 export type ProjectIdentitySuccession = {
   /** Projected projects with user-set state carried forward from their predecessor row. */
@@ -27,14 +28,12 @@ function compareStrings(left: string, right: string): number {
  * `github:` promotion and remote re-probes rewrite them mid-session; matching only on id
  * would drop the user's runtime preference and leave a ghost row behind.
  *
- * Predecessor rule when several prior rows overlap a surviving project: most shared
- * `sourceRepoIds` wins, then newest `updatedAt`, then lowest prior id (then lowest new id).
- * Each prior row is claimed by at most one surviving project, so two distinct user
- * preferences are never merged into one — the unclaimed row keeps its own identity.
+ * Association remapping stays one-to-one; preference continuity follows concrete owners.
  */
 export function carryProjectStateThroughIdentityChange(
   projectedProjects: readonly Project[],
-  previousProjects: readonly Project[]
+  previousProjects: readonly Project[],
+  membership?: { previous: readonly ProjectHostSetup[]; current: readonly ProjectHostSetup[] }
 ): ProjectIdentitySuccession {
   const previousById = new Map(previousProjects.map((project) => [project.id, project]))
   const projectedIds = new Set(projectedProjects.map((project) => project.id))
@@ -102,5 +101,53 @@ export function carryProjectStateThroughIdentityChange(
     remappedProjectIds.set(predecessor.id, project.id)
     return carryUserState(project, predecessor)
   })
+  if (membership) {
+    const local = (setup: ProjectHostSetup) =>
+      setup.hostId === 'local' && getRepoExecutionHostId(setup) === 'local'
+    const previousByRepo = new Map<string, Project>()
+    const recordedRepoIds = new Set(membership.previous.map((setup) => setup.repoId))
+    for (const previous of previousProjects) {
+      for (const repoId of previous.sourceRepoIds) {
+        if (!recordedRepoIds.has(repoId)) {
+          previousByRepo.set(repoId, previous)
+        }
+      }
+    }
+    for (const setup of membership.previous) {
+      if (!local(setup)) {
+        continue
+      }
+      const previous = previousById.get(setup.projectId)
+      if (previous) {
+        previousByRepo.set(setup.repoId, previous)
+      }
+    }
+    const predecessors = new Map<string, Set<Project>>()
+    for (const setup of membership.current) {
+      if (!local(setup)) {
+        continue
+      }
+      const previous = previousByRepo.get(setup.repoId)
+      if (!previous) {
+        continue
+      }
+      const owners = predecessors.get(setup.projectId) ?? new Set<Project>()
+      owners.add(previous)
+      predecessors.set(setup.projectId, owners)
+    }
+    for (const [index, project] of projects.entries()) {
+      const owners = predecessors.get(project.id)
+      // Only an unambiguous surviving local owner can carry a preference.
+      if (owners?.size !== 1) {
+        continue
+      }
+      const previous = [...owners][0]!
+      const inherited = { ...carryUserState(project, previous) }
+      if (!previous.localWindowsRuntimePreference) {
+        delete inherited.localWindowsRuntimePreference
+      }
+      projects[index] = inherited
+    }
+  }
   return { projects, remappedProjectIds }
 }

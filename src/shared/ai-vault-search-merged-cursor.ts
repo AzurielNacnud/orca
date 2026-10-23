@@ -16,10 +16,12 @@ export type MergedSearchCursor = {
   /** Page size and sort the cursor was minted for; a cursor belongs to one query. */
   limit: number
   sort: 'relevance' | 'newest'
+  plan?: string
   hosts: Record<string, MergedSearchCursorEntry>
 }
 
 const mergedCursorPayloadSchema = z.object({
+  p: z.string().optional(),
   l: z.number().int().positive(),
   s: z.enum(['relevance', 'newest']),
   h: z.record(
@@ -33,15 +35,26 @@ const mergedCursorPayloadSchema = z.object({
 })
 
 export function encodeMergedSearchCursor(cursor: MergedSearchCursor): string {
-  const payload = { l: cursor.limit, s: cursor.sort, h: cursor.hosts }
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
+  const payload = { l: cursor.limit, s: cursor.sort, h: cursor.hosts, p: cursor.plan }
+  return btoa(
+    Array.from(new TextEncoder().encode(JSON.stringify(payload)), (byte) =>
+      String.fromCharCode(byte)
+    ).join('')
+  )
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
 }
 
 /** Null for anything that is not a cursor this module minted. */
 export function decodeMergedSearchCursor(raw: string): MergedSearchCursor | null {
   let parsed: unknown
   try {
-    parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'))
+    parsed = JSON.parse(
+      new TextDecoder().decode(
+        Uint8Array.from(atob(raw.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+      )
+    )
   } catch {
     return null
   }
@@ -49,5 +62,5 @@ export function decodeMergedSearchCursor(raw: string): MergedSearchCursor | null
   if (!result.success) {
     return null
   }
-  return { limit: result.data.l, sort: result.data.s, hosts: result.data.h }
+  return { plan: result.data.p, limit: result.data.l, sort: result.data.s, hosts: result.data.h }
 }

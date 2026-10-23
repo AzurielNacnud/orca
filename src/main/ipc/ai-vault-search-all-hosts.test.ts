@@ -5,8 +5,11 @@ import type {
   AiVaultSearchResponse
 } from '../../shared/ai-vault-search-types'
 import type { ExecutionHostId } from '../../shared/execution-host'
-import { searchAllExecutionHosts, type SessionSearchHostLeg } from './ai-vault-search-all-hosts'
-import { encodeMergedSearchCursor } from './ai-vault-search-merged-cursor'
+import {
+  searchAllExecutionHosts,
+  type SessionSearchHostLeg
+} from '../../shared/ai-vault-search-page-walk'
+import { encodeMergedSearchCursor } from '../../shared/ai-vault-search-merged-cursor'
 
 /** A host that ranks a fixed list and fences its own cursors on a generation change. */
 class StubHost {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   getExecutionHostLabel,
+  getRepoExecutionHostId,
   parseExecutionHostId,
   toRuntimeExecutionHostId,
   type ExecutionHostId
@@ -9,6 +10,7 @@ import { buildExecutionHostRegistry } from '../../../../shared/execution-host-re
 import { getHostDisplayLabelOverrides } from '../../../../shared/host-setting-overrides'
 import type { ProjectHostSetup } from '../../../../shared/project-types'
 import type { Repo } from '../../../../shared/repo-types'
+import { getProjectIdentityKey } from '../../../../shared/project-host-setup-projection'
 import { useAppStore } from '../../store'
 import { getProjectHostSetupProjectionFromState } from '../../store/selectors'
 import { cn } from '../../lib/utils'
@@ -107,7 +109,7 @@ export function RepositoryHostSetupsSection({
     getProjectHostSetupProjectionFromState(state)
   )
   const repoProjectHostSetup = projectHostSetupProjection.setups.find(
-    (setup) => setup.repoId === repo.id
+    (setup) => setup.repoId === repo.id && setup.hostId === getRepoExecutionHostId(repo)
   )
   const selectedProjectHostSetup =
     projectHostSetupProjection.setups.find(
@@ -131,6 +133,9 @@ export function RepositoryHostSetupsSection({
     selectedProjectHostSetup?.id ?? ''
   )
   const setupHostOptions = buildSetupHostOptions({
+    outclaimed:
+      repoProjectHostSetup?.projectId === `repo:${repo.id}` &&
+      getProjectIdentityKey(repo) !== `repo:${repo.id}`,
     projectHostSetups: allProjectHostSetups,
     hostOptions
   })

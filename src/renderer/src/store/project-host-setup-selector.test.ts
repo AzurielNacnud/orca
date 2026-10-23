@@ -92,7 +92,7 @@ describe('project host setup selector', () => {
     const first = getProjectHostSetupProjectionFromState(state)
     expect(countedRepos.counters.map).toBeGreaterThan(0)
     expect(countedRepos.counters.iterator).toBeGreaterThan(0)
-    expect(countedProjects.counters.flatMap).toBeGreaterThan(0)
+    expect(countedProjects.counters.map).toBeGreaterThan(0)
     expect(countedSetups.counters.map).toBeGreaterThan(0)
     countedRepos.counters.map = 0
     countedRepos.counters.flatMap = 0

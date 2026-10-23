@@ -1,11 +1,11 @@
-import { resolveSessionSearchLimit } from '../../shared/ai-vault-search-limit'
+import { resolveSessionSearchLimit } from './ai-vault-search-limit'
 import type {
   AiVaultSearchHit,
   AiVaultSearchHostOutcome,
   AiVaultSearchRequest,
   AiVaultSearchResponse
-} from '../../shared/ai-vault-search-types'
-import type { ExecutionHostId } from '../../shared/execution-host'
+} from './ai-vault-search-types'
+import type { ExecutionHostId } from './execution-host'
 import {
   decodeMergedSearchCursor,
   encodeMergedSearchCursor,
@@ -14,6 +14,8 @@ import {
 
 export type SessionSearchHostLeg = {
   executionHostId: ExecutionHostId
+  streamKey?: string
+  accept?: (hit: AiVaultSearchHit) => boolean
   /** Omitted for the in-process local leg, which has no transport to hang on. */
   timeoutMs?: number
   search: (request: AiVaultSearchRequest) => Promise<AiVaultSearchResponse>
@@ -21,12 +23,7 @@ export type SessionSearchHostLeg = {
 
 type MergedSort = 'relevance' | 'newest'
 type HostOutcome = AiVaultSearchHostOutcome['outcome']
-type Truncation = {
-  candidates: boolean
-  snippets: number
-  query: boolean
-  freshness: boolean
-}
+type Truncation = Extract<AiVaultSearchResponse, { kind: 'results' }>['truncated']
 
 // One merged request reads at most this many pages from any single host.
 const MAX_HOST_PAGES_PER_REQUEST = 3
@@ -58,14 +55,18 @@ type HostWalk = {
  */
 export async function searchAllExecutionHosts(
   request: AiVaultSearchRequest,
-  legs: readonly SessionSearchHostLeg[]
+  legs: readonly SessionSearchHostLeg[],
+  plan?: string
 ): Promise<AiVaultSearchResponse> {
   const startedAt = Date.now()
   const limit = resolveSessionSearchLimit(request.limit)
   const sort: MergedSort = request.filters?.sort ?? 'relevance'
   const resumed = request.cursor === undefined ? null : decodeMergedSearchCursor(request.cursor)
+  if (resumed && resumed.plan !== plan) {
+    return { kind: 'stale-cursor', generation: 0 }
+  }
   if (request.cursor !== undefined) {
-    const known = new Set<string>(legs.map((leg) => leg.executionHostId))
+    const known = new Set<string>(legs.map((leg) => streamKey(leg)))
     // A cursor belongs to one query over one host set; anything else is not ours.
     if (
       !resumed ||
@@ -79,14 +80,22 @@ export async function searchAllExecutionHosts(
   // A host absent from the cursor either finished or joined mid-walk; either way
   // it contributes nothing to this page. Host-id order fixes every tiebreak.
   const walks = legs
-    .filter((leg) => !resumed || resumed.hosts[leg.executionHostId] !== undefined)
+    .filter((leg) => !resumed || resumed.hosts[streamKey(leg)] !== undefined)
     .map((leg) => newHostWalk(leg, legRequest(request, sort)))
-    .sort((left, right) => left.executionHostId.localeCompare(right.executionHostId))
+    .sort(
+      (left, right) =>
+        left.executionHostId.localeCompare(right.executionHostId) ||
+        streamKey(left.leg).localeCompare(streamKey(right.leg))
+    )
   await Promise.all(
-    walks.map((walk) => fetchHostPage(walk, resumed?.hosts[walk.executionHostId] ?? null))
+    walks.map((walk) => fetchHostPage(walk, resumed?.hosts[streamKey(walk.leg)] ?? null))
   )
   const hits = await drainMergedPage(walks, limit, sort)
-  return mergedSearchResponse(walks, { limit, sort }, hits, Date.now() - startedAt)
+  return mergedSearchResponse(walks, { limit, sort, plan }, hits, Date.now() - startedAt)
+}
+
+function streamKey(leg: SessionSearchHostLeg): string {
+  return leg.streamKey ?? leg.executionHostId
 }
 
 /** Every leg answers in the merged order; the cursor and debug are this merge's own. */
@@ -196,9 +205,15 @@ async function drainMergedPage(
     if (!next) {
       return hits
     }
-    turn = walks.indexOf(next) + 1
-    hits.push(next.pending.shift()!)
+    turn = walks.findIndex((walk) => walk.executionHostId.localeCompare(next.executionHostId) > 0)
+    if (turn < 0) {
+      turn = 0
+    }
+    const hit = next.pending.shift()!
     next.emitted += 1
+    if (!next.leg.accept || next.leg.accept(hit)) {
+      hits.push(hit)
+    }
   }
   return hits
 }
@@ -208,7 +223,15 @@ function walkWithTurn(walks: readonly HostWalk[], turn: number): HostWalk | null
   for (let step = 0; step < walks.length; step++) {
     const walk = walks[(turn + step) % walks.length]
     if (walk && walk.pending.length > 0) {
-      return walk
+      return walks
+        .filter(
+          (source) => source.executionHostId === walk.executionHostId && source.pending.length
+        )
+        .sort(
+          (a, b) =>
+            b.pending[0]!.score - a.pending[0]!.score ||
+            streamKey(a.leg).localeCompare(streamKey(b.leg))
+        )[0]!
     }
   }
   return null
@@ -228,7 +251,7 @@ function mostRecentWalk(walks: readonly HostWalk[]): HostWalk | null {
 
 function mergedSearchResponse(
   walks: readonly HostWalk[],
-  query: { limit: number; sort: MergedSort },
+  query: { limit: number; sort: MergedSort; plan?: string },
   hits: AiVaultSearchHit[],
   durationMs: number
 ): AiVaultSearchResponse {
@@ -241,13 +264,16 @@ function mergedSearchResponse(
     freshness: false
   }
   for (const walk of walks) {
-    hosts.push({
-      executionHostId: walk.executionHostId,
-      outcome: walk.outcome
-    })
+    if (
+      !hosts.some(
+        (host) => host.executionHostId === walk.executionHostId && host.outcome === walk.outcome
+      )
+    ) {
+      hosts.push({ executionHostId: walk.executionHostId, outcome: walk.outcome })
+    }
     const entry = nextCursorEntry(walk)
     if (entry) {
-      nextHosts[walk.executionHostId] = entry
+      nextHosts[streamKey(walk.leg)] = entry
     }
     truncated.candidates ||= walk.truncated.candidates
     truncated.snippets += walk.truncated.snippets
@@ -260,7 +286,7 @@ function mergedSearchResponse(
     kind: 'results',
     hits,
     page: { cursor, hasMore },
-    generation: 0,
+    generation: walks.length === 1 ? walks[0]!.generation : 0,
     truncated,
     durationMs,
     hosts

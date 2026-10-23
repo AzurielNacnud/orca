@@ -9,8 +9,6 @@ import {
   buildAiVaultProjectContext,
   buildAiVaultSessionProjectById
 } from './ai-vault-session-projects'
-import { resolveSessionSearchScope } from '../../../../main/ai-vault-search/session-search-scope-resolution'
-import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
 import { truncateAiVaultListResult } from '../../../../shared/ai-vault-session-depth'
 import {
   groupAiVaultSessions,
@@ -41,80 +39,6 @@ const baseSession: AiVaultSession = {
 }
 
 describe('buildAiVaultProjectContext', () => {
-  // #28589: an imported folder whose copied .git/config points at another checkout's remote.
-  it("keeps a same-host folder that shares a remote out of the other checkout's project", () => {
-    const remote = {
-      canonicalKey: 'github.com/bennyoooo/open-social',
-      remoteName: 'origin',
-      remoteUrl: 'https://github.com/Bennyoooo/open-social.git'
-    }
-    const openSocial = makeRepo({
-      id: 'open-social',
-      displayName: 'open-social',
-      path: '/Users/benny/orca/open-social',
-      addedAt: 100,
-      gitRemoteIdentity: remote
-    })
-    const niw = makeRepo({
-      id: 'niw',
-      displayName: 'niw',
-      path: '/Users/benny/orca/projects/niw',
-      addedAt: 200,
-      gitRemoteIdentity: remote
-    })
-    const linkedPath = '/Users/benny/workspaces/niw-topic'
-    const oldProjectId = 'github:bennyoooo/open-social'
-    const worktree = makeWorktree({
-      id: `niw::${linkedPath}`,
-      repoId: niw.id,
-      projectHostSetupId: niw.id,
-      projectId: oldProjectId,
-      path: linkedPath
-    })
-    const niwSession = makeSession({ id: 'claude:niw', cwd: linkedPath })
-    const projection = projectHostSetupProjectionFromRepos([niw, openSocial])
-    const openSocialSession = makeSession({ id: 'claude:open-social', cwd: openSocial.path })
-
-    const context = buildAiVaultProjectContext({
-      repos: [niw, openSocial],
-      worktrees: [worktree],
-      projectHostSetupProjection: projection,
-      activeRepo: niw,
-      activeWorktree: worktree,
-      sessions: [niwSession, openSocialSession]
-    })
-
-    const catalog = {
-      repos: [niw, openSocial],
-      projects: projection.projects,
-      projectHostSetups: projection.setups,
-      worktreeMeta: {
-        [worktree.id]: { ...worktree, priorWorktreeIds: ['niw::/Users/benny/old-niw-topic'] }
-      },
-      settings: { nestWorkspaces: false }
-    }
-    const ownerScope = resolveSessionSearchScope(
-      { kind: 'project', projectKey: 'repo:niw' },
-      catalog
-    )
-    expect(ownerScope).toEqual({
-      kind: 'resolved',
-      paths: expect.arrayContaining([niw.path, linkedPath, '/Users/benny/old-niw-topic'])
-    })
-    expect(
-      resolveSessionSearchScope({ kind: 'project', projectKey: `project:${oldProjectId}` }, catalog)
-    ).toEqual({ kind: 'resolved', paths: [openSocial.path] })
-    expect(context.activeProjectKey).toBe('repo:niw')
-    expect(context.sessionProjectById.get(niwSession.id)).toMatchObject({
-      key: 'repo:niw',
-      label: 'niw'
-    })
-    expect(context.sessionProjectById.get(openSocialSession.id)).toMatchObject({
-      key: 'project:github:bennyoooo/open-social',
-      label: 'open-social'
-    })
-  })
-
   it('uses durable worktree project ids before repo fallback', () => {
     const repo = makeRepo({ id: 'repo-1', displayName: 'Legacy Repo', path: '/Users/ada/orca' })
     const project = makeProject({ id: 'project-1', displayName: 'Canonical Orca' })

@@ -1,5 +1,8 @@
 import { expect, it } from 'vitest'
-import { decodeMergedSearchCursor, encodeMergedSearchCursor } from './ai-vault-search-merged-cursor'
+import {
+  decodeMergedSearchCursor,
+  encodeMergedSearchCursor
+} from '../../shared/ai-vault-search-merged-cursor'
 
 const cursor = {
   limit: 20,

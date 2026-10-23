@@ -20,6 +20,8 @@ import type { AiVaultSearchScopeIdentity } from '../../../../shared/ai-vault-sea
 import { resolveAiVaultSearchSettings } from '../../../../shared/ai-vault-search-settings'
 import { isWebClientLocation } from '@/lib/web-client-location'
 import { useAppStore } from '@/store'
+import { searchCanonicalProject } from '../../../../shared/ai-vault-project-search'
+import { getProjectHostSetupProjectionFromState } from '../../store/project-host-setup-selector'
 import { aiVaultSearchHitToSession } from './ai-vault-search-session'
 
 type SearchIdentity = {
@@ -57,6 +59,19 @@ export function useAiVaultSearch(
     }
     let cancelled = false
     let pending = false
+    const search = (query: AiVaultSearchRequest, host: ExecutionHostScope) => {
+      const state = useAppStore.getState()
+      return searchCanonicalProject(
+        query,
+        host,
+        {
+          ...getProjectHostSetupProjectionFromState(state),
+          worktrees: state.worktrees,
+          rawSetups: state.projectHostSetups
+        },
+        window.api.aiVault.searchSessions
+      )
+    }
     async function run(cursor?: string) {
       if (pending || cancelled || !request || !scope) {
         return
@@ -70,14 +85,14 @@ export function useAiVaultSearch(
         loading: true
       }))
       try {
-        let response = await window.api.aiVault.searchSessions({ ...request, cursor }, scope)
+        let response = await search({ ...request, cursor }, scope)
         let append = Boolean(cursor)
         if (cancelled) {
           return
         }
         if (response.kind === 'stale-cursor') {
           append = false
-          response = await window.api.aiVault.searchSessions(request, scope)
+          response = await search(request, scope)
         }
         if (cancelled) {
           return
