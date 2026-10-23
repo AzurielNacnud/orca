@@ -118,7 +118,9 @@ describe('repo RPC methods', () => {
       listVisibleRepos: () => [
         { id: 'repo-1', path: '/repo', externalWorktreeVisibilityLegacy: false }
       ],
-      getClientSettings: () => ({ worktreeVisibilityDefaults: { external: 'show' } })
+      requireStore: () => ({
+        getSettings: () => ({ worktreeVisibilityDefaults: { external: 'show' } })
+      })
     } as unknown as OrcaRuntimeService
     const dispatcher = new RpcDispatcher({ runtime, methods: REPO_METHODS })
     const legacyReplies: string[] = []
@@ -149,7 +151,9 @@ describe('repo RPC methods', () => {
     const runtime = {
       getRuntimeId: () => 'test-runtime',
       addRepo: vi.fn().mockResolvedValue(repo),
-      getClientSettings: () => ({ worktreeVisibilityDefaults: { external: 'show' } })
+      requireStore: () => ({
+        getSettings: () => ({ worktreeVisibilityDefaults: { external: 'show' } })
+      })
     } as unknown as OrcaRuntimeService
     const dispatcher = new RpcDispatcher({ runtime, methods: REPO_METHODS })
 
