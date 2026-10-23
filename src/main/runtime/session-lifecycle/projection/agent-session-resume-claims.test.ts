@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { AgentSessionResumeClaims } from './agent-session-resume-claims'
+import {
+  AgentSessionResumeClaims,
+  type AgentSessionResumeClaim
+} from './agent-session-resume-claims'
 
 const SESSION = { agent: 'claude', providerSession: { key: 'session_id', id: 'one' } } as const
 
@@ -32,6 +35,19 @@ describe('AgentSessionResumeClaims', () => {
     first?.settleFailure(false)
     expect(claims.claim(SESSION, 'tab:b')).toBeNull()
     second?.settleFailure(false)
+    expect(claims.claim(SESSION, 'tab:b')).not.toBeNull()
+  })
+
+  it('keeps a lost-reply attempt held unless a retry of the same request binds', () => {
+    const { claims, exits } = makeClaims()
+    claims.claim(SESSION, 'tab:a', 'request-1')?.settleFailure(true, new Error('reply lost'))
+    // Another request's spawn accounts only for itself.
+    claims.claim(SESSION, 'tab:a', 'request-2')?.bind('pty-2')
+    exits.get('pty-2')?.()
+    expect(claims.claim(SESSION, 'tab:b')).toBeNull()
+
+    claims.claim(SESSION, 'tab:a', 'request-1')?.bind('pty-1')
+    exits.get('pty-1')?.()
     expect(claims.claim(SESSION, 'tab:b')).not.toBeNull()
   })
 
@@ -83,6 +99,26 @@ describe('AgentSessionResumeClaims', () => {
     expect(claims.claim(SESSION, 'tab:b')).toBeNull()
   })
 
+  it.each(['pending', 'bound', 'lost reply'])(
+    'keeps overlapping %s opens held during lazy report checks',
+    (state) => {
+      let reported = false
+      const { claims } = makeClaims(() => reported)
+      claims.claim(SESSION, 'tab:a')?.bind('pty-1')
+      const second = claims.claim(SESSION, 'tab:a', 'second')
+      if (state === 'bound') {
+        second?.bind('pty-2')
+      }
+      if (state === 'lost reply') {
+        second?.settleFailure(true, new Error('reply lost'))
+      }
+      reported = true
+      expect(claims.claim(SESSION, 'tab:b')).toBeNull()
+      reported = false
+      expect(claims.claim(SESSION, 'tab:b')).toBeNull()
+    }
+  )
+
   it('ends a hold once the hook store reports it in its pane', () => {
     let reported = false
     const { claims, exits } = makeClaims(() => reported)
@@ -90,5 +126,56 @@ describe('AgentSessionResumeClaims', () => {
     reported = true
     expect(claims.claim(SESSION, 'tab:b')).not.toBeNull()
     expect(exits.has('pty-1')).toBe(false)
+  })
+
+  function makeReportedClaims() {
+    const state = { reported: false }
+    const listeners = new Set<() => void>()
+    const exits = new Map<string, () => void>()
+    const claims = new AgentSessionResumeClaims({
+      reported: () => state.reported,
+      watchExit: (ptyId, onExit) => {
+        exits.set(ptyId, onExit)
+        return () => exits.delete(ptyId)
+      },
+      watchReports: (onChange) => {
+        listeners.add(onChange)
+        return () => listeners.delete(onChange)
+      }
+    })
+    const report = (): void => {
+      state.reported = true
+      listeners.forEach((onChange) => onChange())
+      // The reporting agent exits to its shell: its row is gone, its PTY stays.
+      state.reported = false
+    }
+    return { claims, listeners, exits, report }
+  }
+
+  it.each([
+    ['a second open has not spawned yet', (second: AgentSessionResumeClaim | null) => second],
+    [
+      'a second open spawned its own PTY',
+      (second: AgentSessionResumeClaim | null) => {
+        second?.bind('pty-2')
+        return null
+      }
+    ]
+  ])('keeps a same-pane hold through one report while %s', (_case, settleSecond) => {
+    const { claims, report } = makeReportedClaims()
+    claims.claim(SESSION, 'tab:a')?.bind('pty-1')
+    settleSecond(claims.claim(SESSION, 'tab:a'))
+    report()
+    expect(claims.claim(SESSION, 'tab:b')).toBeNull()
+  })
+
+  it('ends a hold once the hook store reports it, even if the row is gone by the next claim', () => {
+    const { claims, listeners, exits, report } = makeReportedClaims()
+    claims.claim(SESSION, 'tab:a')?.bind('pty-1')
+    expect(listeners.size).toBe(1)
+    report()
+    expect(listeners.size).toBe(0)
+    expect(exits.has('pty-1')).toBe(false)
+    expect(claims.claim(SESSION, 'tab:b')).not.toBeNull()
   })
 })

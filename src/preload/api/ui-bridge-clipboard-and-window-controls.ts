@@ -53,20 +53,11 @@ export const uiClipboardAndWindowControlsApi = {
   respondTerminalTabClose: (response) => {
     ipcRenderer.send('ui:terminalTabCloseResponse', response)
   },
-  onSleepWorktree: (callback: (data: { worktreeId: string }) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, data: { worktreeId: string }) =>
-      callback(data)
-    ipcRenderer.on('ui:sleepWorktree', listener)
-    return () => ipcRenderer.removeListener('ui:sleepWorktree', listener)
-  },
-  onWorktreeSleepRequest: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, request: Parameters<typeof callback>[0]) =>
-      callback(request)
-    ipcRenderer.on('ui:worktreeSleepRequest', listener)
-    return () => ipcRenderer.removeListener('ui:worktreeSleepRequest', listener)
-  },
-  respondWorktreeSleep: (response) => {
-    ipcRenderer.send('ui:worktreeSleepResponse', response)
+  onWorkspaceSleep: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, notice: Parameters<typeof callback>[0]) =>
+      callback(notice)
+    ipcRenderer.on('ui:workspaceSleep', listener)
+    return () => ipcRenderer.removeListener('ui:workspaceSleep', listener)
   },
   onResumeSleepingAgents: (callback: (data: { worktreeId: string }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, data: { worktreeId: string }) =>

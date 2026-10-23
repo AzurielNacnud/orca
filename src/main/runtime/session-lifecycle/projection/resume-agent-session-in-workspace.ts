@@ -14,7 +14,7 @@ import {
 } from '../../../../shared/execution-host'
 import type { OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal as OwnedMobileTerminalCreate } from '../../terminal/launch/mobile-terminal-owned-create'
 import { deterministicAgentSessionUuid } from '../../runtime-agent-launch-resolution'
-import { isWindowWakeSleepRecord } from './window-wake-sleep-record'
+import { isUnclaimedRunningSleepRecord } from './sleep-record-pane-claim'
 import type { ResumedAgentSession } from './agent-session-resume-claims'
 import { worktreeIdsEqual } from '../../../../shared/worktree/id'
 
@@ -62,7 +62,8 @@ export abstract class OrcaRuntimeWithResumeAgentSessionInWorkspace extends OrcaR
     const session: ResumedAgentSession = { agent: request.agent, providerSession }
     const claim = this.agentSessionResumeClaims.claim(
       session,
-      makePaneKey(identity.tabId, identity.leafId)
+      makePaneKey(identity.tabId, identity.leafId),
+      seed
     )
     if (!claim) {
       return { ok: false, reason: 'held_elsewhere' }
@@ -143,12 +144,10 @@ export abstract class OrcaRuntimeWithResumeAgentSessionInWorkspace extends OrcaR
     if (!resume) {
       return refuse('no_resume_command')
     }
-    // Why: pane-owned before the spawn, so a window attaching mid-spawn cannot relaunch it.
-    if (record && isWindowWakeSleepRecord(record)) {
-      if (!(await this.claimWindowWakeRecord(worktreeId, record))) {
-        return refuse(
-          this.getAvailableAuthoritativeWindow() ? 'window_owns_wake' : 'held_elsewhere'
-        )
+    // Why: pane-owned before the spawn, so another resume of the record cannot run it twice.
+    if (record && isUnclaimedRunningSleepRecord(record)) {
+      if (!(await this.claimSleepRecord(worktreeId, record))) {
+        return refuse('held_elsewhere')
       }
     }
     if (request.signal?.aborted) {

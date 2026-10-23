@@ -1,7 +1,6 @@
 // Who may resume a recorded agent conversation into a pane: the ownership checks and the in-flight
 // claim shared by a pane opening over its own record and a targeted resume into a fresh pane.
 
-import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
 import { findPaneSleepingRecord } from './pane-sleeping-record'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { OrcaRuntimeWithApplyMobileSessionTabNavigation } from './apply-mobile-session-tab-navigation'
@@ -16,7 +15,7 @@ import type {
 } from '../../terminal/launch/mobile-terminal-startup'
 import type { OrcaRuntimeWithMarkPtyLivenessUnverifiable as PtyExitFloor } from '../../terminal/layout/terminal-input-floor'
 import type { OrcaRuntimeWithStopTerminalsForWorktree as SessionEditHost } from '../../terminal/stop/worktree-terminal-stop'
-import { claimWindowWakeRecordForPane, isWindowWakeSleepRecord } from './window-wake-sleep-record'
+import { claimSleepRecordForPane, isUnclaimedRunningSleepRecord } from './sleep-record-pane-claim'
 import {
   AgentSessionResumeClaims,
   type AgentSessionResumeClaim,
@@ -41,7 +40,9 @@ export abstract class OrcaRuntimeWithAgentSessionResumeOwnership extends OrcaRun
 
   protected readonly agentSessionResumeClaims = new AgentSessionResumeClaims({
     reported: (hold) => this.hookStoreReportsResumeHold(hold),
-    watchExit: (ptyId, onExit) => this.subscribeToPtyExit(ptyId, onExit)
+    watchExit: (ptyId, onExit) => this.subscribeToPtyExit(ptyId, onExit),
+    watchReports: (onChange) =>
+      this.subscribeAgentProviderSessionChangesFn?.(onChange) ?? (() => {})
   })
 
   /**
@@ -61,29 +62,18 @@ export abstract class OrcaRuntimeWithAgentSessionResumeOwnership extends OrcaRun
     return this.getPaneSleepingAgentRecord(worktreeId, tab)?.origin === 'worktree-sleep'
   }
 
-  /**
-   * Whether a pane, rather than the host window's cold restore, owns resuming this record.
-   * Why: a running agent's worktree-sleep record is relaunched in a fresh tab by the window's
-   * worktree activation, so resuming it in a pane as well would run one transcript twice.
-   */
+  /** Whether main resumes this record into its pane. */
   protected isPaneOwnedResumeRecord(record: SleepingAgentSessionRecord): boolean {
     // Why: an originless record predates capture origins and carries no proof of which pane or
     // host wrote it, so it is left (record kept) for the window's legacy cleanup (#29303).
-    // A host with no window right now has no window wake, so the pane owns the record and claims it.
-    // Switch point: a layout-owner window never wakes a pane itself, so main owns every wake.
     return (
-      record.origin === 'live' ||
-      record.origin === 'quit' ||
-      (record.origin === 'worktree-sleep' &&
-        (record.state === 'done' ||
-          ORCA_LAYOUT_OWNER_IS_MAIN ||
-          !this.getAvailableAuthoritativeWindow()))
+      record.origin === 'live' || record.origin === 'quit' || record.origin === 'worktree-sleep'
     )
   }
 
   /**
-   * The pane's resume launch: undefined when it owns no record, `{}` (plain shell, record kept,
-   * as the window does) when the record cannot be resumed here or the window will wake it.
+   * The pane's resume launch: undefined when it owns no record, `{}` (plain shell, record kept)
+   * when the record cannot be resumed here or another resume took it.
    */
   protected async resolvePaneOwnedResumeStartup(
     worktreeId: string,
@@ -92,8 +82,7 @@ export abstract class OrcaRuntimeWithAgentSessionResumeOwnership extends OrcaRun
     const stored = this.getPaneSleepingAgentRecord(worktreeId, tab)
     const record = stored && this.isPaneOwnedResumeRecord(stored) ? stored : null
     if (!record) {
-      // Why: a fresh launch would drop the conversation and its recorded flags (#29672).
-      return stored && isWindowWakeSleepRecord(stored) ? {} : undefined
+      return undefined
     }
     // Why: nothing here spends the record, so a session another pane also records could be
     // resumed twice (two writers on one transcript), as could one already live in another pane.
@@ -138,26 +127,20 @@ export abstract class OrcaRuntimeWithAgentSessionResumeOwnership extends OrcaRun
       return null
     }
     if (
-      isWindowWakeSleepRecord(record) &&
-      !(await this.claimWindowWakeRecord(worktreeId, record))
+      isUnclaimedRunningSleepRecord(record) &&
+      !(await this.claimSleepRecord(worktreeId, record))
     ) {
       return null
     }
     return resume
   }
 
-  protected claimWindowWakeRecord(
+  protected claimSleepRecord(
     worktreeId: string,
     record: SleepingAgentSessionRecord
   ): Promise<boolean> {
     const hostId = this.getWorkspaceSessionHostIdForWorktree(worktreeId)
-    return claimWindowWakeRecordForPane(
-      (edit) => this.commitWorkspaceSessionEdit(hostId, edit),
-      // Why: a window that attached during the caller's awaits now owns this record's wake.
-      // Switch point: a layout-owner window never starts a terminal, so main owns every wake.
-      () => !ORCA_LAYOUT_OWNER_IS_MAIN && Boolean(this.getAvailableAuthoritativeWindow()),
-      record
-    )
+    return claimSleepRecordForPane((edit) => this.commitWorkspaceSessionEdit(hostId, edit), record)
   }
 
   /** The hook store names the held session in its pane, from a row since the claim. */

@@ -2520,6 +2520,10 @@
             "c9382662bb": "Restart daemon",
             "e7ccce7e87": "of system RAM"
           },
+          "SkillUpdateStatusSegment": {
+            "successMany": "Updated {{value0}} skills",
+            "successOne": "Updated {{value0}}"
+          },
           "SshStatusSegment": {
             "3d0128b105": "connected",
             "63a2b965f6": "pulling",

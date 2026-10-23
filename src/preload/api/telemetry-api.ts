@@ -47,9 +47,9 @@ export type DiagnosticsApi = {
 }
 
 export type TelemetryApi = {
-  /** Fire-and-forget track. Loose IPC typing on purpose — the main-side validator enforces;
-   *  renderer sites should import `track<N>()` from lib/telemetry.ts, not reach here. */
-  telemetryTrack: (name: string, props: Record<string, unknown>) => Promise<void>
+  /** True means captured or already recorded today; older bridges return void.
+   *  Use lib/telemetry.ts wrappers; main validates the deliberately loose IPC payload. */
+  telemetryTrack: (name: string, props: Record<string, unknown>) => Promise<boolean | void>
   /** Flip the persisted opt-in preference. Subject to a per-session
    *  consent-mutation rate limit on the main side (≤5/session). */
   telemetrySetOptIn: (optedIn: boolean) => Promise<void>

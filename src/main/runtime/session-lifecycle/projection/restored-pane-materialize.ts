@@ -1,5 +1,6 @@
-// Starting a saved pane that has no live terminal: a client's first view of a pending row, and,
-// in the layout-owner build, every trigger that is not a desktop window's own restore.
+// Starting a saved pane that has no live terminal: a client's first view of a pending row, every
+// wake of a slept workspace, and, in the layout-owner build, every trigger that is not a desktop
+// window's own restore.
 
 import type { OrcaRuntimeWithAgentSessionResumeOwnership as AgentSessionResume } from './agent-session-resume-ownership'
 import type {
@@ -9,7 +10,7 @@ import type {
 import { OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs } from './build-headless-mobile-session-browser-tabs'
 import { parseAppSshPtyId } from '../../../../shared/ssh-pty-id'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
-import { markResumedRecordLive } from './window-wake-sleep-record'
+import { isUnclaimedRunningSleepRecord, markResumedRecordLive } from './sleep-record-pane-claim'
 import { isWorktreeTerminalsSleepingError } from '../../worktree-terminals-sleeping-error'
 import type { TerminalWorkspaceLaunchScope } from '../../runtime-legacy-worker-terminal-recovery-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
@@ -27,6 +28,8 @@ import { isPublishedHeld, reopenHeldPanes } from '../../terminal/recovery/held-p
 import { reopenNewerDaemonTerminals } from '../../../daemon/daemon-newer-protocol-hold'
 import type { NewerDaemonReopenResult } from '../../../../shared/newer-daemon-hold'
 import type { WorkspaceLayoutStream } from '../../workspace-layout-stream'
+import { parsePaneKey } from '../../../../shared/stable-pane-id'
+import { worktreeIdsEqual } from '../../../../shared/worktree/id'
 
 export abstract class OrcaRuntimeWithRestoredPaneStart extends OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs {
   protected abstract resolveAgentLaunchRuntime(
@@ -53,8 +56,9 @@ export abstract class OrcaRuntimeWithRestoredPaneStart extends OrcaRuntimeWithBu
   ): void
 
   /**
-   * Layout-owner build: the pane's live terminal, started once if it has none, for any trigger
-   * but a desktop window's own restore. Null when main no longer holds the pane.
+   * The pane's live terminal, started once if it has none: every wake of a slept pane, and in the
+   * layout-owner build any trigger but a desktop window's own restore. Null when main no longer
+   * holds the pane.
    */
   ensureRestoredPaneStarted(
     pane: RestoredPane,
@@ -98,6 +102,31 @@ export abstract class OrcaRuntimeWithRestoredPaneStart extends OrcaRuntimeWithBu
       }
     })
     return this.restoredPanes.ensureStarted(pane, trigger)
+  }
+
+  /**
+   * A wake: resumes, each in its own pane, the agents a workspace slept while they ran. Settles
+   * once every start has; a pane whose tab has since closed starts nothing.
+   */
+  async resumeSleptWorkspaceAgents(worktreeId: string): Promise<void> {
+    const records = Object.values(
+      this.getWorkspaceSessionForWorktree(worktreeId)?.sleepingAgentSessionsByPaneKey ?? {}
+    ).filter(
+      (record) =>
+        worktreeIdsEqual(record.worktreeId, worktreeId) && isUnclaimedRunningSleepRecord(record)
+    )
+    const panes = records.flatMap((record) => {
+      const pane = parsePaneKey(record.paneKey)
+      return pane ? [{ worktreeId, tabId: pane.tabId, leafId: pane.leafId }] : []
+    })
+    const started = await Promise.allSettled(
+      panes.map((pane) => this.ensureRestoredPaneStarted(pane))
+    )
+    for (const result of started) {
+      if (result.status === 'rejected') {
+        console.warn('[runtime] slept agent resume failed', result.reason)
+      }
+    }
   }
 
   /** Main is stopping this terminal to restart its pane: its earlier start no longer stands. */

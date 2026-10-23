@@ -15,8 +15,15 @@ export type AgentSessionResumeHold = ResumedAgentSession & {
   claimedAt: number
 }
 
-/** `unsettled`: shares whose create has neither bound a PTY nor released; `ptys`: exit watchers. */
-type Hold = AgentSessionResumeHold & { unsettled: number; ptys: Map<string, () => void> }
+/**
+ * `unsettled`: shares whose create has neither bound a PTY nor released; `ptys`: exit watchers;
+ * `ambiguous`: unsettled shares whose spawn may have run, by the request a retry reconciles.
+ */
+type Hold = AgentSessionResumeHold & {
+  unsettled: number
+  ptys: Map<string, () => void>
+  ambiguous: Map<string, number>
+}
 
 /** A resumer's share of a hold, settled only from its own create's evidence. */
 export type AgentSessionResumeClaim = {
@@ -33,6 +40,7 @@ export type AgentSessionResumeClaim = {
  */
 export class AgentSessionResumeClaims {
   private readonly holds = new Set<Hold>()
+  private stopWatchingReports: (() => void) | null = null
 
   constructor(
     private readonly lifecycle: {
@@ -40,29 +48,50 @@ export class AgentSessionResumeClaims {
       reported: (hold: AgentSessionResumeHold) => boolean
       /** Calls `onExit` once the PTY proves exited; returns the unsubscribe. */
       watchExit: (ptyId: string, onExit: () => void) => () => void
+      /** Calls `onChange` whenever the hook store's sessions change; returns the unsubscribe. */
+      watchReports?: (onChange: () => void) => () => void
     }
   ) {}
 
-  /** Null while another pane's resume of this conversation is unsettled. */
-  claim(session: ResumedAgentSession, paneKey: string): AgentSessionResumeClaim | null {
+  /**
+   * Null while another pane's resume of this conversation is unsettled.
+   * `request`: names one create, which every retry of it reconciles rather than spawning anew, so
+   * a retry's bound PTY also accounts for an earlier attempt whose reply was lost.
+   */
+  claim(
+    session: ResumedAgentSession,
+    paneKey: string,
+    request?: string
+  ): AgentSessionResumeClaim | null {
     const held = this.find(session)
     if (held) {
-      // Why: overlapping opens of one pane resume alongside each other (claimWindowWakeRecordForPane).
+      // Why: overlapping opens of one pane resume alongside each other (claimSleepRecordForPane).
       if (held.paneKey !== paneKey) {
         return null
       }
       held.unsettled += 1
-      return this.share(held)
+      return this.share(held, request)
     }
     const hold: Hold = {
       ...session,
       paneKey,
       claimedAt: Date.now(),
       unsettled: 1,
-      ptys: new Map()
+      ptys: new Map(),
+      ambiguous: new Map()
     }
     this.holds.add(hold)
-    return this.share(hold)
+    // Why eager: an agent that exits to its shell takes its hook row with it, so a check at the
+    // next claim would find nothing and hold the session for as long as the shell lives.
+    this.stopWatchingReports ??=
+      this.lifecycle.watchReports?.(() => {
+        for (const held of this.holds) {
+          if (this.reportCoversHold(held)) {
+            this.end(held)
+          }
+        }
+      }) ?? null
+    return this.share(hold, request)
   }
 
   private find(session: ResumedAgentSession): Hold | undefined {
@@ -73,8 +102,8 @@ export class AgentSessionResumeClaims {
       ) {
         continue
       }
-      // Why: hook rows outlive the agent's exit, so reading them at the next claim is enough.
-      if (this.lifecycle.reported(hold)) {
+      // Why here too: a host without report notifications ends holds only at the next claim.
+      if (this.reportCoversHold(hold)) {
         this.end(hold)
         continue
       }
@@ -83,11 +112,20 @@ export class AgentSessionResumeClaims {
     return undefined
   }
 
+  private reportCoversHold(hold: Hold): boolean {
+    // A pane report cannot account for a second overlapping spawn or a lost reply.
+    return hold.unsettled === 0 && hold.ptys.size === 1 && this.lifecycle.reported(hold)
+  }
+
   private end(hold: Hold): void {
     for (const stopWatching of hold.ptys.values()) {
       stopWatching()
     }
     this.holds.delete(hold)
+    if (this.holds.size === 0) {
+      this.stopWatchingReports?.()
+      this.stopWatchingReports = null
+    }
   }
 
   private endIfSettled(hold: Hold): void {
@@ -96,7 +134,7 @@ export class AgentSessionResumeClaims {
     }
   }
 
-  private share(hold: Hold): AgentSessionResumeClaim {
+  private share(hold: Hold, request: string | undefined): AgentSessionResumeClaim {
     let open = true
     return {
       bind: (ptyId) => {
@@ -104,7 +142,10 @@ export class AgentSessionResumeClaims {
           return
         }
         open = false
-        hold.unsettled -= 1
+        hold.unsettled -= 1 + (request ? (hold.ambiguous.get(request) ?? 0) : 0)
+        if (request) {
+          hold.ambiguous.delete(request)
+        }
         // Why every PTY: overlapping opens of one pane can each spawn, and any may still write.
         if (this.holds.has(hold) && !hold.ptys.has(ptyId)) {
           hold.ptys.set(ptyId, () => {})
@@ -122,7 +163,15 @@ export class AgentSessionResumeClaims {
         // Why: a dispatched spawn with no identified PTY may still run (a lost SSH reply).
         const exitedDuringStart =
           error instanceof Error && error.message === 'agent_session_exited_during_start'
-        if (!open || (dispatched && !exitedDuringStart)) {
+        if (!open) {
+          return
+        }
+        if (dispatched && !exitedDuringStart) {
+          // Held until a retry of the same request binds the create it reconciles, or forever.
+          if (request) {
+            open = false
+            hold.ambiguous.set(request, (hold.ambiguous.get(request) ?? 0) + 1)
+          }
           return
         }
         open = false

@@ -77,6 +77,9 @@ function makeRuntime(
     rows?: () => AgentStatusIpcPayload[]
     checkHookAgentPresence?: () => Promise<'live' | 'unverifiable' | 'exited' | null>
     listProcesses?: () => Promise<PtyProcessInfo[]>
+    subscribeAgentProviderSessionChanges?: (
+      listener: (sessions: readonly { paneKey: string; sessionId: string }[]) => void
+    ) => () => void
   } = {}
 ) {
   const spawn = vi.fn<(args: unknown) => Promise<{ id: string }>>(
@@ -86,7 +89,10 @@ function makeRuntime(
   const runtime = new OrcaRuntimeService(fixture.runtimeStore as never, undefined, {
     getDesktopWindowStatus: () => 'openable',
     ...(opts.rows ? { getAgentProviderSessionSnapshot: opts.rows } : {}),
-    ...(opts.checkHookAgentPresence ? { checkHookAgentPresence: opts.checkHookAgentPresence } : {})
+    ...(opts.checkHookAgentPresence ? { checkHookAgentPresence: opts.checkHookAgentPresence } : {}),
+    ...(opts.subscribeAgentProviderSessionChanges
+      ? { subscribeAgentProviderSessionChanges: opts.subscribeAgentProviderSessionChanges }
+      : {})
   })
   runtime.setPtyController({
     spawn,
@@ -236,33 +242,34 @@ describe('resumeAgentSessionInWorkspace', () => {
     expect(command).toMatch(/--permission-mode'? '?plan/)
     // Why: the explicit resume command must spawn in the runtime it was quoted for (Windows/WSL).
     expect(spawn.mock.calls[0]?.[0]).toHaveProperty('launchRuntime')
-    // Why: a window wake relaunches a running record, never a pane-owned one.
+    // Why: the record is claimed pane-owned before the spawn, so no other wake resumes it again.
     expect(storedRecord(fixture)).toMatchObject(PANE_OWNED)
   })
 
-  it('refuses without spawning when a window is already attached', async () => {
+  // Why: main is the only executor of a workspace-sleep wake, so a window never refuses it.
+  it('resumes and claims the record with a window already attached', async () => {
     const fixture = makeSleptWorkspace()
     const { spawn, attachWindow, resume } = makeRuntime(fixture)
     attachWindow()
 
-    await expect(resume()).resolves.toEqual({ ok: false, reason: 'window_owns_wake' })
-    expect(spawn).not.toHaveBeenCalled()
-    expect(storedRecord(fixture)).toMatchObject({ state: 'working' })
+    await expect(resume()).resolves.toMatchObject({ ok: true, ptyId: 'resumed-pty' })
+    expect(resumeSpawns(spawn)).toBe(1)
+    expect(storedRecord(fixture)).toMatchObject(PANE_OWNED)
   })
 
-  it('refuses without spawning when a window attaches while the workspace resolves', async () => {
+  it('resumes when a window attaches while the workspace resolves', async () => {
     const fixture = makeSleptWorkspace()
     const { spawn, attachWindow, resume } = makeRuntime(fixture)
 
     const pending = resume()
     attachWindow()
 
-    await expect(pending).resolves.toEqual({ ok: false, reason: 'window_owns_wake' })
-    expect(spawn).not.toHaveBeenCalled()
-    expect(storedRecord(fixture)).toMatchObject({ state: 'working' })
+    await expect(pending).resolves.toMatchObject({ ok: true })
+    expect(resumeSpawns(spawn)).toBe(1)
+    expect(storedRecord(fixture)).toMatchObject(PANE_OWNED)
   })
 
-  it('refuses without spawning when a window attaches during the duplicate-holder check', async () => {
+  it('resumes when a window attaches during the duplicate-holder check', async () => {
     const fixture = makeSleptWorkspace()
     let attach = (): void => {}
     const { spawn, attachWindow, resume } = makeRuntime(fixture, {
@@ -274,11 +281,11 @@ describe('resumeAgentSessionInWorkspace', () => {
     })
     attach = attachWindow
 
-    await expect(resume()).resolves.toEqual({ ok: false, reason: 'window_owns_wake' })
-    expect(spawn).not.toHaveBeenCalled()
+    await expect(resume()).resolves.toMatchObject({ ok: true })
+    expect(resumeSpawns(spawn)).toBe(1)
   })
 
-  it('refuses without spawning when a window attaches before the record claim commits', async () => {
+  it('resumes when a window attaches before the record claim commits', async () => {
     const fixture = makeSleptWorkspace()
     const { spawn, attachWindow, resume } = makeRuntime(fixture)
     const store = fixture.runtimeStore
@@ -293,9 +300,9 @@ describe('resumeAgentSessionInWorkspace', () => {
       }
     })
 
-    await expect(resume()).resolves.toEqual({ ok: false, reason: 'window_owns_wake' })
-    expect(spawn).not.toHaveBeenCalled()
-    expect(storedRecord(fixture)).toMatchObject({ state: 'working' })
+    await expect(resume()).resolves.toMatchObject({ ok: true })
+    expect(resumeSpawns(spawn)).toBe(1)
+    expect(storedRecord(fixture)).toMatchObject(PANE_OWNED)
   })
 
   it('keeps the record pane-owned when a window attaches during the spawn', async () => {
@@ -399,6 +406,56 @@ describe('resumeAgentSessionInWorkspace', () => {
     }
   )
 
+  // The resumed agent reports, then quits to its shell (row dropped, PTY alive).
+  it('frees the session once the resumed agent reported, though it then exited to its shell', async () => {
+    const fixture = makeSleptWorkspace()
+    let rows: AgentStatusIpcPayload[] = []
+    const listeners = new Set<
+      (sessions: readonly { paneKey: string; sessionId: string }[]) => void
+    >()
+    const { spawn, resume } = makeRuntime(fixture, {
+      rows: () => rows,
+      subscribeAgentProviderSessionChanges: (listener) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      }
+    })
+    const first = await resume()
+    if (!first.ok) {
+      throw new Error(first.reason)
+    }
+    rows = [sessionRow(first.paneKey, Date.now())]
+    listeners.forEach((listener) => listener([]))
+    rows = []
+
+    await expect(resume({ mutationId: 'after-exit' })).resolves.toMatchObject({ ok: true })
+    expect(resumeSpawns(spawn)).toBe(2)
+  })
+
+  it('settles a lost-reply attempt once a retry of the same request binds, and frees on its exit', async () => {
+    let calls = 0
+    const { runtime, resume } = makeRuntime(makeSleptWorkspace(), {
+      rows: () => [],
+      spawn: async () => {
+        calls += 1
+        if (calls === 1) {
+          throw new Error('lost reply')
+        }
+        return { id: 'retried-pty' }
+      }
+    })
+    await expect(resume()).resolves.toMatchObject({ ok: false })
+    await expect(resume()).resolves.toMatchObject({ ok: true })
+    await expect(resume({ mutationId: 'next' })).resolves.toEqual({
+      ok: false,
+      reason: 'held_elsewhere'
+    })
+
+    runtime.onPtyExit('retried-pty', 0)
+
+    await expect(resume({ mutationId: 'next' })).resolves.toMatchObject({ ok: true })
+  })
+
   it('lets at most one of two concurrent resumes own the session', async () => {
     const fixture = makeSleptWorkspace()
     const { spawn, resume } = makeRuntime(fixture)
@@ -419,6 +476,28 @@ describe('resumeAgentSessionInWorkspace', () => {
     expect(results.every((result) => result.ok)).toBe(true)
     expect(spawn).toHaveBeenCalledOnce()
   })
+
+  // A connector reopens through here, so an SSH host out of contact must never read as an exit.
+  it.each([
+    ['unverifiable', false],
+    ['live', false],
+    [null, false],
+    ['exited', true]
+  ] as const)(
+    'resumes past an old pane naming the session only on a proven exit (%s)',
+    async (presence, resumes) => {
+      const fixture = makeSleptWorkspace()
+      const { spawn, resume } = makeRuntime(fixture, {
+        rows: () => [sessionRow(PANE_KEY)],
+        checkHookAgentPresence: async () => presence
+      })
+
+      const result = await resume()
+
+      expect(result.ok).toBe(resumes)
+      expect(resumeSpawns(spawn)).toBe(resumes ? 1 : 0)
+    }
+  )
 
   it('refuses a session captured on another host without spawning', async () => {
     const fixture = makeSleptWorkspace()
