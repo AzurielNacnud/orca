@@ -46,6 +46,21 @@ async function fireWindowFocused(): Promise<void> {
   await flushMicrotasks()
 }
 
+const naming = vi.hoisted(() => ({
+  names: new Map<string, { sessionId: string; conversationName: string | null }>(),
+  listeners: new Set<() => void>()
+}))
+vi.mock('@/runtime/structured-agent-session-status-feed', () => ({
+  getStructuredAgentSessionStatusFeed: () => ({
+    getNamingSnapshot: () => naming.names,
+    subscribe: (listener: () => void) => {
+      naming.listeners.add(listener)
+      return () => naming.listeners.delete(listener)
+    },
+    activate: () => () => {}
+  })
+}))
+
 const initialAppState = useAppStore.getInitialState()
 
 describe('isAiVaultScanCancellation', () => {
@@ -188,6 +203,7 @@ function lastCallArgs(): unknown {
 
 beforeEach(() => {
   vi.useFakeTimers()
+  naming.names = new Map()
   listSessionsMock.mockReset().mockResolvedValue(EMPTY_RESULT)
   cancelListSessionsMock.mockReset().mockResolvedValue()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test-only window.api shim
@@ -211,6 +227,35 @@ afterEach(() => {
 })
 
 describe('useAiVaultSessionRefresh refocus behavior', () => {
+  it('reconciles loaded native ownership once when an authoritative name clears', async () => {
+    const row = {
+      ...makeVaultSession(1),
+      executionHostId: 'local' as const,
+      structuredSession: { sessionId: 'chat', workspaceId: 'workspace' },
+      title: 'Old name'
+    }
+    naming.names = new Map([['chat', { sessionId: 'chat', conversationName: 'Old name' }]])
+    listSessionsMock.mockResolvedValueOnce({ ...EMPTY_RESULT, sessions: [row] })
+    await renderHook()
+    await flushMicrotasks()
+    const { structuredSession: _owner, ...historical } = row
+    listSessionsMock.mockResolvedValue({
+      ...EMPTY_RESULT,
+      sessions: [{ ...historical, title: 'Provider title' }]
+    })
+    await act(async () => {
+      naming.names = new Map([['chat', { sessionId: 'chat', conversationName: null }]])
+      naming.listeners.forEach((listener) => listener())
+    })
+    await flushMicrotasks()
+    expect(listSessionsMock).toHaveBeenCalledTimes(2)
+    expect(lastCallArgs()).toMatchObject({ force: undefined })
+    expect(latest?.sessions[0]?.title).toBe('Provider title')
+    expect(latest?.sessions[0]?.structuredSession).toBeUndefined()
+    await act(async () => naming.listeners.forEach((listener) => listener()))
+    expect(listSessionsMock).toHaveBeenCalledTimes(2)
+  })
+
   it('uses the shared scan cache on local panel entry', async () => {
     await renderHook()
     await flushMicrotasks()

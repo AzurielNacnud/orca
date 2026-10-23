@@ -30,6 +30,7 @@ export function createStructuredAgentSessionHostMutationContext(
     deps: input.deps,
     sessions: input.sessions,
     publish: (sessionId, journal) => input.subscribers.publish(sessionId, journal),
+    publishConversationName: input.clientDelivery.publishConversationName,
     conversation: input.lifetime.conversation,
     readChildWork: input.clientDelivery.readChildWork,
     publishChildWork: input.clientDelivery.publishChildWork,

@@ -90,6 +90,29 @@ it('visits only new insertion-ordered submissions, even when the host clock step
     JSON.stringify([journal.cursor().epoch, 'real'])
   )
   expect(item).not.toHaveBeenCalled()
+  const boundary = { operationId: 'clear', afterFence: 7, clearedAt: 101 }
+  await journal.context.clear(boundary, { write: () => {}, committed: () => {} }, 'clear')
+  const record = { ...agentSessionRecordFixture(), providerContextBoundary: boundary }
+  expect(projections.read(journal, record).firstInputSubmissionKey).toBeNull()
+  await journal.appendSubmission({
+    clientMessageId: 'maintenance',
+    payloadFingerprint: 'maintenance',
+    fence: 7,
+    body: command
+  })
+  expect(projections.read(journal, record).firstInputSubmissionKey).toBeNull()
+  item.mockClear()
+  expect(projections.read(journal, record).firstInputSubmissionKey).toBeNull()
+  expect(item).not.toHaveBeenCalled()
+  await journal.appendSubmission({
+    clientMessageId: 'fresh',
+    payloadFingerprint: 'fresh',
+    fence: 7,
+    body: { kind: 'message', role: 'user', blocks: [] }
+  })
+  expect(projections.read(journal, record).firstInputSubmissionKey).toBe(
+    JSON.stringify([journal.cursor().epoch, 'fresh'])
+  )
 })
 it('observes a first empty real input without broadcasting an unchanged visible summary', async () => {
   const journal = await open(() => 100)

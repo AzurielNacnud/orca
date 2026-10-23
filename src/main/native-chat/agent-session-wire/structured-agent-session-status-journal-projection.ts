@@ -20,6 +20,7 @@ export type StructuredAgentSessionStatusState = ReturnType<
 
 export type StructuredAgentSessionJournalProjection = {
   epoch: string
+  contextId: string | null
   sequence: number
   fence: number | undefined
   /** The live generation's fence (`structuredAgentSessionLiveFence`): an exit this host saw, or a
@@ -64,6 +65,7 @@ export class StructuredAgentSessionJournalProjections {
   ): StructuredAgentSessionJournalProjection {
     const cursor = journal.cursor()
     // The conversation's fence, which a child's end moves: its unanswered sends stop counting.
+    const contextId = record?.providerContextBoundary?.operationId ?? null
     const fence = record?.lease.runtimeFence
     const ended = seen?.lastEndedChild
     const work = structuredAgentSessionCurrentWork(journal, {
@@ -78,6 +80,7 @@ export class StructuredAgentSessionJournalProjections {
     if (
       !projection ||
       projection.epoch !== cursor.epoch ||
+      projection.contextId !== contextId ||
       projection.sequence !== cursor.sequence ||
       projection.fence !== fence ||
       projection.liveFence !== work.liveFence ||
@@ -87,9 +90,10 @@ export class StructuredAgentSessionJournalProjections {
       // A journalled submission bumps `lastSequence`, so the send-time working
       // signal reaches the cache; the lease fence does not, hence the extra key.
       const snapshot = journal.snapshot()
-      let firstInputSubmissionKey =
-        projection?.epoch === cursor.epoch ? projection.firstInputSubmissionKey : null
-      const start = projection?.epoch === cursor.epoch ? projection.submissionCount : 0
+      const sameContext = projection?.epoch === cursor.epoch && projection.contextId === contextId
+      let firstInputSubmissionKey = sameContext ? projection.firstInputSubmissionKey : null
+      const start = sameContext ? projection.submissionCount : 0
+      const floor = sameContext ? 0 : (journal.context.floor()?.sequence ?? 0)
       const submissions =
         !firstInputSubmissionKey && snapshot.submissions.length !== start
           ? journal.submissions()
@@ -101,7 +105,9 @@ export class StructuredAgentSessionJournalProjections {
           journal.item(agentJournalSubmissionKey(submission.clientMessageId)) ??
           (submission.providerItemId ? journal.item(submission.providerItemId) : null)
         if (
-          item?.body.kind === 'message' &&
+          item &&
+          item.sequence > floor &&
+          item.body.kind === 'message' &&
           item.body.role === 'user' &&
           isRootAgentJournalItem(item) &&
           !isStructuredAgentSessionCommandEntry(item.body)
@@ -111,6 +117,7 @@ export class StructuredAgentSessionJournalProjections {
       }
       projection = {
         ...cursor,
+        contextId,
         firstInputSubmissionKey,
         submissionCount: snapshot.submissions.length,
         fence,

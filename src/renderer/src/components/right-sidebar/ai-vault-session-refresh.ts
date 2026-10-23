@@ -1,3 +1,4 @@
+import { useAiVaultSessionNameRefresh } from './ai-vault-session-name-refresh'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   isAiVaultScanCancelledError,
@@ -59,15 +60,11 @@ export function resetAiVaultForcedRescanThrottleForTest(): void {
 // still rejects, so both shapes have to be recognised.
 export const isAiVaultScanCancellation = isAiVaultScanCancelledError
 
-type AiVaultRefreshArgs = { force?: boolean; background?: boolean; reuseLoadedDepth?: boolean }
-
-// Shares main's request resolver, so this is exactly the scope that fans out on
-// the desktop IPC path. Deliberately over-inclusive: the paired web transport
-// drops the scope and serves one host, so 'all' there costs a redundant
-// reconcile. Erring the other way would re-enable the stamp fast-path on a real
-// merge, which is the bug this guard exists to prevent.
-function isMergedAiVaultHostScope(scope: ExecutionHostScope): boolean {
-  return requestedExecutionHostScope(scope) === ALL_EXECUTION_HOSTS_SCOPE
+type AiVaultRefreshArgs = {
+  force?: boolean
+  background?: boolean
+  reuseLoadedDepth?: boolean
+  reconcileOwnership?: boolean
 }
 
 export function useAiVaultSessionRefresh(
@@ -94,9 +91,7 @@ export function useAiVaultSessionRefresh(
   requestTokenRef.current ??= createBrowserUuid()
   const refreshIdRef = useRef(0)
   const refreshInFlightRef = useRef(false)
-  const pendingRefreshRef = useRef(false)
-  const pendingForceRef = useRef(false)
-  const pendingBackgroundRef = useRef(true)
+  const pendingRefreshRef = useRef<AiVaultRefreshArgs | null>(null)
   const lastAppliedScanRef = useRef<{ scopeKey: string; scannedAt: string } | null>(null)
   const conditionalSnapshotRef = useRef<(AiVaultConditionalSnapshot & { scopeKey: string }) | null>(
     null
@@ -155,9 +150,10 @@ export function useAiVaultSessionRefresh(
       // A scope change during an in-flight scan must not be dropped; queue one more
       // scan so the current scoped view is refreshed after the older scan settles.
       if (refreshInFlightRef.current) {
-        pendingRefreshRef.current = true
-        pendingForceRef.current ||= args.force === true
-        pendingBackgroundRef.current &&= args.background === true
+        const pending = (pendingRefreshRef.current ??= { background: true })
+        pending.force ||= args.force === true
+        pending.reconcileOwnership ||= args.reconcileOwnership === true
+        pending.background &&= args.background === true
         if (args.force === true && args.background !== true) {
           void window.api.aiVault
             .cancelListSessions({ requestToken: requestTokenRef.current })
@@ -217,7 +213,8 @@ export function useAiVaultSessionRefresh(
         // so a lagging host's leg can change while the merged stamp stands
         // still — there, only the structural reconcile below may decide.
         if (
-          !isMergedAiVaultHostScope(hostScope) &&
+          args.reconcileOwnership !== true &&
+          requestedExecutionHostScope(hostScope) !== ALL_EXECUTION_HOSTS_SCOPE &&
           lastAppliedScanRef.current?.scopeKey === scanKey &&
           lastAppliedScanRef.current.scannedAt === result.scannedAt &&
           result.fingerprint === undefined
@@ -257,14 +254,10 @@ export function useAiVaultSessionRefresh(
         if (mountedRef.current && refreshIdRef.current === refreshId) {
           setLoading(false)
         }
-        if (pendingRefreshRef.current && mountedRef.current) {
-          pendingRefreshRef.current = false
-          const force = pendingForceRef.current
-          // The queued refresh is background-only if every queued caller was.
-          const background = pendingBackgroundRef.current
-          pendingForceRef.current = false
-          pendingBackgroundRef.current = true
-          void refresh({ force, background })
+        const pending = pendingRefreshRef.current
+        pendingRefreshRef.current = null
+        if (pending && mountedRef.current) {
+          void refresh(pending)
         }
       }
       // Deps intentionally avoid changing scope values: refresh reads them
@@ -272,6 +265,8 @@ export function useAiVaultSessionRefresh(
     },
     [applyScan, currentScanScopeKey]
   )
+
+  useAiVaultSessionNameRefresh(sessions, refresh)
 
   // Forced rescans triggered by new agent sessions run
   // immediately when the throttle allows, otherwise once as soon as it frees

@@ -1,3 +1,4 @@
+import { agentSessionCurrentContextRows } from '../../shared/agent-session-context-clear'
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../shared/execution-host'
 import type { CommitMessageAgentEnvironmentResolvers } from '../text-generation/commit-message-agent-environment'
 import type { StructuredChatNamingDeps } from '../native-chat/structured-chat-naming'
@@ -41,7 +42,9 @@ export function structuredChatNamingDeps(
     readJournalFirstPrompt: async (sessionId) => {
       const host = getStructuredAgentSessionHost()
       return host
-        ? firstStructuredAgentSessionPrompt((await host.journalSnapshot(sessionId)).items)
+        ? firstStructuredAgentSessionPrompt(
+            agentSessionCurrentContextRows((await host.journalSnapshot(sessionId)).items).items
+          )
         : ''
     },
     workerTaskTitle: runtime.workerTaskTitle,

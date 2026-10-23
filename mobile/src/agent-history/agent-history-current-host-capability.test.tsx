@@ -42,6 +42,7 @@ function fakeClient(sendRequest: RpcClient['sendRequest'], generation?: () => nu
 
 it('updates a mounted History card from its client naming feed without another query', async () => {
   let emit = (_value: unknown): void => {}
+  let retired = false
   const send = vi.fn<RpcClient['sendRequest']>(async (method) => ({
     id: 'reply',
     ok: true,
@@ -55,12 +56,14 @@ it('updates a mounted History card from its client naming feed without another q
                 id: 'row',
                 agent: 'codex',
                 sessionId: 'provider-id',
-                title: 'Before',
+                title: retired ? 'Provider title' : 'Before',
                 cwd: null,
                 modifiedAt: '2026-10-21',
                 previewMessages: [],
                 messageCount: 1,
-                structuredSession: { sessionId: 'host-session', workspaceId: 'workspace' }
+                ...(retired
+                  ? {}
+                  : { structuredSession: { sessionId: 'host-session', workspaceId: 'workspace' } })
               }
             ]
           }
@@ -104,6 +107,24 @@ it('updates a mounted History card from its client naming feed without another q
     expect(JSON.stringify(tree?.toJSON())).toContain('After')
     expect(send).toHaveBeenCalledTimes(2)
     expect(subscribe).toHaveBeenCalledOnce()
+    retired = true
+    await act(async () =>
+      emit({
+        type: 'snapshot',
+        sessions: [],
+        conversationNames: [{ sessionId: 'host-session', conversationName: null }]
+      })
+    )
+    expect(JSON.stringify(tree?.toJSON())).toContain('Provider title')
+    expect(send).toHaveBeenCalledTimes(4)
+    await act(async () =>
+      emit({
+        type: 'snapshot',
+        sessions: [],
+        conversationNames: [{ sessionId: 'host-session', conversationName: null }]
+      })
+    )
+    expect(send).toHaveBeenCalledTimes(4)
     connection.client = {
       ...fakeClient(async (method) =>
         method === 'status.get'
@@ -122,7 +143,7 @@ it('updates a mounted History card from its client naming feed without another q
         conversationNames: [{ sessionId: 'host-session', conversationName: 'Other host' }]
       })
     )
-    expect(JSON.stringify(tree?.toJSON())).toContain('Before')
+    expect(JSON.stringify(tree?.toJSON())).toContain('Provider title')
     expect(JSON.stringify(tree?.toJSON())).not.toContain('Other host')
   } finally {
     await act(async () => tree?.unmount())
