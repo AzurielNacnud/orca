@@ -1,6 +1,6 @@
 import { useAppStore, type AppState } from '@/store'
 import { ensureDetectedAgentsForRepo } from './agent-detection-target-inventory'
-import { pickTuiAgent } from '../../../shared/tui-agent-selection'
+import { isTuiAgentEnabled, pickTuiAgent } from '../../../shared/tui-agent-selection'
 import { isTuiAgent } from '../../../shared/tui-agent-config'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import type { ProjectLaunchContext } from '../../../shared/rpc-contract/preflight-params'
@@ -148,19 +148,26 @@ export async function resolveDirectProspectiveAgent(
   store: AppState,
   repo: Repo,
   projectContext: ProjectLaunchContext | undefined,
-  agentOverride: TuiAgent | undefined
+  args: Pick<LaunchWorkItemDirectArgs, 'agentOverride' | 'agentLaunchPreferences'>
 ) {
+  const { agentOverride, agentLaunchPreferences } = args
   const detectedAgentsPromise = projectContext
     ? Promise.resolve(projectContext.agents)
     : agentOverride
       ? null
       : ensureDetectedAgentsForRepo(store, repo)
+  const preferences = agentLaunchPreferences ?? store.settings
   const prospectiveAgent =
     agentOverride ??
     pickTuiAgent(
-      store.settings?.defaultTuiAgent,
+      preferences?.defaultTuiAgent,
       new Set(((await detectedAgentsPromise) ?? []).filter(isTuiAgent)),
-      store.settings?.disabledTuiAgents
+      preferences?.disabledTuiAgents
     )
-  return { detectedAgentsPromise, prospectiveAgent }
+  const unavailable = Boolean(
+    agentLaunchPreferences &&
+    agentOverride &&
+    !isTuiAgentEnabled(agentOverride, agentLaunchPreferences.disabledTuiAgents)
+  )
+  return { detectedAgentsPromise, prospectiveAgent, unavailable }
 }

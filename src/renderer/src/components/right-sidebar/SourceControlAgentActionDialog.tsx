@@ -12,7 +12,7 @@ import type {
   SourceControlLaunchActionId
 } from '../../../../shared/source-control-ai-actions'
 import type { TuiAgent } from '../../../../shared/tui-agent'
-import type { AgentLaunchChoice } from '@/lib/agent-menu-selection'
+import type { RunSourceControlAgentActionStartArgs } from './runSourceControlAgentActionStart'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
 import type { SourceControlAiWriteTarget } from '../../../../shared/source-control-ai-recipe-save'
 import { SourceControlAgentActionDialogForm } from './SourceControlAgentActionDialogForm'
@@ -53,17 +53,7 @@ export type SourceControlAgentActionDialogProps = {
   onLaunchAborted?: () => void
   onLaunched?: () => void
   startLabel?: string
-  onStart?: (args: {
-    agent: TuiAgent
-    commandInput: string
-    /** Omitted when CLI arguments do not apply to this launch, so it resolves the global setting. */
-    agentArgs?: string
-    /** The action's saved choice, on either route. */
-    sessionOptions?: Readonly<Record<string, string>>
-    /** The picked agent's surface and host; a saved replay only ever requests a terminal. */
-    launchChoice?: AgentLaunchChoice
-    sessionOptionsYieldToAgentArgs?: true
-  }) => boolean | Promise<boolean>
+  onStart?: RunSourceControlAgentActionStartArgs['onStart']
 }
 
 export function SourceControlAgentActionDialog(

@@ -1,3 +1,4 @@
+import type { AgentLaunchPreferences } from '@/components/settings/use-host-agent-launch-preferences'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
 import { newAgentLaunchRequestId } from '@/lib/agent-launch-request-id'
@@ -33,6 +34,7 @@ export type RunSourceControlAgentActionStartArgs = {
   saveTargetValue: string
   actionId: SourceControlLaunchActionId
   repoId?: string | null
+  agentLaunchPreferences?: AgentLaunchPreferences
   settings: GlobalSettings | null
   repo: Pick<Repo, 'id' | 'sourceControlAi'> | null
   worktreeId?: string | null
@@ -43,6 +45,7 @@ export type RunSourceControlAgentActionStartArgs = {
   recoveryContext?: RuntimeGitContext | null
   signal?: AbortSignal
   onStart?: (args: {
+    agentLaunchPreferences?: AgentLaunchPreferences
     agent: TuiAgent
     commandInput: string
     /** Omitted when CLI arguments do not apply, so the launch resolves the global setting. */
@@ -79,6 +82,7 @@ export async function runSourceControlAgentActionStart({
   actionId,
   repoId,
   settings,
+  agentLaunchPreferences,
   repo,
   worktreeId,
   groupId,
@@ -186,6 +190,7 @@ export async function runSourceControlAgentActionStart({
   }
   if (onStart) {
     launched = await onStart({
+      agentLaunchPreferences,
       agent: selectedAgent,
       commandInput: trimmedCommandInput,
       agentArgs: launchAgentArgs,

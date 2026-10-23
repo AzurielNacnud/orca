@@ -1,4 +1,11 @@
-import { SourceControlActionAgentPicker } from './SourceControlActionAgentPicker'
+import { useAppStore } from '@/store'
+import { useAgentMenuObservation } from '@/components/tab-bar/use-new-tab-agent-menu-rows'
+import { sourceControlRepoAgentRows } from '@/lib/source-control-agent-picker'
+import {
+  SourceControlActionAgentPickerView,
+  sourceControlActionAgentPreview,
+  canSaveSourceControlActionSurface
+} from './SourceControlActionAgentPicker'
 import type React from 'react'
 import { Terminal } from 'lucide-react'
 import type { TuiAgent } from '../../../../shared/tui-agent'
@@ -96,6 +103,10 @@ export function RepositorySourceControlAiActionRows({
   onActionSave
 }: RepositorySourceControlAiActionRowsProps): React.JSX.Element {
   useSourceControlActionAgentInventory()
+  const repo = useAppStore((state) => state.repos.find((repo) => repo.id === repoId) ?? null)
+  const rows = sourceControlRepoAgentRows(repo)
+  const observation = useAgentMenuObservation(rows.target, true, rows.detectionTarget)
+  const canSaveSurface = canSaveSourceControlActionSurface(rows.target)
   const resolveAgent = useSourceControlActionAgent(null, defaultTuiAgent ?? null).resolve
   return (
     <div className="space-y-3">
@@ -122,12 +133,22 @@ export function RepositorySourceControlAiActionRows({
           actionId
         })
         const effectiveAgent = recipe.agentId
-        const actual = resolveAgent(effectiveAgent)
+        const isLaunchAction = !SOURCE_CONTROL_TEXT_ACTION_ID_SET.has(actionId)
+        const actual = isLaunchAction
+          ? sourceControlActionAgentPreview(
+              observation,
+              effectiveAgent && !isCustomAgentId(effectiveAgent) ? effectiveAgent : null
+            )
+          : resolveAgent(effectiveAgent)
         const pickerAgent =
           effectiveAgent || actual.status === 'pending'
-            ? resolveAgentArgsPlaceholderAgent(effectiveAgent, source, actionId, defaultTuiAgent)
+            ? resolveAgentArgsPlaceholderAgent(
+                effectiveAgent,
+                source,
+                actionId,
+                isLaunchAction ? observation.preferences.defaultTuiAgent : defaultTuiAgent
+              )
             : actual.agent
-        const isLaunchAction = !SOURCE_CONTROL_TEXT_ACTION_ID_SET.has(actionId)
         // Launch actions pick their model above, so only text actions get a `--model` example.
         const agentArgsPlaceholder =
           hasOverride && agentArgsValue
@@ -212,12 +233,13 @@ export function RepositorySourceControlAiActionRows({
                   )}
                 </Label>
                 {isLaunchAction ? (
-                  <SourceControlActionAgentPicker
+                  <SourceControlActionAgentPickerView
                     agent={
                       effectiveAgent && !isCustomAgentId(effectiveAgent) ? effectiveAgent : null
                     }
                     surface={recipe.surface}
-                    repoId={repoId}
+                    observation={observation}
+                    canSaveSurface={canSaveSurface}
                     disabled={!hasOverride}
                     onPick={(agent, choice) =>
                       onActionAgentChange(actionId, agent ?? DEFAULT_AGENT_VALUE, choice)

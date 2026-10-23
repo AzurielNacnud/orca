@@ -1,3 +1,7 @@
+import { projectAgentLaunchSettings } from '../../../../shared/agent-launch-settings'
+import { makeWorktree, TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
+import { getRuntimeAgentInventoryKey } from '@/store/slices/runtime-agent-inventory-key'
+import { clearHostAgentMenuSettingsForTests } from '../settings/use-host-agent-launch-preferences'
 import type { SourceControlActionRecipe } from '../../../../shared/source-control-ai-actions'
 import { AGENT_LAUNCH_SURFACE_RUNTIME_CAPABILITY as SURFACE } from '../../../../shared/agent-launch-runtime-capability'
 // @vitest-environment happy-dom
@@ -15,6 +19,7 @@ import { useSourceControlAgentActionDialog } from './useSourceControlAgentAction
 const initialState = useAppStore.getState()
 afterEach(() => {
   cleanup()
+  clearHostAgentMenuSettingsForTests()
   useAppStore.setState(initialState, true)
   setLocalRuntimeCapabilitiesForTests(null)
 })
@@ -125,3 +130,110 @@ it('allows replacing an unavailable saved agent without making it launchable', a
   act(() => f.result.current.surfaceRows.onPick('claude', 'terminal'))
   await waitFor(() => expect(f.result.current.canStart).toBe(true))
 })
+
+const hostRpc = vi.hoisted(() => vi.fn())
+vi.mock('@/runtime/runtime-rpc-client', () => ({
+  callRuntimeRpc: hostRpc,
+  runtimeEnvironmentSupportsCapability: async () => true
+}))
+it.each(['codex', null] as const)(
+  'uses the offered host identity for delivery and scope, preserving authored %s',
+  async (agentId) => {
+    const reply = Promise.withResolvers<{
+      settings: ReturnType<typeof projectAgentLaunchSettings>
+    }>()
+    hostRpc.mockReturnValue(reply.promise)
+    const settings = {
+      ...getDefaultSettings('/tmp/host-action'),
+      defaultTuiAgent: 'opencode' as const,
+      disabledTuiAgents: ['codex' as const],
+      experimentalNativeChat: false
+    }
+    const recipe = {
+      agentId,
+      surface: 'terminal' as const,
+      agentArgs: '--model chosen',
+      launchPreferences: { agentId: 'codex' as const, model: 'chosen' }
+    }
+    const repo = {
+      ...TEST_REPO,
+      executionHostId: 'runtime:alpha',
+      sourceControlAi: {
+        actionOverrides: {
+          resolveConflicts: {
+            agentId: 'codex' as const,
+            launchPreferences: recipe.launchPreferences
+          }
+        }
+      }
+    }
+    useAppStore.setState({
+      settings,
+      repos: [repo],
+      worktreesByRepo: {
+        [repo.id]: [makeWorktree({ id: 'wt', repoId: repo.id, hostId: 'runtime:alpha' })]
+      },
+      runtimeDetectedAgentIds: {
+        [getRuntimeAgentInventoryKey('alpha', 'wt')]: ['claude', 'codex', 'opencode']
+      },
+      ensureRuntimeDetectedAgents: vi.fn().mockResolvedValue(['claude', 'codex', 'opencode']),
+      refreshRuntimeDetectedAgents: vi.fn().mockResolvedValue(['claude', 'codex', 'opencode'])
+    })
+    const onStart = vi.fn().mockResolvedValue(true)
+    const onSaveAgentDefault = vi.fn()
+    const view = renderHook(() =>
+      useSourceControlAgentActionDialog({
+        open: true,
+        initialRecipe: recipe,
+        onOpenChange: vi.fn(),
+        actionId: 'resolveConflicts',
+        title: '',
+        description: '',
+        baseCommandInput: 'fix',
+        launchSource: 'source_control_recovery',
+        worktreeId: 'wt',
+        repoId: repo.id,
+        connectionId: null,
+        onStart,
+        onSaveAgentDefault
+      })
+    )
+    expect(view.result.current.canStart).toBe(false)
+    expect(view.result.current.saveTargetValue).toBe('repo')
+    act(() => view.result.current.onSaveAgentDefaultChange('global'))
+    await act(async () =>
+      reply.resolve({
+        settings: projectAgentLaunchSettings({
+          defaultTuiAgent: 'codex',
+          disabledTuiAgents: ['opencode', 'claude']
+        })
+      })
+    )
+    expect(view.result.current.surfaceRows.model).toMatchObject({
+      state: 'settled',
+      rows: [{ agent: 'codex', kind: 'terminal' }]
+    })
+    expect(view.result.current.selectedAgent).toBe('codex')
+    expect(view.result.current.canStart).toBe(true)
+    expect(view.result.current.saveTargetValue).toBe('global')
+    expect(view.result.current.agentScopeNote).toBeNull()
+    await act(() => view.result.current.handleStart())
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: 'codex',
+        agentArgs: '--model chosen',
+        sessionOptions: { model: 'chosen' },
+        agentLaunchPreferences: {
+          defaultTuiAgent: 'codex',
+          disabledTuiAgents: ['opencode', 'claude']
+        }
+      })
+    )
+    expect(onSaveAgentDefault).toHaveBeenCalledWith(
+      { type: 'global' },
+      'resolveConflicts',
+      expect.objectContaining({ agentId, agentArgs: '--model chosen' })
+    )
+    expect(useAppStore.getState().settings).toBe(settings)
+  }
+)

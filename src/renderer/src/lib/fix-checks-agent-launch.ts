@@ -1,3 +1,9 @@
+import {
+  ensureAgentLaunchPreferences,
+  type AgentLaunchPreferences
+} from '@/components/settings/use-host-agent-launch-preferences'
+import { sourceControlRepoAgentRows } from '@/lib/source-control-agent-picker'
+import { workspaceKindForWorktreeId } from '@/lib/agent-launch-route-input'
 import { toast } from 'sonner'
 import {
   ensureDetectedAgentsForRepo,
@@ -48,16 +54,18 @@ type SavedAgentOverrideResult =
   | { kind: 'launch-default' }
   | { kind: 'blocked' }
 
-function isAgentAvailable(agent: TuiAgent, detectedAgents: TuiAgent[]): boolean {
-  return (
-    detectedAgents.includes(agent) &&
-    isTuiAgentEnabled(agent, useAppStore.getState().settings?.disabledTuiAgents)
-  )
+function isAgentAvailable(
+  agent: TuiAgent,
+  detectedAgents: TuiAgent[],
+  preferences: AgentLaunchPreferences
+): boolean {
+  return detectedAgents.includes(agent) && isTuiAgentEnabled(agent, preferences.disabledTuiAgents)
 }
 
 async function resolveSavedAgentOverride(
   savedAgent: TuiAgent | null | undefined,
-  repo: RepoHostFields | null
+  repo: RepoHostFields | null,
+  preferences: AgentLaunchPreferences
 ): Promise<SavedAgentOverrideResult> {
   if (!savedAgent) {
     return { kind: 'launch-default' }
@@ -66,8 +74,8 @@ async function resolveSavedAgentOverride(
   // Why: a paired server answers per workspace, so only the enabled check can run before it exists;
   // the direct launch checks installation on the new workspace.
   const available = pendingAgents
-    ? isAgentAvailable(savedAgent, await pendingAgents)
-    : isTuiAgentEnabled(savedAgent, useAppStore.getState().settings?.disabledTuiAgents)
+    ? isAgentAvailable(savedAgent, await pendingAgents, preferences)
+    : isTuiAgentEnabled(savedAgent, preferences.disabledTuiAgents)
   if (!available) {
     toast.error(
       translate(
@@ -84,9 +92,16 @@ async function pickExistingWorktreeAgent(
   worktreeId: string,
   savedAgent: TuiAgent | null | undefined
 ): Promise<TuiAgent | null> {
-  const detectedAgents = await ensureDetectedAgentsForWorktree(useAppStore.getState(), worktreeId)
+  const store = useAppStore.getState()
+  const [detectedAgents, preferences] = await Promise.all([
+    ensureDetectedAgentsForWorktree(store, worktreeId),
+    ensureAgentLaunchPreferences(store, {
+      worktreeId,
+      kind: workspaceKindForWorktreeId(worktreeId)
+    })
+  ])
   if (savedAgent) {
-    if (isAgentAvailable(savedAgent, detectedAgents)) {
+    if (isAgentAvailable(savedAgent, detectedAgents, preferences)) {
       return savedAgent
     }
     toast.error(
@@ -97,11 +112,10 @@ async function pickExistingWorktreeAgent(
     )
     return null
   }
-  const settings = useAppStore.getState().settings
   const agent = pickSourceControlLaunchAgent({
-    defaultAgent: settings?.defaultTuiAgent,
+    defaultAgent: preferences.defaultTuiAgent,
     detectedAgents,
-    disabledAgents: settings?.disabledTuiAgents
+    disabledAgents: preferences.disabledTuiAgents
   })
   if (!agent) {
     toast.error(
@@ -114,7 +128,16 @@ async function pickExistingWorktreeAgent(
   return agent
 }
 
-export async function startFixChecksAgent(args: StartFixChecksAgentArgs): Promise<boolean> {
+export function startFixChecksAgent(args: StartFixChecksAgentArgs): Promise<boolean> {
+  return launchFixChecksAgent(args).catch((error) => {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return false
+    }
+    throw error
+  })
+}
+
+async function launchFixChecksAgent(args: StartFixChecksAgentArgs): Promise<boolean> {
   const store = useAppStore.getState()
   const repo = store.repos.find((candidate) => candidate.id === args.repoId) ?? null
   const recipe = resolveSourceControlActionRecipe({
@@ -233,7 +256,14 @@ export async function startFixChecksAgent(args: StartFixChecksAgentArgs): Promis
     return false
   }
 
-  const agentOverride = await resolveSavedAgentOverride(savedAgentId, repo)
+  const { target } = sourceControlRepoAgentRows(repo)
+  const agentLaunchPreferences = await ensureAgentLaunchPreferences(
+    store,
+    typeof target === 'string'
+      ? { worktreeId: target, kind: workspaceKindForWorktreeId(target) }
+      : target.workspace
+  )
+  const agentOverride = await resolveSavedAgentOverride(savedAgentId, repo, agentLaunchPreferences)
   if (agentOverride.kind === 'blocked') {
     return false
   }
@@ -241,6 +271,7 @@ export async function startFixChecksAgent(args: StartFixChecksAgentArgs): Promis
   return await launchWorkItemDirect({
     item: { ...args.item, pasteContent: commandInput },
     repoId: args.repoId,
+    agentLaunchPreferences,
     launchSource: args.launchSource,
     telemetrySource: args.telemetrySource,
     promptDelivery: 'submit-after-ready',

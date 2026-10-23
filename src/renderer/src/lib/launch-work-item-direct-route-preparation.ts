@@ -85,6 +85,7 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
   worktreeId: string
   worktreePath: string
   repoId: string
+  agentLaunchPreferences?: LaunchWorkItemDirectArgs['agentLaunchPreferences']
   agentOverride?: TuiAgent
   agentArgs?: string | null
   sessionOptions?: Readonly<Record<string, string>>
@@ -110,6 +111,7 @@ export async function prepareDirectWorkItemAgentLaunch(args: {
   const launchConnectionId = getConnectionId(args.worktreeId) ?? args.repoConnectionId
   const agentSelection = await resolveDirectWorkItemAgent({
     agentOverride: args.agentOverride,
+    agentLaunchPreferences: args.agentLaunchPreferences,
     worktreeId: args.worktreeId,
     repoHost: args.repoHost,
     launchConnectionId,

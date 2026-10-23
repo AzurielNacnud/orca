@@ -18,6 +18,7 @@ import {
 } from '@/store/slices/worktrees-slice-test-fixtures'
 import { mutateHostAgentLaunchSettings } from '../settings/agent-launch-settings-transport'
 import {
+  ensureAgentLaunchPreferences,
   clearHostAgentMenuSettingsForTests,
   readAgentLaunchPreferencesForWorktree
 } from '../settings/use-host-agent-launch-preferences'
@@ -307,3 +308,92 @@ it('gives the new-agent shortcut and badge the default the host menu applied', a
     disabledTuiAgents: ['opencode']
   })
 })
+
+it('shares cold reads with independent cancelled waiters and retains mutation answers on failure', async () => {
+  vi.useFakeTimers()
+  try {
+    const pending = Promise.withResolvers<{ settings: typeof server }>()
+    rpc.call.mockReturnValueOnce(pending.promise)
+    const menu = renderHook(() =>
+      useNewTabAgentMenuRows('wt', true, { kind: 'runtime', environmentId: 'alpha' })
+    )
+    const controller = new AbortController()
+    const attempt = ensureAgentLaunchPreferences(
+      useAppStore.getState(),
+      { kind: 'git-worktree', worktreeId: 'wt' },
+      controller.signal
+    )
+    const cancelled = expect(attempt).rejects.toMatchObject({ name: 'AbortError' })
+    await act(async () => controller.abort())
+    await cancelled
+    expect(rpc.call).toHaveBeenCalledTimes(1)
+    expect(rpc.call.mock.calls[0]?.[3].signal.aborted).toBe(false)
+    await act(async () => pending.resolve({ settings: server }))
+    rpc.call
+      .mockResolvedValueOnce({ settings: server })
+      .mockRejectedValueOnce(new Error('refresh failed'))
+    await act(async () => {
+      await mutateHostAgentLaunchSettings(
+        { environmentId: 'alpha', pairingRevision: 7 },
+        { type: 'availability', agent: 'claude', enabled: false }
+      )
+    })
+    expect(menu.result.current).toMatchObject({ state: 'settled', defaultTuiAgent: 'codex' })
+    await expect(
+      ensureAgentLaunchPreferences(useAppStore.getState(), {
+        kind: 'git-worktree',
+        worktreeId: 'wt'
+      })
+    ).resolves.toMatchObject({ defaultTuiAgent: 'codex' })
+    expect(rpc.call).toHaveBeenCalledTimes(3)
+    const late = Promise.withResolvers<{ settings: typeof server }>()
+    rpc.call.mockReturnValueOnce(late.promise)
+    act(() =>
+      useAppStore.setState({
+        runtimeStatusByEnvironmentId: new Map([['alpha', { ...status(), hostContactEpoch: 3 }]])
+      })
+    )
+    await act(async () => {})
+    const signal = rpc.call.mock.calls.at(-1)?.[3].signal
+    menu.unmount()
+    await act(async () => {})
+    expect(signal.aborted).toBe(true)
+    await act(async () =>
+      late.resolve({ settings: projectAgentLaunchSettings({ defaultTuiAgent: 'claude' }) })
+    )
+    expect(
+      readAgentLaunchPreferencesForWorktree(useAppStore.getState(), 'wt').defaultTuiAgent
+    ).toBe('codex')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+it.each(['pairing', 'runtime'] as const)(
+  'cancels a cold event-only wait on actual %s retirement without another acquisition',
+  async (change) => {
+    vi.useFakeTimers()
+    try {
+      const pending = Promise.withResolvers<{ settings: typeof server }>()
+      rpc.call.mockReturnValueOnce(pending.promise)
+      const attempt = ensureAgentLaunchPreferences(useAppStore.getState(), {
+        kind: 'git-worktree',
+        worktreeId: 'wt'
+      })
+      const cancelled = expect(attempt).rejects.toMatchObject({ name: 'AbortError' })
+      await act(async () => {})
+      if (change === 'pairing') {
+        replaceRuntimeEnvironmentRevisions([{ id: 'alpha', createdAt: 8 }])
+      } else {
+        useAppStore.setState({
+          runtimeStatusByEnvironmentId: new Map([['alpha', status('replacement')]])
+        })
+      }
+      await act(async () => vi.advanceTimersByTime(3_000))
+      await cancelled
+      await act(async () => pending.resolve({ settings: server }))
+      expect(rpc.call).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+)

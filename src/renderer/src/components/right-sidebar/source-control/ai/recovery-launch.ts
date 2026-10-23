@@ -1,3 +1,6 @@
+import { ensureAgentLaunchPreferences } from '@/components/settings/use-host-agent-launch-preferences'
+import { workspaceKindForWorktreeId } from '@/lib/agent-launch-route-input'
+import { useAppStore } from '@/store'
 import { toast } from 'sonner'
 import type { AppState } from '@/store'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
@@ -124,21 +127,36 @@ export async function launchSourceControlRecoveryAgentWithDefault({
     return false
   }
 
-  const detectedAgents = await ensureDetectedAgentsForWorktree(store, activeWorktreeId)
+  const inventory = await Promise.all([
+    ensureDetectedAgentsForWorktree(store, activeWorktreeId),
+    ensureAgentLaunchPreferences(useAppStore.getState(), {
+      worktreeId: activeWorktreeId,
+      kind: workspaceKindForWorktreeId(activeWorktreeId)
+    })
+  ]).catch((error) => {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return null
+    }
+    throw error
+  })
+  if (!inventory) {
+    return false
+  }
+  const [detectedAgents, preferences] = inventory
   const savedAgent = readSourceControlLaunchRecipeAgentId(savedRecipe)
   if (
     savedAgent &&
     (!detectedAgents.includes(savedAgent) ||
-      !isTuiAgentEnabled(savedAgent, store.settings?.disabledTuiAgents))
+      !isTuiAgentEnabled(savedAgent, preferences.disabledTuiAgents))
   ) {
     toast.error(copy.savedAgentUnavailable)
     return false
   }
   const agent = pickSourceControlLaunchAgent({
     savedAgent,
-    defaultAgent: store.settings?.defaultTuiAgent,
+    defaultAgent: preferences.defaultTuiAgent,
     detectedAgents,
-    disabledAgents: store.settings?.disabledTuiAgents
+    disabledAgents: preferences.disabledTuiAgents
   })
   if (!agent) {
     toast.error(copy.noEnabledAgent)

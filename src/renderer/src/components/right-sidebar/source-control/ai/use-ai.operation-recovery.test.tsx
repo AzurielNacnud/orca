@@ -1,3 +1,11 @@
+import { projectAgentLaunchSettings } from '../../../../../../shared/agent-launch-settings'
+import { makeWorktree, TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
+import { clearHostAgentMenuSettingsForTests } from '@/components/settings/use-host-agent-launch-preferences'
+import {
+  launchSourceControlRecoveryAgentWithDefault,
+  getDefaultSourceControlRecoveryLaunchCopy
+} from './recovery-launch'
+import { toast } from 'sonner'
 // @vitest-environment happy-dom
 
 import type * as RuntimeGitStatusClientModule from '@/runtime/runtime-git-status-client'
@@ -57,6 +65,8 @@ function controllerParams(
 
 describe('AI operation recovery composer', () => {
   beforeEach(() => {
+    vi.mocked(toast.error).mockClear()
+    hostRpc.mockReset()
     mutationInFlight.mockReset().mockResolvedValue({ inFlight: false })
     detectAgents.mockReset().mockResolvedValue(['codex'])
     launchAgent.mockReset().mockReturnValue({ surface: { kind: 'local-terminal', tabId: 'agent' } })
@@ -65,6 +75,7 @@ describe('AI operation recovery composer', () => {
 
   afterEach(() => {
     cleanup()
+    clearHostAgentMenuSettingsForTests()
     useAppStore.setState(initialState, true)
   })
 
@@ -199,17 +210,68 @@ describe('AI operation recovery composer', () => {
     expect(view.result.current.isCheckingRecoveryAdmission).toBe(false)
   })
 
-  it('starts the saved action after recovery admission without opening its editor', async () => {
-    const settings = getDefaultSettings(path.resolve('tmp'))
-    settings.sourceControlAi!.actions = { resolveConflicts: { agentId: 'codex' } }
-    const { result } = renderHook(() => useSourceControlAi(controllerParams({ settings })))
-    await act(() => result.current.handleResolveConflictsWithAI())
-    expect(mutationInFlight).toHaveBeenCalledTimes(2)
-    expect(launchAgent).toHaveBeenCalledOnce()
-    expect(result.current.resolveConflictsComposerOpen).toBe(false)
-    expect(result.current.isCheckingRecoveryAdmission).toBe(false)
-    expect(result.current.isResolvingConflictsWithAI).toBe(false)
-  })
+  it.each([false, true])(
+    'cold saved recovery respects the host and admission cancellation (%s)',
+    async (cancel) => {
+      const settings = getDefaultSettings(path.resolve('tmp'))
+      settings.disabledTuiAgents = ['codex']
+      settings.sourceControlAi!.actions = { resolveConflicts: { agentId: 'codex' } }
+      const pending = Promise.withResolvers<{
+        settings: ReturnType<typeof projectAgentLaunchSettings>
+      }>()
+      hostRpc.mockReturnValueOnce(pending.promise)
+      useAppStore.setState({
+        settings,
+        repos: [TEST_REPO],
+        worktreesByRepo: {
+          [TEST_REPO.id]: [
+            makeWorktree({ id: 'wt-1', repoId: TEST_REPO.id, hostId: 'runtime:alpha' })
+          ]
+        }
+      })
+      const first = controllerParams({ settings })
+      const view = renderHook(useSourceControlAi, { initialProps: first })
+      let starting: Promise<void> = Promise.resolve()
+      act(() => {
+        starting = view.result.current.handleResolveConflictsWithAI()
+      })
+      await waitFor(() =>
+        expect(
+          hostRpc.mock.calls.filter((call) => call[1] === 'settings.getAgentLaunch')
+        ).toHaveLength(1)
+      )
+      if (cancel) {
+        view.rerender(controllerParams({ activeWorktreeId: 'wt-2', worktreePath: '/wt-2' }))
+        await act(async () => {})
+        expect(
+          hostRpc.mock.calls.find((call) => call[1] === 'settings.getAgentLaunch')?.[3].signal
+            .aborted
+        ).toBe(true)
+      }
+      await act(async () => {
+        pending.resolve({ settings: projectAgentLaunchSettings({ defaultTuiAgent: 'codex' }) })
+        await starting
+      })
+      expect(launchAgent).toHaveBeenCalledTimes(cancel ? 0 : 1)
+      expect(view.result.current.resolveConflictsComposerOpen).toBe(false)
+      expect(first.updateSettingsOrThrow).not.toHaveBeenCalled()
+      expect(toast.error).not.toHaveBeenCalled()
+      if (!cancel) {
+        await launchSourceControlRecoveryAgentWithDefault({
+          activeWorktreeId: 'wt-1',
+          activeGroupId: null,
+          activeSourceControlLaunchPlatform: 'linux',
+          sourceRepoConnectionId: null,
+          actionId: 'fixCommitFailure',
+          basePrompt: 'fix',
+          getLaunchActionRecipe: () => ({ agentId: null }),
+          getStoreState: useAppStore.getState,
+          copy: getDefaultSourceControlRecoveryLaunchCopy('commit')
+        })
+        expect(launchAgent).toHaveBeenLastCalledWith(expect.objectContaining({ agent: 'codex' }))
+      }
+    }
+  )
 
   it.each(['unavailable', 'error'] as const)(
     'does not reopen an obsolete fallback after saved detection returns %s',
@@ -242,3 +304,10 @@ describe('AI operation recovery composer', () => {
     }
   )
 })
+
+const hostRpc = vi.hoisted(() => vi.fn())
+vi.mock('@/runtime/runtime-rpc-client', () => ({
+  callRuntimeRpc: hostRpc,
+  runtimeEnvironmentSupportsCapability: async () => true
+}))
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), message: vi.fn() } }))

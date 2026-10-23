@@ -45,15 +45,6 @@ export function useSourceControlAgentActionDialog({
 }: SourceControlAgentActionDialogProps): UseSourceControlAgentActionDialogResult {
   const settings = useAppStore((state) => state.settings)
   const repo = useRepoById(repoId ?? null)
-  const launchAgentScope = useMemo(
-    () => resolveSourceControlLaunchAgentScope({ settings, repo, actionId }),
-    [actionId, repo, settings]
-  )
-  // Why: when this repo already overrides the global default, default the save
-  // scope to the repo so saving the corrected agent updates that override in
-  // place instead of writing a global default the override would still shadow.
-  const defaultSaveTargetValue =
-    launchAgentScope.overridesGlobalAgent && repoId ? 'repo' : DEFAULT_SAVE_TARGET_VALUE
   const initialRecipe = useCallback((): SourceControlActionRecipe => {
     if (capturedRecipe) {
       return capturedRecipe
@@ -83,7 +74,7 @@ export function useSourceControlAgentActionDialog({
   const agentArgs = recipe.agentArgs ?? ''
   const saveTargets = useMemo(() => buildSourceControlAgentSaveTargets(repoId), [repoId])
   const [saveLaunchRecipe, setSaveLaunchRecipe] = useState(true)
-  const [saveTargetValue, setSaveTargetValue] = useState(defaultSaveTargetValue)
+  const [explicitSaveTarget, setSaveTargetValue] = useState<string>()
   const connectionUnavailable = Boolean(worktreeId && connectionId === undefined)
 
   const closeDialog = useCallback(() => onOpenChange(false), [onOpenChange])
@@ -97,6 +88,21 @@ export function useSourceControlAgentActionDialog({
     livePick,
     settings
   })
+  const launchAgentScope = useMemo(
+    () =>
+      resolveSourceControlLaunchAgentScope({
+        settings: { ...settings, ...choice.observation.preferences },
+        repo,
+        actionId
+      }),
+    [actionId, repo, settings, choice.observation.preferences]
+  )
+  // Why: when this repo already overrides the global default, default the save
+  // scope to the repo so saving the corrected agent updates that override in
+  // place instead of writing a global default the override would still shadow.
+  const defaultSaveTargetValue =
+    launchAgentScope.overridesGlobalAgent && repoId ? 'repo' : DEFAULT_SAVE_TARGET_VALUE
+  const saveTargetValue = explicitSaveTarget ?? defaultSaveTargetValue
   const { selectedAgent, detectedAgents, detecting, selection } = choice
   const commandInput = renderSourceControlActionCommandTemplate(commandTemplate, {
     basePrompt: baseCommandInput
@@ -117,6 +123,7 @@ export function useSourceControlAgentActionDialog({
       actionId,
       repoId,
       settings,
+      agentLaunchPreferences: choice.observation.preferences,
       repo,
       worktreeId,
       groupId,

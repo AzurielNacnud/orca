@@ -224,8 +224,6 @@ describe('launchWorkItemDirect', () => {
   })
 
   it('rejects invalid per-launch CLI arguments before creating a workspace', async () => {
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
-
     await expect(
       launchWorkItemDirect({
         repoId: 'repo-1',
@@ -251,7 +249,6 @@ describe('launchWorkItemDirect', () => {
   it('passes a resolved PR branch override while using a short PR identity for workspace names', async () => {
     mocks.ensureDetectedAgents.mockResolvedValue([])
     mocks.store.settings = {}
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
 
     await launchWorkItemDirect({
       repoId: 'repo-1',
@@ -307,7 +304,6 @@ describe('launchWorkItemDirect', () => {
   })
 
   it('treats a PR-typed GitHub issue URL as an issue without resolving a PR head', async () => {
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
     const openModalFallback = vi.fn()
 
     await expect(
@@ -342,8 +338,6 @@ describe('launchWorkItemDirect', () => {
   })
 
   it('uses the Linear identifier in direct-launch workspace names', async () => {
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
-
     await launchWorkItemDirect({
       repoId: 'repo-1',
       launchSource: 'task_page',
@@ -390,7 +384,6 @@ describe('launchWorkItemDirect', () => {
 
   it('prefills a link-only Linear reference without source context', async () => {
     mocks.ensureDetectedAgents.mockResolvedValue(['claude'])
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
 
     await expect(
       launchWorkItemDirect({
@@ -457,7 +450,7 @@ describe('launchWorkItemDirect', () => {
 
   it('seeds the chat-composer launch draft for a GitHub issue draft launch', async () => {
     mocks.ensureDetectedAgents.mockResolvedValue(['claude'])
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
+    mocks.store.settings = { defaultTuiAgent: 'codex', disabledTuiAgents: ['claude'] }
 
     await expect(
       launchWorkItemDirect({
@@ -465,6 +458,7 @@ describe('launchWorkItemDirect', () => {
         launchSource: 'task_page',
         openModalFallback: vi.fn(),
         agentOverride: 'claude',
+        agentLaunchPreferences: { defaultTuiAgent: 'claude' },
         item: {
           type: 'issue',
           number: 12,
@@ -492,7 +486,6 @@ describe('launchWorkItemDirect', () => {
     // A Linear draft is always `Linked Linear issue: ENG-42\n<url>\n`, so withholding
     // multi-line drafts made every Linear launch invisible in the chat view.
     mocks.ensureDetectedAgents.mockResolvedValue(['claude'])
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
 
     await expect(
       launchWorkItemDirect({
@@ -520,7 +513,6 @@ describe('launchWorkItemDirect', () => {
 
   it('preserves explicit Linear paste content submit-after-ready behavior', async () => {
     mocks.ensureDetectedAgents.mockResolvedValue(['claude'])
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
 
     await expect(
       launchWorkItemDirect({
@@ -575,7 +567,6 @@ describe('launchWorkItemDirect', () => {
       structuredLaunch: true,
       primaryTabId: null
     })
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
 
     await expect(
       launchWorkItemDirect({
@@ -613,7 +604,6 @@ describe('launchWorkItemDirect', () => {
         structuredLaunch: true,
         primaryTabId: null
       })
-      const { launchWorkItemDirect } = await import('./launch-work-item-direct')
 
       await launchWorkItemDirect({
         repoId: 'repo-1',
@@ -715,14 +705,15 @@ describe('launchWorkItemDirect', () => {
     expect(pasteDraftWhenAgentReady).not.toHaveBeenCalled()
   })
 
-  it('does not launch a disabled saved agent even when another agent is available', async () => {
-    mocks.ensureDetectedAgents.mockResolvedValue(['codex', 'claude'])
+  it.each(['desktop', 'disabled', 'missing'])('rejects saved agent: %s', async (kind) => {
+    mocks.ensureDetectedAgents.mockResolvedValue(
+      kind === 'missing' ? ['claude'] : ['codex', 'claude']
+    )
     mocks.store.settings = {
       defaultTuiAgent: 'claude',
       disabledTuiAgents: ['codex'],
       agentCmdOverrides: {}
     }
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
 
     await expect(
       launchWorkItemDirect({
@@ -737,11 +728,15 @@ describe('launchWorkItemDirect', () => {
         openModalFallback: mocks.openModalFallback,
         launchSource: 'task_page',
         agentOverride: 'codex',
+        agentLaunchPreferences:
+          kind === 'desktop'
+            ? undefined
+            : { defaultTuiAgent: 'codex', disabledTuiAgents: kind === 'disabled' ? ['codex'] : [] },
         promptDelivery: 'submit-after-ready'
       })
     ).resolves.toBe(false)
 
-    expect(mocks.createWorktree).toHaveBeenCalled()
+    expect(mocks.createWorktree).toHaveBeenCalledTimes(kind === 'disabled' ? 0 : 1)
     expect(mocks.updateWorktreeMeta).not.toHaveBeenCalled()
     expect(mocks.pasteDraftWhenAgentReady).not.toHaveBeenCalled()
     expect(mocks.toastError).toHaveBeenCalledWith(
@@ -761,7 +756,6 @@ describe('launchWorkItemDirect', () => {
         addedAt: 1
       }
     ]
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
 
     await expect(
       launchWorkItemDirect({
@@ -804,7 +798,6 @@ describe('launchWorkItemDirect', () => {
         addedAt: 1
       }
     ]
-    const { launchWorkItemDirect } = await import('./launch-work-item-direct')
 
     await expect(
       launchWorkItemDirect({
@@ -843,7 +836,7 @@ describe('launchWorkItemDirect', () => {
     vi.spyOn(localCapabilities, 'readLocalRuntimeCapabilitiesOrUnknown').mockReturnValue(
       RUNTIME_CAPABILITIES
     )
-    mocks.store.settings = Object.assign({}, mocks.store.settings, { experimentalNativeChat: true })
+    mocks.store.settings = { experimentalNativeChat: true, disabledTuiAgents: ['codex'] }
     vi.mocked(beginDirectWorkItemStructuredLaunch).mockReturnValueOnce({
       completed: true,
       structuredLaunch: true,
@@ -853,6 +846,7 @@ describe('launchWorkItemDirect', () => {
       repoId: 'repo-1',
       launchSource: 'task_page',
       openModalFallback: vi.fn(),
+      agentLaunchPreferences: { defaultTuiAgent: 'codex' },
       agentArgs: '--model "unterminated',
       resolveSessionOptions: () => ({ model: 'chosen' }),
       item: {

@@ -1,3 +1,4 @@
+import type { AgentLaunchPreferences } from '@/components/settings/use-host-agent-launch-preferences'
 import { agentLaunchCommandErrorMessage } from '@/lib/launch-work-item-direct-messages'
 import { toast } from 'sonner'
 import {
@@ -57,6 +58,7 @@ export function buildDirectWorkItemStartup(args: {
 type PromptDelivery = 'draft' | 'submit-after-ready'
 
 export async function resolveDirectWorkItemAgent(args: {
+  agentLaunchPreferences?: AgentLaunchPreferences
   agentOverride?: TuiAgent
   worktreeId: string
   repoHost: RepoHostFields
@@ -72,19 +74,20 @@ export async function resolveDirectWorkItemAgent(args: {
     args.launchConnectionId === args.repoConnectionId
       ? await args.detectedAgentsPromise
       : await ensureDetectedAgentsForNewWorktree(args.latestStore, args.worktreeId, args.repoHost)
+  const preferences = args.agentLaunchPreferences ?? args.latestStore.settings
   if (args.agentOverride !== undefined) {
     return {
       agent: args.agentOverride,
       unavailable:
         !detectedAgents.includes(args.agentOverride) ||
-        !isTuiAgentEnabled(args.agentOverride, args.latestStore.settings?.disabledTuiAgents)
+        !isTuiAgentEnabled(args.agentOverride, preferences?.disabledTuiAgents)
     }
   }
   return {
     agent: pickTuiAgent(
-      args.latestStore.settings?.defaultTuiAgent,
+      preferences?.defaultTuiAgent,
       new Set(detectedAgents.filter((agent): agent is TuiAgent => agent in TUI_AGENT_CONFIG)),
-      args.latestStore.settings?.disabledTuiAgents
+      preferences?.disabledTuiAgents
     ),
     unavailable: false
   }

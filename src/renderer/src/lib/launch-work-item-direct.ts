@@ -160,12 +160,12 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
     return false
   }
   const projectContext = projectPreflight.context
-  const { detectedAgentsPromise, prospectiveAgent } = await resolveDirectProspectiveAgent(
-    store,
-    repo,
-    projectContext,
-    agentOverride
-  )
+  const { detectedAgentsPromise, prospectiveAgent, unavailable } =
+    await resolveDirectProspectiveAgent(store, repo, projectContext, args)
+  if (unavailable) {
+    toast.error(unavailableAgentErrorMessage())
+    return false
+  }
   const requestId = newAgentLaunchRequestId()
   const draftContent = await getDirectWorkItemDraftContent(item, repoConnectionId)
   const preflightPlan = await planDirectWorkItemLaunch({
@@ -231,12 +231,12 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
     worktreeId = result.worktree.id
     worktreePath = result.worktree.path
 
-    const latestStore = useAppStore.getState()
     const launchPreparation = await prepareDirectWorkItemAgentLaunch({
       worktreeId,
       worktreePath,
       repoId,
       agentOverride: preflightPlan?.agent ?? agentOverride,
+      agentLaunchPreferences: args.agentLaunchPreferences,
       agentArgs: args.agentArgs,
       ...(args.sessionOptions ? { sessionOptions: args.sessionOptions } : {}),
       resolveSessionOptions: args.resolveSessionOptions,
@@ -245,7 +245,7 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
       repoConnectionId,
       repoHost: repo,
       detectedAgentsPromise,
-      latestStore,
+      latestStore: useAppStore.getState(),
       settings,
       draftContent,
       promptDelivery,

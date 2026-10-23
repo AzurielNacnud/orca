@@ -1,3 +1,5 @@
+import { useAgentMenuObservation } from '@/components/tab-bar/use-new-tab-agent-menu-rows'
+import { useAgentDetectionTargetForWorktree } from '@/hooks/useAgentDetectionTarget'
 import { forgeOwnerHostIdForWorkspace } from '@/runtime/forge-credential-target'
 import { useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
@@ -60,7 +62,6 @@ export function useChecksPanelCommentResolution(model: ChecksPanelCommentResolut
     resolveReviewThread,
     setAgentComposerState,
     setComments,
-    settings,
     sourceControlAiActionsVisible,
     commentResolutionLaunchAcceptedRef
   } = model
@@ -151,12 +152,18 @@ export function useChecksPanelCommentResolution(model: ChecksPanelCommentResolut
   const commentsDisabledReason = canTargetPRComments
     ? undefined
     : 'Commenting requires a GitHub PR repository target.'
+  const observation = useAgentMenuObservation(
+    activeWorktreeId,
+    sourceControlAiActionsVisible,
+    useAgentDetectionTargetForWorktree(activeWorktreeId)
+  )
   const noEnabledAgentKnown =
+    !observation.preferencesPending &&
     detectedAgentIds != null &&
     pickDefaultSourceControlAgent(
-      settings?.defaultTuiAgent,
+      observation.preferences.defaultTuiAgent,
       detectedAgentIds,
-      settings?.disabledTuiAgents
+      observation.preferences.disabledTuiAgents
     ) == null
   const aiActionDisabledReason = !activeWorktreeId
     ? 'Select a workspace before launching an AI action.'

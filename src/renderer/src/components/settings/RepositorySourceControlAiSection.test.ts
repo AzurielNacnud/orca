@@ -34,10 +34,21 @@ import { SourceControlAiActionRecipeDefaults } from './SourceControlAiActionReci
 import { useAppStore } from '../../store'
 import { TooltipProvider } from '../ui/tooltip'
 import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
+import { projectAgentLaunchSettings } from '../../../../shared/agent-launch-settings'
+import { TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
+import { clearHostAgentMenuSettingsForTests } from './use-host-agent-launch-preferences'
+import { mutateHostAgentLaunchSettings } from './agent-launch-settings-transport'
+import { getRuntimeAgentInventoryKey } from '@/store/slices/runtime-agent-inventory-key'
+import { getAgentSessionOptionCatalog } from '../../../../shared/agent-session-option-catalog'
 import { resetHostStructuredAgentsForTests } from '@/runtime/host-structured-agents'
-vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc: vi.fn() }))
+const rpc = vi.hoisted(() => vi.fn())
+vi.mock('@/runtime/runtime-rpc-client', () => ({
+  callRuntimeRpc: rpc,
+  runtimeEnvironmentSupportsCapability: async () => true
+}))
 afterEach(() => {
   cleanup()
+  clearHostAgentMenuSettingsForTests()
   resetHostStructuredAgentsForTests()
   setLocalRuntimeCapabilitiesForTests(null)
 })
@@ -146,6 +157,7 @@ describe('RepositorySourceControlAiActionRows', () => {
         value: { preflight: { detectAgents } }
       })
       useAppStore.setState({
+        repos: [{ ...TEST_REPO, id: 'repo-1' }],
         settings: { ...settings, defaultTuiAgent: 'claude', sourceControlAi: source },
         settingsSearchQuery: '',
         localDetectedAgentIdsByContext: {}
@@ -389,3 +401,144 @@ it('keeps default and missing-agent editors disabled only until the host invento
   fireEvent.click(available!)
   expect(onPick).toHaveBeenCalledWith('claude', {})
 })
+
+it.each([1, 10])(
+  'shares one host request lifetime across %i real Settings sections and all five launch rows',
+  async (sections) => {
+    vi.useFakeTimers()
+    const settings = useAppStore.getState().settings!
+    const recipe = {
+      agentId: null,
+      launchPreferences: { agentId: 'codex' as const, model: 'saved-model' }
+    }
+    const actions = Object.fromEntries(
+      [
+        'fixCommitFailure',
+        'fixPushFailure',
+        'fixChecks',
+        'resolveConflicts',
+        'resolveComments'
+      ].map((id) => [id, recipe])
+    )
+    const pending = Promise.withResolvers<{
+      settings: ReturnType<typeof projectAgentLaunchSettings>
+    }>()
+    rpc.mockImplementation((_target, method) =>
+      method === 'settings.getAgentLaunch' ? pending.promise : Promise.resolve({ settings: host })
+    )
+    const gets = () => rpc.mock.calls.filter((call) => call[1] === 'settings.getAgentLaunch')
+    const timers = vi.spyOn(globalThis, 'setTimeout')
+    const cleared = vi.spyOn(globalThis, 'clearTimeout')
+    const deadlines = () =>
+      timers.mock.calls.flatMap((call, i) =>
+        call[1] === 3_000 ? [timers.mock.results[i].value] : []
+      )
+    const host = projectAgentLaunchSettings({
+      defaultTuiAgent: 'codex',
+      disabledTuiAgents: ['claude']
+    })
+    useAppStore.setState({
+      settings: {
+        ...settings,
+        experimentalNativeChat: false,
+        defaultTuiAgent: 'claude',
+        disabledTuiAgents: ['codex']
+      },
+      repos: [{ ...TEST_REPO, executionHostId: 'runtime:alpha' }],
+      runtimeDetectedAgentIds: { [getRuntimeAgentInventoryKey('alpha')]: ['claude', 'codex'] },
+      ensureRuntimeDetectedAgents: vi.fn().mockResolvedValue(['claude', 'codex']),
+      refreshRuntimeDetectedAgents: vi.fn().mockResolvedValue(['claude', 'codex']),
+      ensureNativeDetectedAgents: vi.fn()
+    })
+    const edit = vi.fn()
+    const props = {
+      repoId: TEST_REPO.id,
+      repoAi: { actionOverrides: actions },
+      source: settings.sourceControlAi!,
+      defaultTuiAgent: 'claude' as const,
+      savingActionIds: {},
+      actionDirtyById: computeActionDirtyById({}, {}, {}),
+      onActionModeChange: edit,
+      onActionAgentChange: edit,
+      onActionLaunchPreferencesChange: edit,
+      onActionTemplateChange: edit,
+      onActionAgentArgsChange: edit,
+      onAppendVariable: edit,
+      onActionDiscard: edit,
+      onActionSave: edit
+    }
+    const tree = (n: number) =>
+      React.createElement(
+        TooltipProvider,
+        null,
+        Array.from({ length: n }, (_, key) =>
+          React.createElement(RepositorySourceControlAiActionRows, { ...props, key })
+        )
+      )
+    const view = render(tree(sections))
+    try {
+      await act(async () => {})
+      expect(gets()).toHaveLength(1)
+      expect(deadlines()).toHaveLength(1)
+      await act(async () => pending.resolve({ settings: host }))
+      expect(
+        deadlines().every((id) => cleared.mock.calls.some(([clearedId]) => clearedId === id))
+      ).toBe(true)
+      const previews = () =>
+        view.getAllByRole('combobox').filter((button) => button.textContent === 'saved-model')
+      expect(previews()).toHaveLength(5 * sections)
+      fireEvent.change(view.container.querySelector('textarea')!, { target: { value: 'edited' } })
+      fireEvent.change(view.container.querySelector('input')!, { target: { value: '--edited' } })
+      fireEvent.click(previews()[0])
+      fireEvent.click(
+        view.getByRole('option', {
+          name: getAgentSessionOptionCatalog('codex')!.models[0].label,
+          exact: true
+        })
+      )
+      expect(edit).toHaveBeenCalledWith(
+        'fixCommitFailure',
+        expect.objectContaining({ agentId: 'codex' })
+      )
+      expect(gets()).toHaveLength(1)
+      view.rerender(tree(1))
+      const refresh = Promise.withResolvers<{ settings: typeof host }>()
+      rpc.mockImplementation((_target, method) =>
+        method === 'settings.getAgentLaunch' ? refresh.promise : Promise.resolve({ settings: host })
+      )
+      await act(async () => {
+        await mutateHostAgentLaunchSettings(
+          { environmentId: 'alpha' },
+          { type: 'availability', agent: 'claude', enabled: true }
+        )
+      })
+      expect(gets()).toHaveLength(2)
+      const signal = gets().at(-1)?.[3].signal
+      await act(async () =>
+        refresh.resolve({ settings: projectAgentLaunchSettings({ defaultTuiAgent: 'claude' }) })
+      )
+      expect(previews()).toHaveLength(0)
+      rpc.mockImplementation((_target, method) =>
+        method === 'settings.getAgentLaunch'
+          ? new Promise(() => {})
+          : Promise.resolve({ settings: host })
+      )
+      await act(async () => {
+        await mutateHostAgentLaunchSettings(
+          { environmentId: 'alpha' },
+          { type: 'availability', agent: 'codex', enabled: false }
+        )
+      })
+      view.unmount()
+      await act(async () => {})
+      expect(signal.aborted).toBe(false)
+      expect(gets().at(-1)?.[3].signal.aborted).toBe(true)
+      expect(
+        deadlines().every((id) => cleared.mock.calls.some(([clearedId]) => clearedId === id))
+      ).toBe(true)
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
+  }
+)

@@ -1,3 +1,4 @@
+import type { AgentLaunchPreferences } from '@/components/settings/use-host-agent-launch-preferences'
 import type { LinkedWorkItemContext } from '@/lib/linked-work-item-context'
 import type { TaskProvider } from '../../../shared/task-providers'
 import type { TuiAgent } from '../../../shared/tui-agent'
@@ -29,6 +30,7 @@ export type LaunchWorkItemDirectArgs = {
   baseBranch?: string
   launchSource: LaunchSource
   telemetrySource?: WorkspaceCreateTelemetrySource
+  agentLaunchPreferences?: AgentLaunchPreferences
   agentOverride?: TuiAgent
   agentArgs?: string | null
   /** The saved choice for `agentOverride`; a chat seeds it and a terminal applies it as flags. */

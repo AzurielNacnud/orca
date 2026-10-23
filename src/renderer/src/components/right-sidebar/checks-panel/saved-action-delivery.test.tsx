@@ -1,3 +1,7 @@
+import { projectAgentLaunchSettings } from '../../../../../shared/agent-launch-settings'
+import { clearHostAgentMenuSettingsForTests } from '@/components/settings/use-host-agent-launch-preferences'
+import { useChecksPanelCommentResolution } from './use-checks-panel-comment-resolution'
+import { getRuntimeAgentInventoryKey } from '@/store/slices/runtime-agent-inventory-key'
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import type { RefObject } from 'react'
@@ -14,6 +18,11 @@ import { checksPanelAsyncResultKey } from '../checks-panel-async-result-key'
 import { useChecksPanelReviewData } from './use-checks-panel-review-data'
 import { useChecksPanelAiAcknowledgement } from './use-checks-panel-ai-acknowledgement'
 
+const hostRpc = vi.hoisted(() => vi.fn())
+vi.mock('@/runtime/runtime-rpc-client', () => ({
+  callRuntimeRpc: hostRpc,
+  runtimeEnvironmentSupportsCapability: async () => true
+}))
 const launch = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/launch-agent-in-new-tab', () => ({ launchAgentInNewTab: launch }))
 vi.mock('@/lib/focus-terminal-tab-surface', () => ({ focusTerminalTabSurface: vi.fn() }))
@@ -21,6 +30,7 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), message: v
 const original = useAppStore.getState()
 afterEach(() => {
   cleanup()
+  clearHostAgentMenuSettingsForTests()
   useAppStore.setState(original, true)
   clearPendingPRCommentAiAck()
   vi.clearAllMocks()
@@ -32,7 +42,7 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
-function fixture(saved = true) {
+function fixture(saved = true, paired = false) {
   Object.defineProperty(window, 'api', {
     configurable: true,
     value: { gh: { onWorkItemMutated: () => () => {} } }
@@ -46,6 +56,9 @@ function fixture(saved = true) {
     : {}
   const repo = { id: 'repo-1', path: '/repo', displayName: 'Repo', badgeColor: 'blue', addedAt: 1 }
   const worktree = makeWorktree({ id: 'repo-1::wt-1', repoId: repo.id })
+  if (paired) {
+    Object.assign(worktree, { hostId: 'runtime:alpha' })
+  }
   const inventory = deferred<('codex' | 'claude')[]>()
   useAppStore.setState({
     settings,
@@ -54,6 +67,20 @@ function fixture(saved = true) {
     detectedAgentIds: null,
     ensureDetectedAgents: () => inventory.promise
   })
+  if (paired) {
+    settings.disabledTuiAgents = ['codex']
+    hostRpc.mockResolvedValue({
+      settings: projectAgentLaunchSettings({
+        defaultTuiAgent: 'codex',
+        disabledTuiAgents: ['claude']
+      })
+    })
+    useAppStore.setState({
+      runtimeDetectedAgentIds: { [getRuntimeAgentInventoryKey('alpha', worktree.id)]: ['codex'] },
+      ensureRuntimeDetectedAgents: () => inventory.promise,
+      refreshRuntimeDetectedAgents: () => inventory.promise
+    })
+  }
   const pending: RefObject<PendingPRCommentAiAck | null> = { current: null }
   const claimed: RefObject<PendingPRCommentAiAck | null> = { current: null }
   const busy = { current: false }
@@ -125,7 +152,30 @@ function fixture(saved = true) {
         fetchComments: data.fetchComments,
         fetchGitLabDetails: vi.fn()
       })
-      return useChecksPanelAiQueue({
+      const resolution = useChecksPanelCommentResolution({
+        activeGitLabReview: null,
+        activeReview: review,
+        activeWorktree: worktree,
+        activeWorktreeId: worktree.id,
+        branch: 'main',
+        claimedCommentResolutionRef: claimed,
+        commentResolutionAckBusy: false,
+        commentsLoading: false,
+        detectedAgentIds: paired ? ['codex'] : null,
+        isCurrentAsyncResult,
+        pendingCommentResolutionRef: pending,
+        pr: null,
+        prCacheKey: repo.id,
+        prNumber: 42,
+        repo,
+        resolveReviewThread: resolveThread,
+        setAgentComposerState: composer,
+        setComments,
+        settings,
+        sourceControlAiActionsVisible: true,
+        commentResolutionLaunchAcceptedRef: accepted
+      })
+      const queue = useChecksPanelAiQueue({
         ...ack,
         activeConflictReview: review,
         activeReview: review,
@@ -143,7 +193,7 @@ function fixture(saved = true) {
         pr: null,
         prNumber: 42,
         repo,
-        resolveCommentsWithAIDisabledReason: undefined,
+        resolveCommentsWithAIDisabledReason: resolution.resolveCommentsWithAIDisabledReason,
         setAgentComposerState: (value) => {
           composerState = typeof value === 'function' ? value(composerState) : value
           composer(composerState)
@@ -151,6 +201,7 @@ function fixture(saved = true) {
         sourceControlAiActionsVisible: true,
         stateRequestKey: context.current
       })
+      return { ...queue, noEnabledAgentKnown: resolution.noEnabledAgentKnown }
     },
     { initialProps: { head: 'head' } }
   )
@@ -192,7 +243,9 @@ it('owns detection single-flight, returns failed delivery to the editor, then co
     surface: { kind: 'local-terminal', tabId: 'tab-1' },
     promptDeliveryResult: delivery.promise
   })
-  const f = fixture()
+  const f = fixture(true, true)
+  await act(async () => {})
+  expect(f.result.current.noEnabledAgentKnown).toBe(false)
   act(() => {
     f.result.current.handleResolveCommentsWithAI(f.groups)
     f.result.current.handleResolveCommentsWithAI(f.groups)

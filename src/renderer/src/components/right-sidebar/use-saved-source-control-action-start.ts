@@ -1,3 +1,4 @@
+import { ensureAgentLaunchPreferences } from '@/components/settings/use-host-agent-launch-preferences'
 import {
   buildAgentLaunchRouteInput,
   workspaceKindForWorktreeId
@@ -36,9 +37,16 @@ export function useSavedSourceControlActionStart() {
     inFlight.current = true
     setIsStarting(true)
     let onFallback = (): void => {}
+    let signal: AbortSignal | undefined
     try {
       const args = typeof input === 'function' ? input() : input
-      onFallback = args.onFallback
+      signal = args.signal
+      onFallback = () => {
+        if (!signal?.aborted) {
+          args.onFallback()
+        }
+      }
+      signal?.throwIfAborted()
       const store = useAppStore.getState()
       const { recipe, worktreeId } = args
       const agent = recipe.agentId
@@ -59,15 +67,24 @@ export function useSavedSourceControlActionStart() {
           repoId: args.repoId
         })
       if (!isTuiAgent(agent) || !worktreeId) {
-        args.onFallback()
+        onFallback()
         return
       }
       const projection = projectSourceControlActionLaunch(recipe, agent, {
         basePrompt: args.basePrompt
       })
-      const detectedAgents = await ensureDetectedAgentsForWorktree(store, worktreeId)
+      const [detectedAgents, agentLaunchPreferences] = await Promise.all([
+        ensureDetectedAgentsForWorktree(store, worktreeId),
+        ensureAgentLaunchPreferences(
+          store,
+          { worktreeId, kind: workspaceKindForWorktreeId(worktreeId) },
+          signal
+        )
+      ])
+      signal?.throwIfAborted()
       const plan = buildSourceControlAgentDeliveryPlan({
         settings: args.settings,
+        agentLaunchPreferences,
         selectedAgent: agent,
         commandInput: projection.commandInput,
         agentArgs: appliesArgs ? projection.agentArgs : undefined,
@@ -78,11 +95,12 @@ export function useSavedSourceControlActionStart() {
       })
       if (plan.status === 'error') {
         toast.error(plan.error)
-        args.onFallback()
+        onFallback()
         return
       }
       const launched = await runSourceControlAgentActionStart({
         ...args,
+        agentLaunchPreferences,
         selectedAgent: agent,
         trimmedCommandInput: projection.commandInput,
         launchChoice: {
@@ -94,9 +112,12 @@ export function useSavedSourceControlActionStart() {
         saveTargetValue: 'none'
       })
       if (!launched) {
-        args.onFallback()
+        onFallback()
       }
     } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+        return
+      }
       console.error('Saved Source Control action failed', error)
       onFallback()
     } finally {

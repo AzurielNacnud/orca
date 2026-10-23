@@ -60,12 +60,13 @@ export function useSourceControlActionAgentChoice(args: {
   const { detectedIds, detectionFailed, needsServerUpdate } = observation.detection
   const detectedAgents = detectedIds ?? NO_AGENTS
   const detecting = detectedIds === null && !detectionFailed && !needsServerUpdate
-  const disabledAgents = settings?.disabledTuiAgents
+  const { preferences } = observation
+  const disabledAgents = preferences.disabledTuiAgents
   const selectedAgent =
     recipe.agentId && !isCustomAgentId(recipe.agentId)
       ? recipe.agentId
       : pickSourceControlLaunchAgent({
-          defaultAgent: settings?.defaultTuiAgent,
+          defaultAgent: preferences.defaultTuiAgent,
           detectedAgents,
           disabledAgents
         })

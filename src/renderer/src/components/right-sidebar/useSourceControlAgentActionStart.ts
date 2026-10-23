@@ -1,3 +1,4 @@
+import type { AgentLaunchPreferences } from '@/components/settings/use-host-agent-launch-preferences'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RuntimeGitContext } from '@/runtime/runtime-git-client-context'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
@@ -32,6 +33,7 @@ type UseSourceControlAgentActionStartArgs = {
   saveTargetValue: string
   actionId: SourceControlLaunchActionId
   repoId?: string | null
+  agentLaunchPreferences: AgentLaunchPreferences
   settings: GlobalSettings | null
   repo: Pick<Repo, 'id' | 'sourceControlAi'> | null
   worktreeId?: string | null
@@ -89,6 +91,7 @@ export function useSourceControlAgentActionStart({
   actionId,
   repoId,
   settings,
+  agentLaunchPreferences,
   repo,
   worktreeId,
   groupId,
@@ -123,6 +126,8 @@ export function useSourceControlAgentActionStart({
   const buildPlan = useCallback(
     (currentDetectedAgents: TuiAgent[]): SourceControlAgentActionDeliveryPlanState =>
       buildSourceControlAgentDeliveryPlan({
+        settings,
+        agentLaunchPreferences,
         selectedAgent,
         commandInput,
         // Why: the check must judge the arguments the launch will really apply.
@@ -133,6 +138,8 @@ export function useSourceControlAgentActionStart({
         isRemote
       }),
     [
+      settings,
+      agentLaunchPreferences,
       agentArgs,
       agentArgsApply,
       commandInput,
@@ -173,6 +180,7 @@ export function useSourceControlAgentActionStart({
           actionId,
           repoId,
           settings,
+          agentLaunchPreferences,
           repo,
           worktreeId,
           groupId,
@@ -200,6 +208,7 @@ export function useSourceControlAgentActionStart({
     },
     [
       actionId,
+      agentLaunchPreferences,
       buildPlan,
       launchChoice,
       recipe,

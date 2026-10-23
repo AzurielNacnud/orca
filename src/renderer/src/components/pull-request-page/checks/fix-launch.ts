@@ -41,6 +41,7 @@ export async function startFixChecksFromDialog(args: {
   agentArgs?: string
   sessionOptions?: Readonly<Record<string, string>>
   launchChoice?: Parameters<typeof launchWorkItemDirect>[0]['launchChoice']
+  agentLaunchPreferences?: Parameters<typeof launchWorkItemDirect>[0]['agentLaunchPreferences']
   sessionOptionsYieldToAgentArgs?: true
 }): Promise<boolean> {
   if (!args.targetRepoId) {
@@ -53,6 +54,7 @@ export async function startFixChecksFromDialog(args: {
     telemetrySource: 'sidebar',
     promptDelivery: 'submit-after-ready',
     agentOverride: args.agent,
+    agentLaunchPreferences: args.agentLaunchPreferences,
     agentArgs: args.agentArgs,
     ...(args.sessionOptions ? { sessionOptions: args.sessionOptions } : {}),
     ...(args.launchChoice ? { launchChoice: args.launchChoice } : {}),
