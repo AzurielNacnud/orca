@@ -208,3 +208,98 @@ export function legacyEnvUpdates(
     ...choiceUpdate(settings, agent, lifted.choice ?? 'own')
   }
 }
+
+/** Prepares one whole edit, preserving ordered host-name and permission-carrier transitions. */
+export function wholeAgentEnvironmentUpdates(
+  settings: AgentLaunchSettingsSource,
+  agent: TuiAgent,
+  requested: Record<string, string>,
+  platform: NodeJS.Platform
+): AgentLaunchSettingsSource {
+  const previous = resolveTuiAgentLaunchEnv(agent, settings, platform)
+  const carrierNames = hasTypedAgentPermission(settings)
+    ? Object.keys(agentPermissionEnv(agent, 'full-access'))
+    : []
+  const isCarrier = (name: string) =>
+    carrierNames.some((carrier) => permissionEnvNameMatches(name, carrier, platform))
+  const ordinary = new Map<string, string>()
+  const groups = new Map<string, Set<string>>()
+  const identity = (name: string) => (platform === 'win32' ? name.toLowerCase() : name)
+  const carrierEntries: [string, string][] = []
+  for (const [name, value] of Object.entries(previous)) {
+    if (isCarrier(name)) {
+      carrierEntries.push([name, value])
+      continue
+    }
+    ordinary.set(name, value)
+    const key = identity(name)
+    const group = groups.get(key) ?? new Set<string>()
+    group.add(name)
+    groups.set(key, group)
+  }
+  const rawCarrier = Object.fromEntries(
+    Object.entries(settings.agentDefaultEnv?.[agent] ?? {}).filter(([name]) => isCarrier(name))
+  )
+  let carrierState: AgentLaunchSettingsSource = {
+    agentPermissionDefault: settings.agentPermissionDefault,
+    agentPermissionOverrides: settings.agentPermissionOverrides?.[agent]
+      ? { [agent]: settings.agentPermissionOverrides[agent] }
+      : {},
+    agentDefaultEnv: { [agent]: rawCarrier }
+  }
+  let projectedCarrier = Object.fromEntries(carrierEntries)
+  let changed = false
+  for (const name of new Set([...Object.keys(previous), ...Object.keys(requested)])) {
+    if (previous[name] === requested[name]) {
+      continue
+    }
+    changed = true
+    const present = Object.hasOwn(requested, name)
+    if (isCarrier(name)) {
+      const entries = Object.entries(projectedCarrier).filter(
+        ([key]) => identity(key) !== identity(name)
+      )
+      if (present) {
+        entries.push([name, requested[name]])
+      }
+      carrierState = {
+        ...carrierState,
+        ...legacyEnvUpdates(carrierState, agent, Object.fromEntries(entries), platform)
+      }
+      projectedCarrier = resolveTuiAgentLaunchEnv(agent, carrierState, platform)
+      continue
+    }
+    const key = identity(name)
+    for (const spelling of groups.get(key) ?? []) {
+      ordinary.delete(spelling)
+    }
+    groups.delete(key)
+    if (present) {
+      ordinary.set(name, requested[name])
+      groups.set(key, new Set([name]))
+    }
+  }
+  if (!changed) {
+    return {}
+  }
+  return {
+    agentDefaultEnv: {
+      ...settings.agentDefaultEnv,
+      [agent]: Object.fromEntries([
+        ...ordinary,
+        ...Object.entries(carrierState.agentDefaultEnv?.[agent] ?? {}).sort(([a], [b]) =>
+          a.localeCompare(b)
+        )
+      ])
+    },
+    ...(carrierState.agentPermissionOverrides?.[agent] !==
+    settings.agentPermissionOverrides?.[agent]
+      ? {
+          agentPermissionOverrides: {
+            ...settings.agentPermissionOverrides,
+            ...carrierState.agentPermissionOverrides
+          }
+        }
+      : {})
+  }
+}

@@ -1,7 +1,7 @@
 import { toast } from 'sonner'
 import { getAgentLabel } from '@/lib/agent-catalog'
 import type { TuiAgent } from '../../../../shared/tui-agent'
-import { resolveTuiAgentLaunchEnv } from '../../../../shared/tui-agent-launch-defaults'
+import { wholeAgentEnvironmentUpdates } from '../../../../shared/agent-launch-permission-updates'
 import { useRef } from 'react'
 import { useAppStore } from '@/store'
 import {
@@ -110,26 +110,10 @@ function LocalAgentLaunchSettings({
       (current, platform) => agentLaunchSettingsMutationUpdates(current, mutation, platform)
     )
   const saveEnvironment = (agent: TuiAgent, requested: Record<string, string>): Promise<void> =>
-    apply(agent, (current, platform) => {
-      const previous = resolveTuiAgentLaunchEnv(agent, current, platform)
-      let working = current
-      let updates: Partial<GlobalSettings> = {}
-      for (const name of new Set([...Object.keys(previous), ...Object.keys(requested)])) {
-        if (previous[name] === requested[name]) {
-          continue
-        }
-        const next = agentLaunchSettingsMutationUpdates(
-          working,
-          Object.hasOwn(requested, name)
-            ? { type: 'environment-set', agent, name, value: requested[name] }
-            : { type: 'environment-remove', agent, name },
-          platform
-        )
-        updates = { ...updates, ...next }
-        working = { ...working, ...next }
-      }
-      return updates
-    })
+    apply(agent, (current, platform) =>
+      wholeAgentEnvironmentUpdates(current, agent, requested, platform)
+    )
+
   return (
     <AgentLaunchSettingsCatalog
       settings={projectAgentLaunchSettings(settings, window.api.platform.get().platform)}

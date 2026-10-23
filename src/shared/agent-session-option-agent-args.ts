@@ -80,15 +80,22 @@ export function removeAgentArgOption(
   matchesValue: (value: string | undefined) => boolean = () => true
 ): string[] {
   const kept: string[] = []
-  let rest = tokens
-  let found = findOptionOccurrence(rest, aliases, true, agentRequiredValueOptions(agent))
+  const required = agentRequiredValueOptions(agent)
+  let cursor = 0
+  let found = findOptionOccurrence(tokens, aliases, true, required, cursor)
   while (found) {
     const end = found.index + found.consumed
-    kept.push(...rest.slice(0, matchesValue(found.value) ? found.index : end))
-    rest = rest.slice(end)
-    found = findOptionOccurrence(rest, aliases, true, agentRequiredValueOptions(agent))
+    const keptEnd = matchesValue(found.value) ? found.index : end
+    for (let index = cursor; index < keptEnd; index += 1) {
+      kept.push(tokens[index])
+    }
+    cursor = end
+    found = findOptionOccurrence(tokens, aliases, true, required, cursor)
   }
-  return [...kept, ...rest]
+  for (let index = cursor; index < tokens.length; index += 1) {
+    kept.push(tokens[index])
+  }
+  return kept
 }
 
 /** Shared required-operand facts for terminal parsing, including CLI-sharing teams. */

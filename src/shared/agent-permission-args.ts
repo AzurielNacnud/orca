@@ -107,15 +107,18 @@ function permissionOptionInventory(agent: TuiAgent): PermissionOptionInventory {
 }
 
 /** Bounded root-option ownership. Unknown regions stay uncertain, never rejected. */
-function analyzeAgentPermissionWords(agent: TuiAgent, tokens: readonly string[]) {
-  const inventory = permissionOptionInventory(agent)
+function analyzeAgentPermissionWords(
+  agent: TuiAgent,
+  tokens: readonly string[],
+  inventory = permissionOptionInventory(agent)
+) {
   const claude = agent === 'claude' || agent === 'claude-agent-teams'
   const required = agentRequiredValueOptions(agent)
   const roles: string[] = []
   const optionIndices = new Set<number>()
   let uncertain = false
   let terminated = false
-  let carrier = false
+  const carrierIndices: number[] = []
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index]
     if (terminated) {
@@ -136,7 +139,7 @@ function analyzeAgentPermissionWords(agent: TuiAgent, tokens: readonly string[])
       inventory.carriers.has(name) ||
       (agent === 'codex' && ['-c', '--config'].includes(name) && isPermissionConfig(value))
     if (policy) {
-      carrier = true
+      carrierIndices.push(index)
     }
     const knownValue =
       inventory.values.has(name) ||
@@ -169,7 +172,7 @@ function analyzeAgentPermissionWords(agent: TuiAgent, tokens: readonly string[])
       }
     }
   }
-  return { roles, optionIndices, carrier }
+  return { roles, optionIndices, carrier: carrierIndices.length > 0, carrierIndices }
 }
 
 export function agentArgsSetPermission(agent: TuiAgent, text: string | null | undefined): boolean {
@@ -186,18 +189,48 @@ export function permissionRecipeCut(
   recipe: string
 ): { args: string } | null {
   const recipeTokens = tokenizeStartupCommand(recipe, 'posix')
-  const wanted = words(recipe)
+  const wanted = recipeTokens.ok ? recipeTokens.tokens : []
   const rawRecipe = recipeTokens.ok
     ? recipeTokens.spans.map((span) => recipe.slice(span.start, span.end))
     : []
   if (!wanted.length) {
     return null
   }
-  const first = tokenizeStartupCommand(text, 'posix')
-  if (!first.ok) {
+  const inventory = permissionOptionInventory(agent)
+  const originals = PERMISSION_LAUNCH_GRAMMARS.map((grammar) => {
+    const parsed = tokenizeStartupCommand(text, grammar)
+    return parsed.ok
+      ? {
+          parsed,
+          analysis: analyzeAgentPermissionWords(agent, parsed.tokens, inventory),
+          offsets: new Map(parsed.spans.map((span, index) => [span.start, index]))
+        }
+      : null
+  })
+  const firstOriginal = originals[0]
+  if (!firstOriginal || originals.some((original) => !original)) {
     return null
   }
-  for (let index = 0; index + wanted.length <= first.tokens.length; index += 1) {
+  const { parsed: first, analysis } = firstOriginal
+  const candidates = new Set([0])
+  const firstCarrier = analysis.carrierIndices[0]
+  const lastCarrier = analysis.carrierIndices.at(-1)
+  if (
+    !analysis.roles.includes('uncertain') &&
+    firstCarrier !== undefined &&
+    lastCarrier !== undefined
+  ) {
+    for (
+      let index = Math.max(1, firstCarrier - wanted.length + 1);
+      index <= firstCarrier;
+      index += 1
+    ) {
+      if (index + wanted.length > lastCarrier && analysis.optionIndices.has(index)) {
+        candidates.add(index)
+      }
+    }
+  }
+  for (const index of candidates) {
     const run = first.spans.slice(index, index + wanted.length)
     const last = run.at(-1)
     if (
@@ -211,13 +244,16 @@ export function permissionRecipeCut(
     const before = text.slice(0, start).trimEnd()
     const after = text.slice(end).trimStart()
     const args = before && after ? `${before} ${after}` : before || after
-    const proven = PERMISSION_LAUNCH_GRAMMARS.every((grammar) => {
-      const parsed = tokenizeStartupCommand(text, grammar)
-      const cut = tokenizeStartupCommand(args, grammar)
-      if (!parsed.ok || !cut.ok) {
+    const proven = originals.every((original, grammarIndex) => {
+      if (!original) {
         return false
       }
-      const offset = parsed.spans.findIndex((span) => span.start === start)
+      const { parsed, analysis: originalAnalysis, offsets } = original
+      const cut = tokenizeStartupCommand(args, PERMISSION_LAUNCH_GRAMMARS[grammarIndex])
+      if (!cut.ok) {
+        return false
+      }
+      const offset = offsets.get(start) ?? -1
       if (
         offset === -1 ||
         !wanted.every(
@@ -233,19 +269,23 @@ export function permissionRecipeCut(
       if (kept.length !== cut.tokens.length || !kept.every((word, n) => word === cut.tokens[n])) {
         return false
       }
-      if (analyzeAgentPermissionWords(agent, cut.tokens).carrier) {
+      if (analyzeAgentPermissionWords(agent, cut.tokens, inventory).carrier) {
         return false
       }
       // A leading exact recipe reconstructs the original argv, even with an unknown remainder.
       if (offset === 0) {
         return true
       }
-      const original = analyzeAgentPermissionWords(agent, parsed.tokens)
-      if (!original.optionIndices.has(offset) || original.roles.includes('uncertain')) {
+      if (
+        !originalAnalysis.optionIndices.has(offset) ||
+        originalAnalysis.roles.includes('uncertain')
+      ) {
         return false
       }
-      const composed = analyzeAgentPermissionWords(agent, [...wanted, ...cut.tokens])
-      const keptRoles = original.roles.filter((_, n) => n < offset || n >= offset + wanted.length)
+      const composed = analyzeAgentPermissionWords(agent, [...wanted, ...cut.tokens], inventory)
+      const keptRoles = originalAnalysis.roles.filter(
+        (_, n) => n < offset || n >= offset + wanted.length
+      )
       return keptRoles.every((role, n) => role === composed.roles[wanted.length + n])
     })
     if (proven) {

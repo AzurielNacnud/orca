@@ -185,6 +185,9 @@ export function AgentDefaultEnvInput({
   const [envDraftError, setEnvDraftError] = useState<AgentDefaultEnvDraftInvalidReason | null>(null)
   const envDraftErrorId = useId()
   const commitEnv = (): void => {
+    if (pending || draft === null) {
+      return
+    }
     if (envDraft === draftSeed) {
       return
     }
