@@ -66,7 +66,7 @@ export function structuredAgentSessionImmediatePermission(
 
 /** Only the exact live, positively unwritten input pins its acquisition compiler to Auto. */
 export function structuredAgentSessionInputCompilerPermission(
-  journal: object | undefined,
+  journal: Parameters<typeof continuingStructuredAgentSessionInput>[0] | undefined,
   startedFor?: string
 ): 'auto' | undefined {
   return journal && startedFor && continuingStructuredAgentSessionInput(journal, startedFor)

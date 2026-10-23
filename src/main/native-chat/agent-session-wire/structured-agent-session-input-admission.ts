@@ -1,7 +1,3 @@
-import type { StructuredAgentSessionCommandHandoverContext } from './structured-agent-session-command-turn'
-import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
-import type { StructuredAgentSessionDeliveryOrder } from './structured-agent-session-delivery-order'
-import type { StructuredAgentSessionRanRecorder } from './structured-agent-session-ran-options'
 import type { AgentSessionDispatchOutcome } from './structured-agent-session-adapter'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
@@ -40,16 +36,4 @@ export class StructuredAgentSessionInputNotAdmitted extends Error {
   constructor(readonly outcome?: Extract<AgentSessionDispatchOutcome, { state: 'rejected' }>) {
     super('input was not admitted')
   }
-}
-
-export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverContext & {
-  admitFreshInput?: StructuredAgentSessionAdmitHostInput
-  continueInput?: StructuredAgentSessionContinueInput
-  acquireAborts?: Pick<StructuredAgentSessionAcquireAborts, 'begin'>
-  deliveryOrder?: StructuredAgentSessionDeliveryOrder
-  workChanged?: () => void
-  holdClosedInput?: (clientMessageId: string, fence: number) => Promise<void>
-  settleEndedInput?: (owner: () => void) => Promise<void>
-  /** A message the agent took: a chat keeps, where it has none saved, the options it ran. */
-  recordRanOptions?: ReturnType<StructuredAgentSessionRanRecorder>
 }

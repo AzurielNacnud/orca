@@ -1,3 +1,11 @@
+import type { StructuredAgentSessionCommandHandoverContext } from './structured-agent-session-command-turn'
+import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
+import type { StructuredAgentSessionDeliveryOrder } from './structured-agent-session-delivery-order'
+import type { StructuredAgentSessionRanRecorder } from './structured-agent-session-ran-options'
+import type {
+  StructuredAgentSessionAdmitHostInput,
+  StructuredAgentSessionContinueInput
+} from './structured-agent-session-input-admission'
 import type { StructuredAgentSessionStatusObserverOptions } from './structured-agent-session-status-observation'
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
@@ -192,4 +200,16 @@ export type StructuredAgentSessionConversationNaming = {
   failureOutput: (sessionId: string) => string | null
   /** Starts (or joins) one naming run for the chat; false when the host has no such chat. */
   regenerate: (sessionId: string) => boolean
+}
+
+export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverContext & {
+  admitFreshInput?: StructuredAgentSessionAdmitHostInput
+  continueInput?: StructuredAgentSessionContinueInput
+  acquireAborts?: Pick<StructuredAgentSessionAcquireAborts, 'begin'>
+  deliveryOrder?: StructuredAgentSessionDeliveryOrder
+  workChanged?: () => void
+  holdClosedInput?: (clientMessageId: string, fence: number) => Promise<void>
+  settleEndedInput?: (owner: () => void) => Promise<void>
+  /** A message the agent took: a chat keeps, where it has none saved, the options it ran. */
+  recordRanOptions?: ReturnType<StructuredAgentSessionRanRecorder>
 }

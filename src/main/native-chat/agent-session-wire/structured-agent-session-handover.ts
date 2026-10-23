@@ -2,10 +2,8 @@
 // outside the session's serialize, so a send is accepted while the call is in flight.
 
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
-import {
-  StructuredAgentSessionInputNotAdmitted,
-  type AgentSessionHandoverContext
-} from './structured-agent-session-input-admission'
+import { StructuredAgentSessionInputNotAdmitted } from './structured-agent-session-input-admission'
+import type { AgentSessionHandoverContext } from './structured-agent-session-host-types'
 import {
   agentSessionFailureFact,
   providerDiagnosticOf
