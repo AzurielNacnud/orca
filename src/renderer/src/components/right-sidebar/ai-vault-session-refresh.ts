@@ -222,7 +222,7 @@ export function useAiVaultSessionRefresh(
           return
         }
         lastAppliedScanRef.current = { scopeKey: scanKey, scannedAt: result.scannedAt }
-        cacheAiVaultSessionList(request, result, { replaceHostEntries: args.force === true })
+        cacheAiVaultSessionList(request, result, args)
         publicationGateRef.current.publish(result, (published) => {
           if (mountedRef.current && scanKey === currentScanScopeKey()) {
             applyScan(published, selectedLimit, scanKey, (applied) => {

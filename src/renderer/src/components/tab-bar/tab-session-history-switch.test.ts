@@ -595,7 +595,7 @@ describe('lookupTabSessionHistoryRow', () => {
 
   it("leaves the panel's cached list as it was, even after a forced rescan", async () => {
     cacheAiVaultSessionList(PANEL_REQUEST, listResult([row({ id: 'panel-row' })]), {
-      replaceHostEntries: false
+      force: false
     })
     const listSessions = vi.fn(async (_args: AiVaultListArgs) => listResult([emptyRow]))
     await lookupTabSessionHistoryRow(cliSubject, listSessions, lookupOptions)

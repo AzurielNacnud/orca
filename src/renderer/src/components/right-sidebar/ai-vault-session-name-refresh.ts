@@ -17,25 +17,46 @@ export function useAiVaultSessionNameRefresh(
         hosts.set(session.executionHostId, ids)
       }
     }
-    const cleanups = [...hosts].flatMap(([host, ids]) => {
-      const target = structuredAgentSessionTargetForHost(host)
-      if (!target) {
-        return []
+    const cleanups = [...hosts].map(([host, ids]) => watchHostNames(host, ids, refresh))
+    return () => {
+      for (const cleanup of cleanups) {
+        cleanup()
       }
-      const feed = getStructuredAgentSessionStatusFeed(target)
-      let previous = feed.getNamingSnapshot()
-      const unsubscribe = feed.subscribe(() => {
-        const names = feed.getNamingSnapshot()
-        const cleared = [...ids].some(
-          (id) => previous.get(id)?.conversationName && names.get(id)?.conversationName === null
-        )
-        previous = names
-        if (cleared) {
-          void refresh({ background: true, reconcileOwnership: true })
-        }
-      })
-      return [unsubscribe, feed.activate()]
-    })
-    return () => cleanups.forEach((cleanup) => cleanup())
+    }
   }, [sessions, refresh])
+}
+
+function watchHostNames(
+  host: string,
+  ids: ReadonlySet<string>,
+  refresh: (args: { background: true; reconcileOwnership: true }) => Promise<void>
+): () => void {
+  const target = structuredAgentSessionTargetForHost(host)
+  if (!target) {
+    return () => {}
+  }
+  const feed = getStructuredAgentSessionStatusFeed(target)
+  let previous = feed.getNamingSnapshot()
+  const unsubscribe = feed.subscribe(() => {
+    const names = feed.getNamingSnapshot()
+    if (names === previous) {
+      return
+    }
+    let cleared = false
+    for (const id of ids) {
+      if (previous.get(id)?.conversationName && names.get(id)?.conversationName === null) {
+        cleared = true
+        break
+      }
+    }
+    previous = names
+    if (cleared) {
+      void refresh({ background: true, reconcileOwnership: true })
+    }
+  })
+  const deactivate = feed.activate()
+  return () => {
+    unsubscribe()
+    deactivate()
+  }
 }

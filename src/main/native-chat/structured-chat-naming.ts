@@ -61,8 +61,7 @@ type NamingStore = NonNullable<ReturnType<StructuredChatNamingDeps['getStore']>>
 type NamingRunFailure = Exclude<StructuredChatNameGeneration, null | { name: string }>
 
 export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps) {
-  const contextId = (record: AgentSessionRecord) =>
-    record.providerContextBoundary?.operationId ?? null
+  const contextId = (chat: AgentSessionRecord) => chat.providerContextBoundary?.operationId ?? null
   const attempted = new Map<string, string | null>()
   const jobs = new Map<string, { context: string | null; promise: Promise<void> }>()
   const failures = new Map<
@@ -146,6 +145,7 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     retryDelays: readonly number[],
     stillCurrent: () => boolean
   ): Promise<string | null> {
+    attempted.set(record.sessionId, contextId(record))
     for (let attempt = 0; ; attempt += 1) {
       let failure: NamingRunFailure
       try {
@@ -289,6 +289,7 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
   }
 
   const naming: StructuredAgentSessionConversationNaming = {
+    publishName: refresh,
     activeSessionIds: () =>
       [...jobs].filter(([id, job]) => currentContext(id, job.context)).map(([id]) => id),
     failure,
@@ -302,8 +303,6 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
       if (!store || !record) {
         return false
       }
-      // A first name still owed must not start after, and replace, the one asked for.
-      attempted.set(sessionId, contextId(record))
       run(record, () => rename(store, record))
       return true
     },

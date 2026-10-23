@@ -48,7 +48,8 @@ async function fireWindowFocused(): Promise<void> {
 
 const naming = vi.hoisted(() => ({
   names: new Map<string, { sessionId: string; conversationName: string | null }>(),
-  listeners: new Set<() => void>()
+  listeners: new Set<() => void>(),
+  activations: 0
 }))
 vi.mock('@/runtime/structured-agent-session-status-feed', () => ({
   getStructuredAgentSessionStatusFeed: () => ({
@@ -57,7 +58,12 @@ vi.mock('@/runtime/structured-agent-session-status-feed', () => ({
       naming.listeners.add(listener)
       return () => naming.listeners.delete(listener)
     },
-    activate: () => () => {}
+    activate: () => {
+      naming.activations++
+      return () => {
+        naming.activations--
+      }
+    }
   })
 }))
 
@@ -253,6 +259,44 @@ describe('useAiVaultSessionRefresh refocus behavior', () => {
     expect(latest?.sessions[0]?.title).toBe('Provider title')
     expect(latest?.sessions[0]?.structuredSession).toBeUndefined()
     await act(async () => naming.listeners.forEach((listener) => listener()))
+    expect(listSessionsMock).toHaveBeenCalledTimes(2)
+    act(() => roots.pop()!.unmount())
+    expect(naming.listeners.size).toBe(0)
+    expect(naming.activations).toBe(0)
+    await renderHook()
+    await flushMicrotasks()
+    expect(latest?.sessions[0]?.structuredSession).toBeUndefined()
+    expect(latest?.sessions[0]?.title).toBe('Provider title')
+  })
+
+  it.each([10, 100])('bounds naming-feed owner visits with %i loaded rows', async (count) => {
+    const rows = Array.from({ length: count }, (_, index) => ({
+      ...makeVaultSession(index),
+      executionHostId: 'local' as const,
+      structuredSession: { sessionId: `chat-${index}`, workspaceId: 'workspace' }
+    }))
+    for (const row of rows) {
+      const sessionId = row.structuredSession.sessionId
+      naming.names.set(sessionId, { sessionId, conversationName: 'Old task' })
+    }
+    listSessionsMock.mockResolvedValueOnce({ ...EMPTY_RESULT, sessions: rows })
+    await renderHook()
+    await flushMicrotasks()
+    const previousReads = vi.spyOn(naming.names, 'get')
+    await act(async () => {
+      for (let index = 0; index < 10; index++) {
+        naming.listeners.forEach((listener) => listener())
+      }
+    })
+    expect(previousReads).not.toHaveBeenCalled()
+    const changed = new Map(naming.names)
+    changed.set(`chat-${count - 1}`, { sessionId: `chat-${count - 1}`, conversationName: null })
+    await act(async () => {
+      naming.names = changed
+      naming.listeners.forEach((listener) => listener())
+    })
+    await flushMicrotasks()
+    expect(previousReads).toHaveBeenCalledTimes(count)
     expect(listSessionsMock).toHaveBeenCalledTimes(2)
   })
 

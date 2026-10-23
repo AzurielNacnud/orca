@@ -570,6 +570,7 @@ it.each([false, true])('names the cleared context (user=%s)', async (user) => {
   const { host, store, log } = hostTestState()
   const db = new OrchestrationDb(':memory:')
   onTestFinished(() => db.close())
+  const onNamed = vi.fn((_workspace: string, id: string) => host.publishConversationName(id))
   const naming = createStructuredChatNamingHandler({
     getStore: () => store,
     getSettings: () => ({}),
@@ -583,7 +584,7 @@ it.each([false, true])('names the cleared context (user=%s)', async (user) => {
     generate: async (_record, prompt) => ({
       name: prompt === 'Please repair the login flow' ? 'auth/login' : 'New task'
     }),
-    onNamed: (_workspace, id) => host.publishConversationName(id),
+    onNamed,
     logger: log.logger
   })
   host.deps.onSessionStatusChanged = naming
@@ -628,12 +629,18 @@ it.each([false, true])('names the cleared context (user=%s)', async (user) => {
   expect(structuredWorkerOpenTaskTitle(db, store.getRecord(HOST_TEST_SESSION)!)).toEqual({
     title: 'Old task still open'
   })
+  await vi.waitFor(() => expect(naming.activeSessionIds()).toEqual([]))
+  onNamed.mockClear()
   expect(
     await host.conversationCommand(CALLER, {
       envelope: envelope('agentSession.conversationCommand', { command: 'clear' }),
       command: 'clear'
     })
   ).toMatchObject({ ok: true })
+  expect(onNamed).toHaveBeenCalledWith(
+    store.getRecord(HOST_TEST_SESSION)!.location.workspaceId,
+    HOST_TEST_SESSION
+  )
   expect(store.getRecord(HOST_TEST_SESSION)?.conversationName).toBe(user ? 'My name' : undefined)
   expect(
     events.some(
@@ -646,6 +653,9 @@ it.each([false, true])('names the cleared context (user=%s)', async (user) => {
         )
     )
   ).toBe(true)
+  expect(naming.regenerate(HOST_TEST_SESSION)).toBe(true)
+  await vi.waitFor(() => expect(naming.activeSessionIds()).toEqual([]))
+  expect(store.getRecord(HOST_TEST_SESSION)?.conversationName).toBe(user ? 'My name' : undefined)
   const nextBody = hostTestMessage('Explain the database migrations')
   expect(
     await host.send(CALLER, {

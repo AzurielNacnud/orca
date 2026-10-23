@@ -189,6 +189,7 @@ export type SetUserConversationName = StructuredAgentSessionConversationNaming['
 export type StructuredChatNamingFailure = AgentSessionNamingError & { forName: string }
 
 export type StructuredAgentSessionConversationNaming = {
+  publishName: (workspaceId: string, sessionId: string) => void
   activeSessionIds: () => string[]
   failure: (sessionId: string) => StructuredChatNamingFailure | undefined
   /** The failed run's full agent output, for the local user only; never published. */
