@@ -5,6 +5,9 @@ import { getDefaultSettings } from '../../../../shared/constants'
 import { ChatPermissionSetting } from './ChatPermissionSetting'
 import { TooltipProvider } from '../ui/tooltip'
 
+vi.mock('@/runtime/structured-agent-session-host-capability', () => ({
+  useStructuredAgentSessionHostCapabilityState: () => 'unsupported'
+}))
 vi.mock('../../store', () => ({
   useAppStore: (selector: (value: { settingsSearchQuery: string }) => unknown) =>
     selector({ settingsSearchQuery: '' })
@@ -13,7 +16,7 @@ afterEach(cleanup)
 
 // A web client unpaired from its host holds no value, so it shows no control.
 it.each([undefined, 'ask', 'full-access'] as const)(
-  'offers the new-chat default only for a host value %s',
+  'offers the legacy new-chat default only for a host value %s',
   (mode) => {
     const { container } = render(
       <TooltipProvider>
