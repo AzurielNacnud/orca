@@ -1,4 +1,4 @@
-import { ChevronDown, X } from 'lucide-react'
+import { ChevronDown, Terminal, X } from 'lucide-react'
 import type { Ref } from 'react'
 import type { AgentChatPermissionMode } from '../../../../shared/agent-chat-permission-mode'
 import type { AgentPermissionChoice } from '../../../../shared/tui-agent-permission-choice'
@@ -18,6 +18,10 @@ import {
   nativeChatPermissionModeDescription,
   nativeChatPermissionModeLabel
 } from '../native-chat/native-chat-permission-mode-labels'
+import {
+  NativeChatPermissionModeItems,
+  NativeChatPermissionModeName
+} from '../native-chat/NativeChatPermissionModePicker'
 import { SettingsSegmentedControl } from './SettingsFormControls'
 
 /** The chat's wording for a mode; `own` names the agent when there is one. */
@@ -46,84 +50,107 @@ function ownDescription(): string {
 export function AllAgentsPermissionSetting({
   choice,
   withoutAutoChoice,
-  ownChoiceCount,
   onChange,
   onChangeWithoutAuto
 }: {
-  choice: AgentPermissionChoice
+  choice: AgentPermissionChoice | null
   /** What the agents without Approve for me share; null when they differ. */
   withoutAutoChoice: AgentPermissionChoice | null
-  /** Agents set separately, which choosing a mode here resets. */
-  ownChoiceCount: number
   onChange: (choice: AgentPermissionChoice) => void
   onChangeWithoutAuto: (choice: AgentPermissionChoice) => void
 }): React.JSX.Element {
-  const title = translate(
-    'auto.components.settings.AgentsPane.agentPermissions',
-    'Agent Permissions'
-  )
+  const title = translate('settings.agents.permissionsTitle', 'Permissions')
+  const ownLabel = translate('settings.agents.permissionEachOwn', "Each agent's own settings")
   return (
     <section className="flex items-start justify-between gap-3">
       <div className="min-w-0 flex-1 space-y-1">
         <h3 className="text-sm font-semibold">{title}</h3>
         <p className="text-xs text-muted-foreground">
-          {choice === 'own'
-            ? ownDescription()
-            : translate(
-                'settings.agents.permissionChoiceDescription',
-                'Applies where each agent supports this mode. Change one agent below.'
-              )}
+          {translate(
+            'settings.agents.permissionsChoiceExplanation',
+            'What every agent may do without asking. You can set one agent differently below.'
+          )}
         </p>
-        {ownChoiceCount > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {translate(
-              'settings.agents.permissionResetsOwnChoices',
-              'Choosing a mode here resets the agents marked as set separately.'
-            )}
-          </p>
-        ) : null}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
-        <SettingsSegmentedControl<AgentPermissionChoice>
-          value={choice}
-          onChange={onChange}
-          ariaLabel={title}
-          size="sm"
-          options={(['own', 'ask', 'auto', 'full-access'] as const).map((value) => ({
-            value,
-            label:
-              value === 'own'
-                ? translate('settings.agents.permissionOwnShort', 'Own settings')
-                : nativeChatPermissionModeLabel(value)
-          }))}
-        />
-        {choice === 'auto' ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              {translate('settings.agents.permissionWithoutAuto', 'Agents without Approve for me')}
-            </span>
-            <SettingsSegmentedControl<AgentPermissionChoice | 'mixed'>
-              value={withoutAutoChoice ?? 'mixed'}
-              onChange={(next) => {
-                if (next !== 'mixed') {
-                  onChangeWithoutAuto(next)
-                }
-              }}
-              ariaLabel={translate(
-                'settings.agents.otherAgentsPermissionsLabel',
-                'Permissions for other agents'
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild disabled={choice === null}>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              aria-label={title}
+              className="w-48 justify-between"
+            >
+              {choice === null ? (
+                <span className="h-4" />
+              ) : choice === 'own' ? (
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Terminal className="size-3.5 shrink-0" />
+                  {ownLabel}
+                </span>
+              ) : (
+                <NativeChatPermissionModeName mode={choice} truncate />
               )}
-              size="sm"
-              options={(['own', 'full-access'] as const).map((value) => ({
-                value,
-                label:
-                  value === 'own'
-                    ? translate('settings.agents.permissionOwnShort', 'Own settings')
-                    : nativeChatPermissionModeLabel(value)
-              }))}
-            />
-          </div>
-        ) : null}
+              <ChevronDown className="size-3 shrink-0" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72">
+            <DropdownMenuRadioGroup aria-label={title} value={choice ?? ''}>
+              <NativeChatPermissionModeItems
+                modes={['ask', 'auto', 'full-access']}
+                onSelect={onChange}
+              />
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioItem value="own" onSelect={() => onChange('own')}>
+                <div className="min-w-0 py-0.5">
+                  <span className="flex items-center gap-1.5">
+                    <Terminal className="size-3.5 shrink-0" />
+                    {ownLabel}
+                  </span>
+                  <div className="text-xs font-normal text-muted-foreground">
+                    {translate(
+                      'settings.agents.permissionEachOwnDescription',
+                      'Orca adds nothing; each CLI uses its own config'
+                    )}
+                  </div>
+                </div>
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <div className="min-h-6">
+          {choice === 'auto' ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {translate(
+                  'settings.agents.permissionWithoutAuto',
+                  'Agents without Approve for me'
+                )}
+              </span>
+              <SettingsSegmentedControl<AgentPermissionChoice | 'mixed'>
+                value={withoutAutoChoice ?? 'mixed'}
+                onChange={(next) => {
+                  if (next !== 'mixed') {
+                    onChangeWithoutAuto(next)
+                  }
+                }}
+                ariaLabel={translate(
+                  'settings.agents.otherAgentsPermissionsLabel',
+                  'Permissions for other agents'
+                )}
+                size="sm"
+                options={(['own', 'full-access'] as const).map((value) => ({
+                  value,
+                  label:
+                    value === 'own'
+                      ? translate('settings.agents.permissionOwnShort', 'Own settings')
+                      : nativeChatPermissionModeLabel(value)
+                }))}
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
     </section>
   )

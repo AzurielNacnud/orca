@@ -169,6 +169,32 @@ it.each(
   expect(persist).toHaveBeenCalledTimes(3)
 })
 
+it('keeps dirty permission conversion inside the logical Arguments field until leaving', async () => {
+  savedArguments('--model sonnet', 'full-access')
+  render(<AgentsHarness />)
+  const user = userEvent.setup()
+  const input = argumentsInput('Claude')
+  const chip = screen.getByRole('button', { name: /Remove .* and use Claude's own settings/ })
+  await user.click(input)
+  fireEvent.change(input, { target: { value: '--permission-mode auto --model opus' } })
+  await user.keyboard('{Home}{Backspace}')
+  expect(document.activeElement).toBe(chip)
+  expect(persist).not.toHaveBeenCalled()
+  expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('full-access')
+  expect(toast.success).not.toHaveBeenCalled()
+  await user.tab()
+  expect(document.activeElement).toBe(input)
+  await user.click(input)
+  await user.tab({ shift: true })
+  expect(document.activeElement).toBe(chip)
+  expect(persist).not.toHaveBeenCalled()
+  await user.tab({ shift: true })
+  await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+  await waitFor(() => expect(input.value).toBe('--model opus'))
+  expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('auto')
+  expect(toast.success).toHaveBeenCalledTimes(1)
+})
+
 it('retains failed conversion through the ordinary callback and announces only the saved retry', async () => {
   savedArguments('--model opus')
   const save = deferredSave()
@@ -456,10 +482,115 @@ it.each([20, 200])('keeps Goose Environment editable after Reset/reopen (%i)', a
   expectSettingsWorkScale('renderer-Reset', n, counts)
 })
 
+async function pickGlobalPermission(name: string) {
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
+  await user.click(await screen.findByRole('menuitemradio', { name: new RegExp(name) }))
+}
+
+it.each(['same-mode', 'auto', 'empty', 'failed'] as const)(
+  'names only successfully reset separate choices: %s',
+  async (scenario) => {
+    useAppStore.setState(({ settings }) => ({
+      settings: settings && {
+        ...settings,
+        agentPermissionDefault: 'ask',
+        agentPermissionOverrides:
+          scenario === 'empty' ? {} : { claude: 'full-access', gemini: 'ask' }
+      }
+    }))
+    if (scenario === 'failed') {
+      persist.mockRejectedValueOnce(new Error('offline'))
+    }
+    render(<AgentsHarness />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
+    const options = screen.getAllByRole('menuitemradio')
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringMatching(/^Ask for approval/),
+      expect.stringMatching(/^Approve for me/),
+      expect.stringMatching(/^Full access/),
+      expect.stringMatching(/^Each agent's own settings/)
+    ])
+    expect(screen.queryByText('Accept edits')).toBeNull()
+    await user.click(options[scenario === 'auto' ? 1 : 0])
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(scenario === 'failed' ? toast.error : toast.success).toHaveBeenCalledTimes(
+        scenario === 'empty' ? 0 : 1
+      )
+    )
+    if (scenario === 'failed' || scenario === 'empty') {
+      expect(toast.success).not.toHaveBeenCalled()
+    } else {
+      expect(toast.success).toHaveBeenCalledExactlyOnceWith(
+        scenario === 'auto'
+          ? 'Claude: separate permissions reset to Approve for me.'
+          : 'Claude, Gemini: separate permissions reset to Ask for approval.'
+      )
+    }
+    expect(useAppStore.getState().settings?.agentPermissionOverrides).toEqual(
+      scenario === 'failed'
+        ? { claude: 'full-access', gemini: 'ask' }
+        : scenario === 'auto'
+          ? expect.objectContaining({ gemini: 'ask' })
+          : {}
+    )
+  }
+)
+
+it.each(['saved', 'failed'] as const)(
+  'derives queued reset notices from current local state after %s pick',
+  async (outcome) => {
+    useAppStore.setState(({ settings }) => ({
+      settings: settings && {
+        ...settings,
+        agentPermissionDefault: 'full-access',
+        agentPermissionOverrides: { codex: 'ask' }
+      }
+    }))
+    const save = deferredSave()
+    render(<AgentsHarness />)
+    await pickGlobalPermission('Ask for approval')
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+    await pickGlobalPermission('Approve for me')
+    expect(toast.success).not.toHaveBeenCalled()
+    await act(async () =>
+      outcome === 'saved' ? save.resolve() : save.reject(new Error('offline'))
+    )
+    await waitFor(() =>
+      expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto')
+    )
+    expect(persist).toHaveBeenCalledTimes(2)
+    expect(toast.success).toHaveBeenCalledExactlyOnceWith(
+      `Codex: separate permissions reset to ${outcome === 'saved' ? 'Ask for approval' : 'Approve for me'}.`
+    )
+  }
+)
+
+it('Reset discards dirty permission flags without an intermediate conversion', async () => {
+  savedArguments('--model sonnet', 'full-access')
+  render(<AgentsHarness />)
+  const input = argumentsInput('Claude')
+  const user = userEvent.setup()
+  await user.click(input)
+  fireEvent.change(input, { target: { value: '--permission-mode auto --model opus' } })
+  const field = input.parentElement?.parentElement
+  if (!field) {
+    throw new Error('Missing Arguments field')
+  }
+  await user.click(within(field).getByRole('button', { name: 'Reset' }))
+  await waitFor(() => expect(input.value).toBe(''))
+  expect(persist).toHaveBeenCalledTimes(1)
+  expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('full-access')
+  expect(toast.success).not.toHaveBeenCalled()
+})
+
 it('reports one direct local permission action failure without changing saved intent', async () => {
   persist.mockRejectedValueOnce(new Error('private error'))
   render(<AgentsHarness />)
-  fireEvent.click(screen.getByRole('radio', { name: 'Full access' }))
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Permissions', exact: true }))
+  await userEvent.setup().click(await screen.findByRole('menuitemradio', { name: /Full access/ }))
   await waitFor(() =>
     expect(toast.error).toHaveBeenCalledExactlyOnceWith(
       'Agent settings could not be saved. Try again.'

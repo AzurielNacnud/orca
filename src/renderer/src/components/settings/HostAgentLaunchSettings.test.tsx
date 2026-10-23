@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { StrictMode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,6 +23,7 @@ const transport = vi.hoisted(() => ({
   auto: vi.fn(),
   native: vi.fn()
 }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('./agent-launch-settings-transport', () => ({
   readHostAgentLaunchSettings: transport.read,
   mutateHostAgentLaunchSettings: transport.mutate,
@@ -60,6 +63,7 @@ const pane = (revision: number) => (
 
 afterEach(cleanup)
 beforeEach(() => {
+  vi.mocked(toast.success).mockClear()
   transport.read.mockReset().mockResolvedValue(host())
   transport.mutate.mockReset().mockResolvedValue(host())
   transport.detection.mockClear()
@@ -68,6 +72,67 @@ beforeEach(() => {
 })
 
 describe('host launch settings form', () => {
+  it('reserves disabled controls while loading and announces a typed host reset only after success', async () => {
+    let finish!: (settings: AgentLaunchSettings) => void
+    transport.read.mockReturnValueOnce(
+      new Promise<AgentLaunchSettings>((resolve) => {
+        finish = resolve
+      })
+    )
+    const before = projectAgentLaunchSettings({
+      agentPermissionDefault: 'ask',
+      agentPermissionOverrides: { codex: 'ask' }
+    })
+    const after = projectAgentLaunchSettings({
+      agentPermissionDefault: 'ask',
+      agentPermissionOverrides: {}
+    })
+    let save!: (settings: AgentLaunchSettings) => void
+    transport.mutate.mockRejectedValueOnce(new Error('offline')).mockImplementationOnce(
+      () =>
+        new Promise<AgentLaunchSettings>((resolve) => {
+          save = resolve
+        })
+    )
+    render(pane(17))
+    expect(screen.getByRole('button', { name: 'Permissions', exact: true })).toHaveProperty(
+      'disabled',
+      true
+    )
+    finish(before)
+    const user = userEvent.setup()
+    const pick = async () => {
+      await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
+      await user.click(await screen.findByRole('menuitemradio', { name: /Ask for approval/ }))
+    }
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Permissions', exact: true })).toHaveProperty(
+        'disabled',
+        false
+      )
+    )
+    await pick()
+    await screen.findByRole('alert')
+    expect(toast.success).not.toHaveBeenCalled()
+    await pick()
+    await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2))
+    expect(toast.success).not.toHaveBeenCalled()
+    save(after)
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledExactlyOnceWith(
+        'Codex: separate permissions reset to Ask for approval.'
+      )
+    )
+    expect(transport.mutate).toHaveBeenLastCalledWith(
+      { environmentId: 'ssh-host', pairingRevision: 17 },
+      { type: 'permission', choice: 'ask' },
+      expect.any(AbortSignal)
+    )
+    await pick()
+    await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(3))
+    expect(toast.success).toHaveBeenCalledTimes(1)
+  })
+
   it('shows resolved launch defaults in a collapsed legacy host row', async () => {
     transport.read.mockResolvedValue(projectAgentLaunchSettings({ agentDefaultArgs: {} }))
     render(pane(17))

@@ -12,6 +12,7 @@ import {
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import {
   AgentLaunchSettingsCatalog,
+  AgentLaunchSettingsLoading,
   type AgentPermissionsRenderer
 } from './AgentLaunchSettingsCatalog'
 import { HostAgentLaunchSettings } from './HostAgentLaunchSettings'
@@ -19,6 +20,7 @@ import { SettingsHostScopeUnavailableNotice } from './SettingsHostScopePicker'
 import type { SettingsHostScope } from './settings-host-scope'
 import { runtimeTargetEnvironmentId } from '@/runtime/runtime-client-target'
 import { translate } from '@/i18n/i18n'
+import { agentPermissionResetNotice } from './agent-permission-reset-notice'
 
 export function AgentLaunchSettingsSection({
   settings,
@@ -55,9 +57,7 @@ export function AgentLaunchSettingsSection({
       ) : !hostScope.available ? (
         <SettingsHostScopeUnavailableNotice />
       ) : (
-        <p className="text-sm text-muted-foreground">
-          {translate('settings.agents.loadingHost', 'Loading agent settings…')}
-        </p>
+        <AgentLaunchSettingsLoading />
       )}
     </section>
   )
@@ -104,11 +104,16 @@ function LocalAgentLaunchSettings({
     tail.current = write
     return write
   }
-  const mutate = (mutation: AgentLaunchSettingsMutation): Promise<void> =>
-    apply(
+  const mutate = (mutation: AgentLaunchSettingsMutation): Promise<void> => {
+    let notifyReset = (): void => {}
+    return apply(
       mutation.type !== 'default' && 'agent' in mutation ? mutation.agent : undefined,
-      (current, platform) => agentLaunchSettingsMutationUpdates(current, mutation, platform)
-    )
+      (current, platform) => {
+        notifyReset = agentPermissionResetNotice(current, mutation)
+        return agentLaunchSettingsMutationUpdates(current, mutation, platform)
+      }
+    ).then(() => notifyReset())
+  }
   const saveEnvironment = (agent: TuiAgent, requested: Record<string, string>): Promise<void> =>
     apply(agent, (current, platform) =>
       wholeAgentEnvironmentUpdates(current, agent, requested, platform)

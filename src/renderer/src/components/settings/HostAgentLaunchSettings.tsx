@@ -4,7 +4,10 @@ import type {
   AgentLaunchSettingsMutation
 } from '../../../../shared/agent-launch-settings'
 import type { AgentPermissionsRenderer } from './AgentLaunchSettingsCatalog'
-import { AgentLaunchSettingsCatalog } from './AgentLaunchSettingsCatalog'
+import {
+  AgentLaunchSettingsCatalog,
+  AgentLaunchSettingsLoading
+} from './AgentLaunchSettingsCatalog'
 import {
   mutateHostAgentLaunchSettings,
   readHostAgentLaunchSettings,
@@ -13,6 +16,7 @@ import {
   type AgentLaunchSettingsOwner
 } from './agent-launch-settings-transport'
 import { Button } from '../ui/button'
+import { agentPermissionResetNotice } from './agent-permission-reset-notice'
 import { translate } from '@/i18n/i18n'
 
 type ReadState =
@@ -78,6 +82,15 @@ export function HostAgentLaunchSettings({
     if (!controller || controller.signal.aborted || read.kind !== 'ready') {
       throw new Error('agent_launch_settings_unavailable')
     }
+    const notifyReset = agentPermissionResetNotice(
+      read.settings.agentPermission
+        ? {
+            agentPermissionDefault: read.settings.agentPermission.default,
+            agentPermissionOverrides: read.settings.agentPermission.overrides
+          }
+        : null,
+      mutation
+    )
     const write = (mutationTail.current ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
@@ -88,6 +101,7 @@ export function HostAgentLaunchSettings({
         try {
           const settings = await mutateHostAgentLaunchSettings(owner, mutation, controller.signal)
           if (!controller.signal.aborted) {
+            notifyReset()
             setRead({
               kind: 'ready',
               settings,
@@ -105,21 +119,22 @@ export function HostAgentLaunchSettings({
     mutationTail.current = write
     return write
   }
+  if (read.kind === 'loading') {
+    return <AgentLaunchSettingsLoading />
+  }
   if (read.kind !== 'ready') {
     return (
       <div className="space-y-2 text-sm text-muted-foreground">
         <p>
-          {read.kind === 'loading'
-            ? translate('settings.agents.loadingHost', 'Loading agent settings…')
-            : read.kind === 'unsupported'
-              ? translate(
-                  'settings.agents.updateHost',
-                  'Update this server to edit its agent launch settings.'
-                )
-              : translate(
-                  'settings.agents.readFailed',
-                  'Couldn’t read agent settings. Check the host connection and try again.'
-                )}
+          {read.kind === 'unsupported'
+            ? translate(
+                'settings.agents.updateHost',
+                'Update this server to edit its agent launch settings.'
+              )
+            : translate(
+                'settings.agents.readFailed',
+                'Couldn’t read agent settings. Check the host connection and try again.'
+              )}
         </p>
         {read.kind === 'failed' ? (
           <Button type="button" variant="ghost" size="xs" onClick={() => void refresh()}>
