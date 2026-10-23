@@ -262,9 +262,7 @@ export function openDetectedFilePath(
           canOpenWithSystemDefault,
           ...(linkContext && !clientLocal ? { fileExecutionHostId } : {}),
           linkContext,
-          ...(deps.openInSourceGroupSurface !== undefined
-            ? { refuseOpenInSourceGroup: refuseExplicitNonEditorRoute }
-            : {})
+          ...(explicitGroupRequest ? { refuseOpenInSourceGroup: refuseExplicitNonEditorRoute } : {})
         })
       ) {
         return
