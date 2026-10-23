@@ -1,4 +1,9 @@
 import { agentPermissionHostPlatform, permissionEnvNameMatches } from './agent-permission-env'
+import {
+  agentEnvironmentMutationUpdates,
+  choiceUpdate,
+  legacyEnvUpdates
+} from './agent-launch-environment-updates'
 import type {
   AgentLaunchSettingsMutation,
   AgentLaunchSettingsSource
@@ -20,27 +25,12 @@ import {
   resolveAgentPermission,
   type AgentPermissionChoice
 } from './tui-agent-permission-choice'
-import { liftAgentPermissionArgs, liftAgentPermissionEnv } from './tui-agent-permission-lift'
+import { liftAgentPermissionArgs } from './tui-agent-permission-lift'
 import { isTuiAgent } from './tui-agent-config'
 import type { TuiAgent } from './tui-agent'
 
 // Agent launch settings writes against the stored permission, including the shapes older clients
 // send, which treat the permission flag as part of the Arguments text.
-
-/** An agent's choice changed only when it differs from what it resolves to now. */
-export function choiceUpdate(
-  settings: AgentLaunchSettingsSource,
-  agent: TuiAgent,
-  choice: AgentPermissionChoice
-): AgentLaunchSettingsSource {
-  return resolveAgentPermission(agent, settings).choice === choice
-    ? {}
-    : applyAgentPermissionOverrides(settings, [agent], choice)
-}
-
-function hasEnvPermission(agent: TuiAgent): boolean {
-  return Object.keys(agentPermissionEnv(agent, 'full-access')).length > 0
-}
 
 export function permissionUpdates(
   settings: AgentLaunchSettingsSource,
@@ -171,52 +161,12 @@ export function legacyLaunchTextUpdates(
   }
 }
 
-/** A whole env record as its terminal gets it; for Goose, the bypass entry is the choice. */
-export function legacyEnvUpdates(
-  settings: AgentLaunchSettingsSource,
-  agent: TuiAgent,
-  env: Record<string, string>,
-  platform: NodeJS.Platform | undefined = agentPermissionHostPlatform()
-): AgentLaunchSettingsSource {
-  if (!hasEnvPermission(agent)) {
-    return { agentDefaultEnv: { ...settings.agentDefaultEnv, [agent]: env } }
-  }
-  const previous = resolveTuiAgentLaunchEnv(agent, settings, platform)
-  const names = Object.keys(agentPermissionEnv(agent, 'full-access'))
-  const carrier = (value: Record<string, string>) =>
-    Object.entries(value)
-      .filter(([key]) => names.some((name) => permissionEnvNameMatches(key, name, platform)))
-      .sort(([a], [b]) => a.localeCompare(b))
-  if (JSON.stringify(carrier(previous)) === JSON.stringify(carrier(env))) {
-    const user = { ...env }
-    for (const [key] of carrier(env)) {
-      delete user[key]
-    }
-    return {
-      agentDefaultEnv: {
-        ...settings.agentDefaultEnv,
-        [agent]: {
-          ...user,
-          ...Object.fromEntries(carrier(settings.agentDefaultEnv?.[agent] ?? {}))
-        }
-      }
-    }
-  }
-  const lifted = liftAgentPermissionEnv(agent, env, platform)
-  return {
-    agentDefaultEnv: { ...settings.agentDefaultEnv, [agent]: lifted.env },
-    ...choiceUpdate(settings, agent, lifted.choice ?? 'own')
-  }
-}
-
-/** Prepares one whole edit, preserving ordered host-name and permission-carrier transitions. */
 export function wholeAgentEnvironmentUpdates(
   settings: AgentLaunchSettingsSource,
   agent: TuiAgent,
   requested: Record<string, string>,
   platform: NodeJS.Platform
 ): AgentLaunchSettingsSource {
-  const previous = resolveTuiAgentLaunchEnv(agent, settings, platform)
   const carrierNames = hasTypedAgentPermission(settings)
     ? Object.keys(agentPermissionEnv(agent, 'full-access'))
     : []
@@ -226,80 +176,68 @@ export function wholeAgentEnvironmentUpdates(
   const groups = new Map<string, Set<string>>()
   const identity = (name: string) => (platform === 'win32' ? name.toLowerCase() : name)
   const carrierEntries: [string, string][] = []
-  for (const [name, value] of Object.entries(previous)) {
+  const previous = resolveTuiAgentLaunchEnv(agent, settings, platform, (name, value) => {
     if (isCarrier(name)) {
       carrierEntries.push([name, value])
-      continue
+      return true
     }
     ordinary.set(name, value)
     const key = identity(name)
-    const group = groups.get(key) ?? new Set<string>()
-    group.add(name)
-    groups.set(key, group)
-  }
-  const rawCarrier = Object.fromEntries(
-    Object.entries(settings.agentDefaultEnv?.[agent] ?? {}).filter(([name]) => isCarrier(name))
-  )
-  let carrierState: AgentLaunchSettingsSource = {
+    groups.set(key, (groups.get(key) ?? new Set<string>()).add(name))
+    return true
+  })
+  const carrier: AgentLaunchSettingsSource = {
     agentPermissionDefault: settings.agentPermissionDefault,
     agentPermissionOverrides: settings.agentPermissionOverrides?.[agent]
       ? { [agent]: settings.agentPermissionOverrides[agent] }
       : {},
-    agentDefaultEnv: { [agent]: rawCarrier }
+    agentDefaultEnv: { [agent]: Object.fromEntries(carrierEntries) }
   }
-  let projectedCarrier = Object.fromEntries(carrierEntries)
   let changed = false
-  for (const name of new Set([...Object.keys(previous), ...Object.keys(requested)])) {
-    if (previous[name] === requested[name]) {
-      continue
-    }
+  const change = (name: string, present: boolean): void => {
     changed = true
-    const present = Object.hasOwn(requested, name)
     if (isCarrier(name)) {
-      const entries = Object.entries(projectedCarrier).filter(
-        ([key]) => identity(key) !== identity(name)
-      )
-      if (present) {
-        entries.push([name, requested[name]])
-      }
-      carrierState = {
-        ...carrierState,
-        ...legacyEnvUpdates(carrierState, agent, Object.fromEntries(entries), platform)
-      }
-      projectedCarrier = resolveTuiAgentLaunchEnv(agent, carrierState, platform)
-      continue
+      const mutation: AgentLaunchSettingsMutation = present
+        ? { type: 'environment-set', agent, name, value: requested[name] }
+        : { type: 'environment-remove', agent, name }
+      Object.assign(carrier, agentEnvironmentMutationUpdates(carrier, mutation, platform))
+      return
     }
     const key = identity(name)
-    for (const spelling of groups.get(key) ?? []) {
+    const group = groups.get(key) ?? new Set<string>()
+    for (const spelling of group) {
       ordinary.delete(spelling)
     }
-    groups.delete(key)
     if (present) {
       ordinary.set(name, requested[name])
-      groups.set(key, new Set([name]))
+      if (group.size !== 1 || !group.has(name)) {
+        groups.set(key, new Set<string>().add(name))
+      }
+    } else {
+      groups.delete(key)
+    }
+  }
+  for (const name in previous) {
+    if (Object.hasOwn(previous, name) && previous[name] !== requested[name]) {
+      change(name, Object.hasOwn(requested, name))
+    }
+  }
+  for (const name in requested) {
+    if (Object.hasOwn(requested, name) && !Object.hasOwn(previous, name)) {
+      change(name, true)
     }
   }
   if (!changed) {
     return {}
   }
+  Object.entries(carrier.agentDefaultEnv?.[agent] ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([name, value]) => ordinary.set(name, value))
+  const override = carrier.agentPermissionOverrides?.[agent]
   return {
-    agentDefaultEnv: {
-      ...settings.agentDefaultEnv,
-      [agent]: Object.fromEntries([
-        ...ordinary,
-        ...Object.entries(carrierState.agentDefaultEnv?.[agent] ?? {}).sort(([a], [b]) =>
-          a.localeCompare(b)
-        )
-      ])
-    },
-    ...(carrierState.agentPermissionOverrides?.[agent] !==
-    settings.agentPermissionOverrides?.[agent]
-      ? {
-          agentPermissionOverrides: {
-            ...settings.agentPermissionOverrides,
-            ...carrierState.agentPermissionOverrides
-          }
-        }
+    agentDefaultEnv: { ...settings.agentDefaultEnv, [agent]: Object.fromEntries(ordinary) },
+    ...(override !== settings.agentPermissionOverrides?.[agent]
+      ? applyAgentPermissionOverrides(settings, [agent], override ?? 'default')
       : {})
   }
 }

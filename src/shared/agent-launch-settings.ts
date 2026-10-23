@@ -1,3 +1,4 @@
+import { agentEnvironmentMutationUpdates, choiceUpdate } from './agent-launch-environment-updates'
 import type { GlobalSettings } from './global-settings-types'
 import type { TuiAgent } from './tui-agent'
 import { buildDefaultAgentSettingsUpdate } from './default-agent-settings'
@@ -14,9 +15,7 @@ import {
 import { hasTypedAgentPermission, type AgentPermissionChoice } from './tui-agent-permission-choice'
 import { liftAgentPermissionArgs } from './tui-agent-permission-lift'
 import {
-  choiceUpdate,
   legacyArgumentsUpdates,
-  legacyEnvUpdates,
   legacyPermissionsUpdates,
   permissionUpdates
 } from './agent-launch-permission-updates'
@@ -221,24 +220,7 @@ export function agentLaunchSettingsMutationUpdates(
       }
     }
     case 'environment-set':
-    case 'environment-remove': {
-      // Edits the env the terminal gets, so removing Goose's published bypass entry means own.
-      const env = { ...resolveTuiAgentLaunchEnv(mutation.agent, settings, platform) }
-      // Windows environment names are case insensitive on the execution host.
-      for (const name of Object.keys(env)) {
-        if (
-          name === mutation.name ||
-          (platform === 'win32' && name.toLowerCase() === mutation.name.toLowerCase())
-        ) {
-          delete env[name]
-        }
-      }
-      const nextEnv =
-        mutation.type === 'environment-set' ? { ...env, [mutation.name]: mutation.value } : env
-      if (hasTypedAgentPermission(settings)) {
-        return legacyEnvUpdates(settings, mutation.agent, nextEnv, platform)
-      }
-      return { agentDefaultEnv: { ...settings.agentDefaultEnv, [mutation.agent]: nextEnv } }
-    }
+    case 'environment-remove':
+      return agentEnvironmentMutationUpdates(settings, mutation, platform)
   }
 }

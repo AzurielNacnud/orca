@@ -208,28 +208,29 @@ export function resolvedTuiAgentArgsBypassPermissions(
 export function resolveTuiAgentLaunchEnv(
   agent: string,
   settings: AgentLaunchProfileSettings | null | undefined,
-  platform: NodeJS.Platform | null | undefined = agentPermissionHostPlatform()
+  platform: NodeJS.Platform | null | undefined = agentPermissionHostPlatform(),
+  visitBaseEntry?: (name: string, value: string) => true
 ): Record<string, string> {
   const configured = settings?.agentDefaultEnv
   const value: unknown = configured && Object.getOwnPropertyDescriptor(configured, agent)?.value
   const own =
     value && typeof value === 'object'
-      ? Object.fromEntries(
-          Object.entries(value).filter(
-            (entry): entry is [string, string] => typeof entry[1] === 'string'
-          )
+      ? Object.entries(value).filter(
+          (entry): entry is [string, string] =>
+            typeof entry[1] === 'string' && (visitBaseEntry?.(entry[0], entry[1]) ?? true)
         )
       : undefined
   if (!hasTypedAgentPermission(settings) || !isTuiAgent(agent)) {
-    return own ?? getTuiAgentDefaultEnv(agent)
+    const entries = own ?? Object.entries(getTuiAgentDefaultEnv(agent))
+    if (!own) {
+      entries.forEach(([name, value]) => visitBaseEntry?.(name, value))
+    }
+    return Object.fromEntries(entries)
   }
-  const user = own ?? {}
   const added = Object.entries(
     agentPermissionEnv(agent, resolveAgentPermission(agent, settings).choice)
-  ).filter(
-    ([name]) => !Object.keys(user).some((key) => permissionEnvNameMatches(key, name, platform))
-  )
-  return { ...Object.fromEntries(added), ...user }
+  ).filter(([name]) => !own?.some(([key]) => permissionEnvNameMatches(key, name, platform)))
+  return Object.fromEntries(added.length ? [...added, ...(own ?? [])] : (own ?? []))
 }
 
 /**

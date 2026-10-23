@@ -1,12 +1,14 @@
 import { newChatPermissionModeForSettings } from '../../../shared/agent-chat-permission-mode'
 import { homedir } from 'node:os'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { getDefaultPersistedState } from '../../../shared/constants'
 import { normalizeLoadedGlobalSettings } from './normalize-loaded-global-settings'
 import { prepareLoadedTerminalSettings } from './prepare-loaded-terminal-settings'
 import { prepareLoadedProfileSettings } from './prepare-loaded-profile-settings'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
 import type { PersistedState } from '../../../shared/persisted-state-types'
+import { resolveAgentPermission } from '../../../shared/tui-agent-permission-choice'
+import { resolveTuiAgentLaunchArgs } from '../../../shared/tui-agent-launch-defaults'
 
 // Simulates a profile created before the dedicated Experimental switch was persisted.
 function normalizeLegacyProfile(overrides: Record<string, unknown>): PersistedState['settings'] {
@@ -139,6 +141,116 @@ describe('chat appearance settings', () => {
       }).nativeChatAppearance
     ).toBeUndefined()
   })
+})
+
+describe('the new-chat permission setting', () => {
+  it.each<{
+    name: string
+    saved: Partial<GlobalSettings>
+    raw: string[]
+    choices: string[]
+    terminal: string[]
+  }>([
+    {
+      name: 'mixed terminal permissions before the Chat seed exists',
+      saved: {
+        agentYoloDefaultsMigrated: true,
+        agentDefaultArgs: {
+          claude: '--dangerously-skip-permissions --model sonnet',
+          codex: '--approve-for-me --config tui.animations=false'
+        }
+      },
+      raw: ['--model sonnet', '--config tui.animations=false'],
+      choices: ['full-access', 'auto'],
+      terminal: [
+        '--dangerously-skip-permissions --model sonnet',
+        '--approve-for-me --config tui.animations=false'
+      ]
+    },
+    {
+      name: 'explicit empty Arguments with saved Chat defaults',
+      saved: {
+        agentYoloDefaultsMigrated: true,
+        agentDefaultArgs: { claude: '', codex: '' },
+        nativeChatPermissionMode: 'auto'
+      },
+      raw: ['', ''],
+      choices: ['own', 'own'],
+      terminal: ['', '']
+    },
+    {
+      name: 'Claude plan text owned by the user',
+      saved: {
+        agentYoloDefaultsMigrated: true,
+        agentDefaultArgs: { claude: '--permission-mode plan --model sonnet', codex: '' },
+        nativeChatPermissionMode: 'accept-edits'
+      },
+      raw: ['--permission-mode plan --model sonnet', ''],
+      choices: ['own', 'own'],
+      terminal: ['--permission-mode plan --model sonnet', '']
+    },
+    {
+      name: 'legacy yolo defaults before either migration',
+      saved: { agentYoloDefaultsMigrated: false, agentDefaultArgs: {} },
+      raw: ['', ''],
+      choices: ['full-access', 'full-access'],
+      terminal: ['--dangerously-skip-permissions', '--dangerously-bypass-approvals-and-sandbox']
+    }
+  ])(
+    'loads and reloads $name through the real profile pipeline',
+    ({ saved, raw, choices, terminal }) => {
+      const defaults = getDefaultPersistedState(homedir())
+      const retiredChatSettings = {
+        agentNativeChatPermissionModes: { claude: 'ask', codex: 'auto' }
+      }
+      const parsed: PersistedState = {
+        ...defaults,
+        settings: {
+          ...defaults.settings,
+          agentPermissionDefault: undefined,
+          agentPermissionOverrides: undefined,
+          nativeChatPermissionMode: undefined,
+          ...retiredChatSettings,
+          agentDefaultEnv: { claude: { QA_LOADER_NOTE: 'preserved' } },
+          ...saved
+        }
+      }
+      const needsSave = vi.fn()
+      const profile = prepareLoadedProfileSettings(parsed, defaults, needsSave)
+      const loaded = normalizeLoadedGlobalSettings(
+        parsed,
+        prepareLoadedTerminalSettings(parsed, needsSave),
+        profile
+      )
+      expect(needsSave).toHaveBeenCalled()
+      expect(loaded.agentYoloDefaultsMigrated).toBe(true)
+      expect(loaded.agentPermissionDefault).toBeDefined()
+      expect(
+        (['claude', 'codex'] as const).map((agent) =>
+          newChatPermissionModeForSettings(agent, loaded)
+        )
+      ).toEqual(choices)
+      expect(loaded).not.toHaveProperty('agentNativeChatPermissionModes')
+      expect(loaded.agentDefaultEnv?.claude).toEqual({ QA_LOADER_NOTE: 'preserved' })
+      expect(
+        (['claude', 'codex'] as const).map((agent) => loaded.agentDefaultArgs?.[agent])
+      ).toEqual(raw)
+      expect(
+        (['claude', 'codex'] as const).map((agent) => resolveAgentPermission(agent, loaded).choice)
+      ).toEqual(choices)
+      expect(
+        (['claude', 'codex'] as const).map((agent) => resolveTuiAgentLaunchArgs(agent, loaded))
+      ).toEqual(terminal)
+      const reloaded: PersistedState = { ...parsed, settings: JSON.parse(JSON.stringify(loaded)) }
+      expect(
+        normalizeLoadedGlobalSettings(
+          reloaded,
+          prepareLoadedTerminalSettings(reloaded, needsSave),
+          prepareLoadedProfileSettings(reloaded, defaults, needsSave)
+        )
+      ).toEqual(loaded)
+    }
+  )
 })
 
 describe('scoped new-chat permission defaults', () => {

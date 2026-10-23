@@ -189,6 +189,7 @@ export function AgentDefaultEnvInput({
       return
     }
     if (envDraft === draftSeed) {
+      setDraft(null)
       return
     }
     const parsedDraft = parseAgentDefaultEnvDraft(envDraft)

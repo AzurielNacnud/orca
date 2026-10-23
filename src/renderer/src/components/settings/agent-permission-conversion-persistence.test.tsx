@@ -1,3 +1,6 @@
+import * as updatesModule from '../../../../shared/agent-launch-permission-updates'
+import * as liftModule from '../../../../shared/tui-agent-permission-lift'
+import * as envDraftModule from './agent-default-env-draft'
 // @vitest-environment happy-dom
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -7,6 +10,10 @@ import { useAppStore } from '../../store'
 import { AgentsPane } from './AgentsPane'
 import { persist } from './settings-persistence-test-fixture'
 import { TooltipProvider } from '../ui/tooltip'
+import {
+  measureSettingsWork,
+  expectSettingsWorkScale
+} from '../../../../shared/global-settings-test-fixture'
 import { resolveTuiAgentLaunchArgs } from '../../../../shared/tui-agent-launch-defaults'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }))
@@ -21,7 +28,47 @@ vi.mock('@/hooks/useDetectedAgents', () => ({
 vi.mock('./AgentAwakeSetting', () => ({ AgentAwakeSetting: () => null }))
 vi.mock('./AgentCacheTimerSection', () => ({ AgentCacheTimerSection: () => null }))
 
+const feedback: (ReturnType<typeof measureSettingsWork>['work'] & { text?: string | null })[] = []
+const stringifyFixture = envDraftModule.stringifyAgentDefaultEnvDraft
 beforeEach(() => {
+  feedback.length = 0
+  Object.assign(uiWork, { entries: 0, bytes: 0 })
+  envWork.entries = envWork.bytes = 0
+  const prepare = updatesModule.wholeAgentEnvironmentUpdates
+  vi.spyOn(updatesModule, 'wholeAgentEnvironmentUpdates').mockImplementation((...args) => {
+    const [settings, agent, requested] = args
+    const size =
+      Object.keys(settings.agentDefaultEnv?.[agent] ?? {}).length + Object.keys(requested).length
+    const result = measureSettingsWork(() => prepare(...args))
+    const entries = result.work.entries + 12 * size
+    if (size >= 20) {
+      expect(entries).toBeLessThanOrEqual(36 * size + 64)
+    }
+    envWork.entries += entries
+    envWork.bytes += result.work.bytes
+    return result.value
+  })
+  const importer = liftModule.liftAgentPermissionArgs
+  vi.spyOn(liftModule, 'liftAgentPermissionArgs').mockImplementation((...args) => {
+    const receipt = measureSettingsWork(() => importer(...args))
+    feedback.push({ ...receipt.work, text: args[1] })
+    return receipt.value
+  })
+  const parse = envDraftModule.parseAgentDefaultEnvDraft
+  vi.spyOn(envDraftModule, 'parseAgentDefaultEnvDraft').mockImplementation((input) => {
+    const receipt = measureSettingsWork(() => parse(input))
+    // Parse reads/writes each pair; stringify maps and joins each output entry.
+    uiWork.entries += receipt.work.entries + 3 * Object.keys(receipt.value.env).length
+    uiWork.bytes += receipt.work.bytes + 4 * input.length
+    return receipt.value
+  })
+  const stringify = envDraftModule.stringifyAgentDefaultEnvDraft
+  vi.spyOn(envDraftModule, 'stringifyAgentDefaultEnvDraft').mockImplementation((input) => {
+    const receipt = measureSettingsWork(() => stringify(input))
+    uiWork.entries += receipt.work.entries + 3 * Object.keys(input).length
+    uiWork.bytes += receipt.work.bytes + 4 * JSON.stringify(input).length
+    return receipt.value
+  })
   Object.assign(window.api, { platform: { get: () => ({ platform: 'darwin' }) } })
   const settings = useAppStore.getState().settings
   if (!settings) {
@@ -63,11 +110,14 @@ function argumentsInput(label: string): HTMLInputElement {
   return input
 }
 
-it.each([
-  '--model opus --dangerously-skip-permissions',
-  '--dangerously-skip-permissions --model opus'
-])('retires the acknowledged recipe %s before chip removal and neutral events', async (recipe) => {
-  savedArguments('--model opus', 'full-access')
+it.each(
+  [20, 200].flatMap((n) => [
+    `${'--model opus '.repeat(n)}--dangerously-skip-permissions`,
+    `--dangerously-skip-permissions ${'--model opus '.repeat(n).trim()}`
+  ])
+)('retires the acknowledged recipe %s before chip removal and neutral events', async (recipe) => {
+  const models = recipe.replace('--dangerously-skip-permissions', '').trim()
+  savedArguments(models, 'full-access')
   render(<AgentsHarness />)
   const input = argumentsInput('Claude')
   const remove = () =>
@@ -77,15 +127,28 @@ it.each([
   const user = userEvent.setup()
   await user.click(input)
   await user.clear(input)
-  await user.type(input, recipe)
+  fireEvent.change(input, { target: { value: recipe } })
+  const before = feedback.length
   await user.keyboard('{Enter}')
   await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
   expect(persist).toHaveBeenCalledTimes(2)
+  const imports = feedback.slice(before)
+  expect(imports.map((work) => work.text)).toEqual([recipe, recipe])
+  for (const work of imports) {
+    expect(work.chars).toBeLessThanOrEqual(36 * recipe.length + 12000)
+  }
+  const key = recipe.startsWith('--dangerously') ? 'leading' : 'tail',
+    total = imports.reduce(
+      (sum, work) =>
+        sum + work.chars + work.entries + work.visits + work.bytes + 42 * recipe.length,
+      0
+    )
+  expectSettingsWorkScale(`feedback-${key}`, recipe.length > 1000 ? 200 : 20, [total])
   expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('full-access')
   expect(resolveTuiAgentLaunchArgs('claude', useAppStore.getState().settings ?? {})).toBe(
-    '--dangerously-skip-permissions --model opus'
+    `--dangerously-skip-permissions ${models}`
   )
-  expect(input.value).toBe('--model opus')
+  expect(input.value).toBe(models)
   fireEvent.click(remove())
   await waitFor(() => expect(persist).toHaveBeenCalledTimes(3))
   await user.click(input)
@@ -98,11 +161,11 @@ it.each([
   await user.click(input)
   await user.type(input, ' --dangerously-skip-permissions')
   await user.keyboard('{Escape}')
-  expect(input.value).toBe('--model opus')
+  expect(input.value).toBe(models)
   await user.tab()
-  fireEvent.change(input, { target: { value: '  --model opus  ' } })
+  fireEvent.change(input, { target: { value: `  ${models}  ` } })
   fireEvent.blur(input)
-  expect(input.value).toBe('--model opus')
+  expect(input.value).toBe(models)
   expect(persist).toHaveBeenCalledTimes(3)
 })
 
@@ -232,10 +295,17 @@ it('retains a whole failed Environment edit across empty publication and retries
   expect(input.value).toBe('A=external')
   fireEvent.blur(input)
   await waitFor(() => expect(input.readOnly).toBe(false))
+  fireEvent.change(input, { target: { value: 'A=two' } })
+  fireEvent.change(input, { target: { value: 'A=external' } })
+  fireEvent.blur(input)
+  act(() => savedEnvironment({ A: 'two' }))
+  await user.click(input)
+  await user.tab()
+  expect(input.value).toBe('A=two')
   expect(persist).toHaveBeenCalledTimes(2)
 })
 
-it('orders real blur then Reset, retains pre-Reset work on rejection and resets on acknowledgement', async () => {
+it.each(['blur', 'reset'])('retains ordered Environment work when %s rejects', async (failure) => {
   savedEnvironment({ A: 'old' })
   const blur = deferredSave()
   const reset = deferredSave()
@@ -252,37 +322,71 @@ it('orders real blur then Reset, retains pre-Reset work on rejection and resets 
   const resetButton = within(row).getByRole('button', { name: 'Reset' })
   await user.click(resetButton)
   await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
-  await act(async () => blur.resolve())
+  await act(async () => (failure === 'blur' ? blur.reject(new Error('offline')) : blur.resolve()))
   await waitFor(() => expect(persist).toHaveBeenCalledTimes(2))
-  act(() => savedEnvironment({}))
-  expect(input.isConnected).toBe(true)
+  expect(input.readOnly).toBe(true)
   expect(input.value).toBe('A=draft')
-  await act(async () => reset.reject(new Error('offline')))
-  await waitFor(() => expect(input.readOnly).toBe(false))
-  expect(input.value).toBe('A=draft')
-  await user.click(resetButton)
+  await user.click(input)
+  await user.tab()
+  await user.click(input)
+  await user.keyboard('{Enter}')
+  expect(persist).toHaveBeenCalledTimes(2)
+  if (failure === 'reset') {
+    act(() => savedEnvironment({}))
+    expect(input.isConnected).toBe(true)
+    await act(async () => reset.reject(new Error('offline')))
+    await waitFor(() => expect(input.readOnly).toBe(false))
+    expect(input.value).toBe('A=draft')
+    await user.click(resetButton)
+  } else {
+    await act(async () => reset.resolve())
+  }
   await waitFor(() => expect(input.isConnected).toBe(false))
   expect(useAppStore.getState().settings?.agentDefaultEnv?.claude).toEqual({})
+  expect(persist).toHaveBeenCalledTimes(2)
   expect(toast.error).toHaveBeenCalledTimes(1)
 })
 
-it.each(['darwin', 'win32'] as const)(
-  'stages host env transforms once on %s and preserves other agents',
-  async (platform) => {
+it.each(['darwin', 'win32'].flatMap((platform) => [20, 200].map((n) => [platform, n] as const)))(
+  'bounds whole Environment on %s with %i entries',
+  async (platform, n) => {
     Object.assign(window.api, { platform: { get: () => ({ platform }) } })
     savedEnvironment({ Path: 'old' })
     savedEnvironment({ TOKEN: 'keep' }, 'gemini')
+    const original = useAppStore.getState().settings?.agentDefaultEnv
     render(<AgentsHarness />)
     const input = environmentInput('Path=old')
-    fireEvent.change(input, { target: { value: 'Path=old PATH=new' } })
-    act(() => savedEnvironment({ TOKEN: 'latest' }, 'gemini'))
-    expect(input.value).toBe('Path=old PATH=new')
+    const names = Array.from({ length: n }, (_, i) => `K${String(i).padStart(3, '0')}`)
+    for (const value of ['new', 'last']) {
+      const extra = Object.fromEntries(names.map((k) => [k, value]))
+      fireEvent.change(input, {
+        target: {
+          value: (value === 'new' ? 'Path=old PATH=new ' : 'PATH=new ') + stringifyFixture(extra)
+        }
+      })
+      act(() => savedEnvironment({ TOKEN: 'latest' }, 'gemini'))
+      fireEvent.keyDown(input, { key: 'Enter' })
+      await waitFor(() => expect(input.readOnly).toBe(false))
+      expect(useAppStore.getState().settings?.agentDefaultEnv).toEqual({
+        ...original,
+        claude: {
+          ...extra,
+          ...(platform === 'win32' || value === 'last'
+            ? { PATH: 'new' }
+            : { Path: 'old', PATH: 'new' })
+        },
+        gemini: { TOKEN: 'latest' }
+      })
+    }
+    expect(persist).toHaveBeenCalledTimes(2)
+    const calls = vi.mocked(updatesModule.wholeAgentEnvironmentUpdates).mock.calls.length
+    fireEvent.change(input, { target: { value: `${input.value} ` } })
     fireEvent.blur(input)
-    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
-    expect(useAppStore.getState().settings?.agentDefaultEnv).toMatchObject({
-      claude: platform === 'win32' ? { PATH: 'new' } : { Path: 'old', PATH: 'new' },
-      gemini: { TOKEN: 'latest' }
-    })
+    await waitFor(() => expect(input.readOnly).toBe(false))
+    expect(persist).toHaveBeenCalledTimes(2)
+    expect(updatesModule.wholeAgentEnvironmentUpdates).toHaveBeenCalledTimes(calls + 1)
+    const counts = [envWork.entries, envWork.bytes, uiWork.entries, uiWork.bytes]
+    expectSettingsWorkScale(`renderer-env-${platform}`, n, counts)
   }
 )
 
@@ -305,9 +409,12 @@ it('imports then removes Goose carrier through one whole edit per acknowledgemen
   expect(persist).toHaveBeenCalledTimes(2)
 })
 
-it('keeps Goose Environment editable after Reset and reopen without restoring generated defaults', async () => {
+it.each([20, 200])('keeps Goose Environment editable after Reset/reopen (%i)', async (n) => {
+  const extra = Object.fromEntries(
+    Array.from({ length: n }, (_, i) => [`K${String(i).padStart(3, '0')}`, 'keep'])
+  )
   savedEnvironment(
-    { goose_mode: 'lowercase-is-distinct', QA_GOOS_KEEP: 'keep', QA_EDITOR_ONE: 'one' },
+    { goose_mode: 'lowercase-is-distinct', QA_GOOS_KEEP: 'keep', QA_EDITOR_ONE: 'one', ...extra },
     'goose'
   )
   useAppStore.setState(({ settings }) => ({
@@ -318,7 +425,7 @@ it('keeps Goose Environment editable after Reset and reopen without restoring ge
   }))
   render(<AgentsHarness />)
   const input = environmentInput(
-    'goose_mode=lowercase-is-distinct QA_GOOS_KEEP=keep QA_EDITOR_ONE=one'
+    `goose_mode=lowercase-is-distinct QA_GOOS_KEEP=keep QA_EDITOR_ONE=one ${stringifyFixture(extra)}`
   )
   const row = input.closest('div.py-3')
   if (!(row instanceof HTMLElement)) {
@@ -333,15 +440,20 @@ it('keeps Goose Environment editable after Reset and reopen without restoring ge
   fireEvent.click(within(row).getByRole('button', { name: 'Collapse agent settings' }))
   fireEvent.click(within(row).getByRole('button', { name: 'Expand agent settings' }))
   const empty = within(row).getByPlaceholderText('No default environment')
-  fireEvent.change(empty, { target: { value: 'QA_AFTER_RESET=yes' } })
+  fireEvent.change(empty, {
+    target: { value: `QA_AFTER_RESET=yes ${stringifyFixture(extra)}` }
+  })
   fireEvent.blur(empty)
   await waitFor(() =>
     expect(useAppStore.getState().settings?.agentDefaultEnv?.goose).toEqual({
-      QA_AFTER_RESET: 'yes'
+      QA_AFTER_RESET: 'yes',
+      ...extra
     })
   )
   expect(useAppStore.getState().settings?.agentPermissionOverrides?.goose).toBe('own')
   expect(persist).toHaveBeenCalledTimes(2)
+  const counts = [envWork.entries, envWork.bytes, uiWork.entries, uiWork.bytes]
+  expectSettingsWorkScale('renderer-Reset', n, counts)
 })
 
 it('reports one direct local permission action failure without changing saved intent', async () => {
@@ -355,3 +467,6 @@ it('reports one direct local permission action failure without changing saved in
   )
   expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('ask')
 })
+
+const uiWork = { entries: 0, bytes: 0 }
+const envWork = { entries: 0, bytes: 0 }

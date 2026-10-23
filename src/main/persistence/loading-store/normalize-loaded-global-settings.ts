@@ -140,7 +140,8 @@ export function normalizeLoadedGlobalSettings(
     // Old clients identify hosts with per-chat permissions through this valid value.
     nativeChatPermissionMode: publishedLegacyChatPermissionMode({
       ...parsed.settings,
-      ...migratedAgentYoloDefaults
+      ...migratedAgentYoloDefaults,
+      ...migratedAgentPermission
     }),
     defaultTaskSource: taskProviderSettings.defaultTaskSource,
     visibleTaskProviders: taskProviderSettings.visibleTaskProviders,
