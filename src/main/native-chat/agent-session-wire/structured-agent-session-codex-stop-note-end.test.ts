@@ -2,6 +2,7 @@ import {
   continuingStructuredAgentSessionInput,
   finalizingStructuredAgentSessionInput
 } from './structured-agent-session-handing-over'
+import { measureCodexInputWork } from './structured-agent-session-codex-input-perf-test-support'
 import { registerCodexInputFinalization } from './structured-agent-session-codex-input-finalization.spec'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -465,73 +466,104 @@ it.each(['config', 'order', 'initial'] as const)(
   }
 )
 
-it.each(['ask', 'auto', 'empty'] as const)(
-  'refreshes stopped words after refused steering with %s, including replacement',
-  async (mode) => {
+it.each([
+  ['ask', 1],
+  ['auto', 1],
+  ['empty', 1],
+  ['auto', 10],
+  ['auto', 100]
+] as const)(
+  'refreshes stopped words after refused steering with %s and %i stopped messages, including replacement',
+  async (mode, population) => {
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
     const journal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
     const running = await permissionSend('running')
     await began(running)
-    const stopped = 'stopped-words'
-    await journal.appendSubmission({
-      clientMessageId: stopped,
-      payloadFingerprint: 'stopped',
-      body: hostTestMessage('words that were not delivered'),
-      fence: 1,
-      source: { kind: 'user' },
-      origin: 'client',
-      handoverRecorded: true
-    })
-    await journal.resolveDispatch({
-      clientMessageId: stopped,
-      state: 'rejected',
-      fence: 1,
-      ...agentSessionFailureWords(
-        agentSessionFailureFact('cancelled', { neverReachedAgent: true }),
-        { surface: 'rejection' }
-      )
-    })
-    const refusal = Promise.withResolvers<unknown>()
-    codex.routes['turn/steer'] = () => refusal.promise
-    const id = await permissionSend('follow up')
-    await vi.waitFor(() =>
-      expect(codex.connections[0]?.calls.some((r) => r.method === 'turn/steer')).toBe(true)
+    const stoppedIds = Array.from({ length: population }, (_, index) =>
+      index === 0 ? 'stopped-words' : `stopped-words-${index}`
     )
-    await pick(mode === 'empty' ? 'ask' : mode)
-    if (mode === 'empty') {
-      await journal.resolveDispatch({
-        clientMessageId: id,
-        state: 'pending',
+    for (const [index, stopped] of stoppedIds.entries()) {
+      await journal.appendSubmission({
+        clientMessageId: stopped,
+        payloadFingerprint: 'stopped',
+        body: hostTestMessage(index === 0 ? 'words that were not delivered' : stopped),
         fence: 1,
-        turnScope: { kind: 'thread' },
-        carries: [stopped]
+        source: { kind: 'user' },
+        origin: 'client',
+        handoverRecorded: true
       })
+      if (index > 0) {
+        await journal.resolveDispatch({
+          clientMessageId: stopped,
+          state: 'pending',
+          fence: 1,
+          turnScope: { kind: 'thread' },
+          carries: [stoppedIds[index - 1]!]
+        })
+      }
       await journal.resolveDispatch({
         clientMessageId: stopped,
-        state: 'accepted',
+        state: 'rejected',
         fence: 1,
-        providerIdentity: null
+        ...agentSessionFailureWords(
+          agentSessionFailureFact('cancelled', { neverReachedAgent: true }),
+          { surface: 'rejection' }
+        )
       })
     }
-    turns.end('completed')
+    const stopped = stoppedIds[0]!
+    const refusal = Promise.withResolvers<unknown>()
+    codex.routes['turn/steer'] = () => refusal.promise
     await host.flushStreamedEvents(SESSION)
-    refusal.reject(
-      new CodexAppServerRequestError('turn/steer', -32600, 'no active turn', 'no active turn')
-    )
-    await vi.waitFor(() => expect(starts()).toHaveLength(2))
-    expect(codex.connections).toHaveLength(mode === 'auto' ? 2 : 1)
-    expect(starts()[1]?.params).toMatchObject({ clientUserMessageId: id })
-    expect(
-      JSON.stringify(starts()[1]?.params?.input).includes('words that were not delivered')
-    ).toBe(mode !== 'empty')
-    expect(journal.stoppedHistoryCarried().get(id)).toEqual(
-      mode === 'empty' ? undefined : [stopped]
-    )
-    const item = journal
-      .snapshot()
-      .items.find((item) => item.itemId === agentJournalSubmissionKey(id))
-    expect(item?.turnScope).toEqual({ kind: 'thread' })
-    expect(journal.itemBody(agentJournalSubmissionKey(id))).toEqual(hostTestMessage('follow up'))
+    const measured =
+      population > 1 ? measureCodexInputWork(host, events, 'history', population) : undefined
+    try {
+      const id = await permissionSend('follow up')
+      await vi.waitFor(() =>
+        expect(codex.connections[0]?.calls.some((r) => r.method === 'turn/steer')).toBe(true)
+      )
+      await pick(mode === 'empty' ? 'ask' : mode)
+      if (mode === 'empty') {
+        await journal.resolveDispatch({
+          clientMessageId: id,
+          state: 'pending',
+          fence: 1,
+          turnScope: { kind: 'thread' },
+          carries: [stopped]
+        })
+        await journal.resolveDispatch({
+          clientMessageId: stopped,
+          state: 'accepted',
+          fence: 1,
+          providerIdentity: null
+        })
+      }
+      turns.end('completed')
+      await host.flushStreamedEvents(SESSION)
+      refusal.reject(
+        new CodexAppServerRequestError('turn/steer', -32600, 'no active turn', 'no active turn')
+      )
+      await vi.waitFor(() => expect(starts()).toHaveLength(2))
+      expect(codex.connections).toHaveLength(mode === 'auto' ? 2 : 1)
+      expect(starts()[1]?.params).toMatchObject({ clientUserMessageId: id })
+      expect(
+        JSON.stringify(starts()[1]?.params?.input).includes('words that were not delivered')
+      ).toBe(mode !== 'empty')
+      expect(journal.stoppedHistoryCarried().get(id)).toEqual(
+        mode === 'empty' ? undefined : stoppedIds
+      )
+      const item = journal
+        .snapshot()
+        .items.find((item) => item.itemId === agentJournalSubmissionKey(id))
+      expect(item?.turnScope).toEqual({ kind: 'thread' })
+      expect(journal.itemBody(agentJournalSubmissionKey(id))).toEqual(hostTestMessage('follow up'))
+      for (const stoppedId of stoppedIds.slice(1)) {
+        expect(JSON.stringify(starts()[1]?.params?.input)).toContain(stoppedId)
+      }
+    } finally {
+      refusal.resolve({})
+      await measured?.()
+    }
   }
 )
 
@@ -748,7 +780,9 @@ export function codexInputFinalizationFixture() {
     pick,
     row,
     starts,
-    assertInputRecoveredAfterSnapshot
+    assertInputRecoveredAfterSnapshot,
+    measureInputWork: (kind: 'history' | 'close', population: number) =>
+      measureCodexInputWork(host, events, kind, population)
   }
 }
 

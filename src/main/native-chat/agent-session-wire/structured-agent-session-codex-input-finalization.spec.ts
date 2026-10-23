@@ -15,148 +15,194 @@ import * as lifetime from './structured-agent-session-host-lifetime'
 import { claimStructuredAgentSessionAgent } from './structured-agent-session-agent-start'
 import { openStructuredAgentSessionConversationJournal } from './structured-agent-session-conversation-open'
 import type { StructuredAgentSessionStartReadiness } from './structured-agent-session-start-readiness'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 
 export function registerCodexInputFinalization(current: typeof codexInputFinalizationFixture) {
   it.each([
-    'queue-stop',
-    'queue-close',
-    'queue-quit',
-    'pending-stop',
-    'pending-close',
-    'pending-close-cards',
-    'pending-quit',
-    'pending-exit'
-  ] as const)('keeps input unwritten across %s at final admission', async (boundary) => {
-    const { host, adapter, codex, config, permissionSend, stop, starts } = current()
-    const { sessions, conversationDelivery, serialize } = host.collaboratorsForTests()
-    const journal = sessions.get(SESSION)!.journal
-    const closing = boundary.includes('close')
-    let later = ''
-    const paused = Promise.withResolvers<unknown>()
-    const held = Promise.withResolvers<void>()
-    const entered = Promise.withResolvers<void>()
-    const deps = conversationDelivery.loop['deps']
-    let signal: AbortSignal | undefined
-    let frameEnded = false
-    let configEntered = false
-    const dispatch = adapter.dispatch.bind(adapter)
-    vi.spyOn(adapter, 'dispatch').mockImplementation(async (input) => {
-      signal = input.signal
-      codex.routes['config/read'] = () => {
-        configEntered = true
-        return paused.promise
-      }
-      try {
-        return await dispatch(input)
-      } finally {
-        frameEnded = true
-      }
-    })
-    const id = await permissionSend('do not write after cancellation', { personality: 'friendly' })
-    let blocking = Promise.resolve()
-    let stopping = Promise.resolve()
-    try {
-      await vi.waitFor(() => expect(configEntered && !!signal).toBe(true))
-      if (boundary === 'pending-close-cards') {
-        later = await permissionSend('later queued B', { personality: 'serious' })
-        await journal.queuedMessages.insert({
-          messageId: 'C',
-          body: hostTestMessage('waiting C'),
-          options: { model: 'model-C' }
-        })
-      }
-      const settled = host.waitForSendSettlement(SESSION, id)
-      const answeredBeforeRelease = vi.fn()
-      void settled.then(answeredBeforeRelease)
-      const resolve = journal.resolveDispatch.bind(journal)
-      const ordered = deps.serialize
-      if (boundary.startsWith('queue-')) {
-        blocking = serialize(SESSION, () => {
-          entered.resolve()
-          return held.promise
-        })
-        await entered.promise
-        const admission = Promise.withResolvers<void>()
-        vi.spyOn(deps, 'serialize').mockImplementation((sessionId, task) => {
-          admission.resolve()
-          return ordered(sessionId, task)
-        })
-        paused.resolve(config)
-        await admission.promise
-      } else {
-        vi.spyOn(journal, 'resolveDispatch').mockImplementation(async (...args) => {
-          if (args[0].state === 'pending') {
-            entered.resolve()
-            await held.promise
-          }
-          return resolve(...args)
-        })
-        paused.resolve(config)
-        await entered.promise
-      }
-      stopping = boundary.endsWith('exit')
-        ? Promise.resolve(
-            codex.connections[0]?.handlers.onExit?.(new Error('Codex exited before input'), {
-              expected: false
+    ['queue-stop', 0],
+    ['queue-close', 0],
+    ['queue-quit', 0],
+    ['pending-stop', 0],
+    ['pending-close', 0],
+    ['pending-close-cards', 0],
+    ['pending-quit', 0],
+    ['pending-exit', 0],
+    ['pending-close-cards', 10],
+    ['pending-close-cards', 100]
+  ] as const)(
+    'keeps input unwritten across %s at final admission with %i earlier cards',
+    async (boundary, population) => {
+      const { host, adapter, codex, config, permissionSend, stop, starts, measureInputWork } =
+        current()
+      const { sessions, conversationDelivery, serialize } = host.collaboratorsForTests()
+      const journal = sessions.get(SESSION)!.journal
+      const closing = boundary.includes('close')
+      const earlier = Array.from({ length: population }, (_, index) => `perf-kept-${index}`)
+      await serialize(SESSION, async () => {
+        for (const messageId of earlier) {
+          await journal.appendSubmission({
+            clientMessageId: messageId,
+            payloadFingerprint: messageId,
+            body: hostTestMessage(messageId),
+            source: { kind: 'user' },
+            origin: 'client',
+            fence: 1
+          })
+          await journal.resolveDispatch({
+            clientMessageId: messageId,
+            state: 'rejected',
+            fence: 1,
+            keptAsQueuedMessageId: messageId,
+            ...agentSessionFailureWords(agentSessionFailureFact('chatClosed'), {
+              surface: 'rejection'
             })
-          )
-        : boundary.endsWith('quit')
-          ? host.flushAllStreamedEvents()
-          : closing
-            ? host.close(SESSION, 'user-close')
-            : stop().then(() => {})
-      if (!boundary.endsWith('exit')) {
-        await vi.waitFor(() => expect(signal?.aborted && frameEnded).toBe(true))
+          })
+          await journal.queuedMessages.insert({ messageId, body: hostTestMessage(messageId) })
+        }
+        if (population > 0) {
+          await journal.markQueueReopen(1)
+        }
+      })
+      await host.flushStreamedEvents(SESSION)
+      const measured = population > 0 ? measureInputWork('close', population) : undefined
+      let later = ''
+      const paused = Promise.withResolvers<unknown>()
+      const held = Promise.withResolvers<void>()
+      const entered = Promise.withResolvers<void>()
+      const deps = conversationDelivery.loop['deps']
+      let signal: AbortSignal | undefined
+      let frameEnded = false
+      let configEntered = false
+      const dispatch = adapter.dispatch.bind(adapter)
+      vi.spyOn(adapter, 'dispatch').mockImplementation(async (input) => {
+        signal = input.signal
+        codex.routes['config/read'] = () => {
+          configEntered = true
+          return paused.promise
+        }
+        try {
+          return await dispatch(input)
+        } finally {
+          frameEnded = true
+        }
+      })
+      let id = ''
+      let blocking = Promise.resolve()
+      let stopping = Promise.resolve()
+      try {
+        id = await permissionSend('do not write after cancellation', { personality: 'friendly' })
+        await vi.waitFor(() => expect(configEntered && !!signal).toBe(true))
+        if (boundary === 'pending-close-cards') {
+          later = await permissionSend('later queued B', { personality: 'serious' })
+          await journal.queuedMessages.insert({
+            messageId: 'C',
+            body: hostTestMessage('waiting C'),
+            options: { model: 'model-C' }
+          })
+        }
+        const settled = host.waitForSendSettlement(SESSION, id)
+        const answeredBeforeRelease = vi.fn()
+        void settled.then(answeredBeforeRelease)
+        const resolve = journal.resolveDispatch.bind(journal)
+        const ordered = deps.serialize
+        if (boundary.startsWith('queue-')) {
+          blocking = serialize(SESSION, () => {
+            entered.resolve()
+            return held.promise
+          })
+          await entered.promise
+          const admission = Promise.withResolvers<void>()
+          vi.spyOn(deps, 'serialize').mockImplementation((sessionId, task) => {
+            admission.resolve()
+            return ordered(sessionId, task)
+          })
+          paused.resolve(config)
+          await admission.promise
+        } else {
+          vi.spyOn(journal, 'resolveDispatch').mockImplementation(async (...args) => {
+            if (args[0].state === 'pending') {
+              entered.resolve()
+              await held.promise
+            }
+            return resolve(...args)
+          })
+          paused.resolve(config)
+          await entered.promise
+        }
+        stopping = boundary.endsWith('exit')
+          ? Promise.resolve(
+              codex.connections[0]?.handlers.onExit?.(new Error('Codex exited before input'), {
+                expected: false
+              })
+            )
+          : boundary.endsWith('quit')
+            ? host.flushAllStreamedEvents()
+            : closing
+              ? host.close(SESSION, 'user-close')
+              : stop().then(() => {})
+        if (!boundary.endsWith('exit')) {
+          await vi.waitFor(() => expect(signal?.aborted && frameEnded).toBe(true))
+        }
+        expect(starts()).toHaveLength(0)
+        expect(continuingStructuredAgentSessionInput(journal, id)).toBe(false)
+        expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(true)
+        expect(answeredBeforeRelease).not.toHaveBeenCalled()
+        held.resolve()
+        await blocking
+        await stopping
+        const answered = (await settled)?.value.submission
+        await vi.waitFor(() => expect(journal.submission(id)?.dispatchState).toBe('rejected'))
+        expect(answered).toMatchObject({ dispatchState: 'rejected', fence: 1 })
+        expect(answered).toEqual(journal.submission(id))
+        expect(answered?.reason).toMatch(
+          /before (this message was sent|the agent started it)|provider_cancelled_before_start/
+        )
+        expect(answered?.rejection?.kind).toBe(
+          closing ? 'chatClosed' : boundary.endsWith('exit') ? 'providerExited' : 'cancelled'
+        )
+        const cards = journal.queuedMessages.list()
+        if (closing) {
+          expect(answered?.keptAsQueuedMessageId).toBe(id)
+          expect(journal.submission(id)?.source).toEqual({ kind: 'user' })
+          expect(cards.find((card) => card.messageId === id)).toMatchObject({
+            body: { blocks: [{ type: 'text', text: 'do not write after cancellation' }] },
+            options: { personality: 'friendly' },
+            ...(later ? {} : { position: 0 })
+          })
+        }
+        if (later) {
+          expect(cards.map((card) => card.messageId)).toEqual([...earlier, later, id, 'C'])
+          expect(cards[earlier.length]).toMatchObject({
+            body: hostTestMessage('later queued B'),
+            options: { personality: 'serious' }
+          })
+          expect(journal.submission(later)?.keptAsQueuedMessageId).toBe(later)
+          for (const [index, messageId] of earlier.entries()) {
+            expect(cards[index]).toMatchObject({ messageId, body: hostTestMessage(messageId) })
+            expect(journal.submission(messageId)?.keptAsQueuedMessageId).toBe(messageId)
+          }
+          expect(cards[earlier.length + 2]).toMatchObject({
+            body: hostTestMessage('waiting C'),
+            options: { model: 'model-C' }
+          })
+        }
+        expect(starts()).toHaveLength(0)
+        await vi.waitFor(() =>
+          expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false)
+        )
+      } finally {
+        paused.resolve(config)
+        held.resolve()
+        await blocking
+        await stopping
+        await vi.waitFor(() =>
+          expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false)
+        )
+        await measured?.()
       }
-      expect(starts()).toHaveLength(0)
-      expect(continuingStructuredAgentSessionInput(journal, id)).toBe(false)
-      expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(true)
-      expect(answeredBeforeRelease).not.toHaveBeenCalled()
-      held.resolve()
-      await blocking
-      await stopping
-      const answered = (await settled)?.value.submission
-      await vi.waitFor(() => expect(journal.submission(id)?.dispatchState).toBe('rejected'))
-      expect(answered).toMatchObject({ dispatchState: 'rejected', fence: 1 })
-      expect(answered).toEqual(journal.submission(id))
-      expect(answered?.reason).toMatch(
-        /before (this message was sent|the agent started it)|provider_cancelled_before_start/
-      )
-      expect(answered?.rejection?.kind).toBe(
-        closing ? 'chatClosed' : boundary.endsWith('exit') ? 'providerExited' : 'cancelled'
-      )
-      const cards = journal.queuedMessages.list()
-      if (closing) {
-        expect(answered?.keptAsQueuedMessageId).toBe(id)
-        expect(journal.submission(id)?.source).toEqual({ kind: 'user' })
-        expect(cards.find((card) => card.messageId === id)).toMatchObject({
-          body: { blocks: [{ type: 'text', text: 'do not write after cancellation' }] },
-          options: { personality: 'friendly' },
-          ...(later ? {} : { position: 0 })
-        })
-      }
-      if (later) {
-        expect(cards.map((card) => card.messageId)).toEqual([later, id, 'C'])
-        expect(cards[0]).toMatchObject({
-          body: hostTestMessage('later queued B'),
-          options: { personality: 'serious' }
-        })
-        expect(journal.submission(later)?.keptAsQueuedMessageId).toBe(later)
-        expect(cards[2]).toMatchObject({
-          body: hostTestMessage('waiting C'),
-          options: { model: 'model-C' }
-        })
-      }
-      expect(starts()).toHaveLength(0)
-      await vi.waitFor(() => expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false))
-    } finally {
-      paused.resolve(config)
-      held.resolve()
-      await blocking
-      await stopping
-      await vi.waitFor(() => expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false))
     }
-  })
+  )
 
   it.each(['stop', 'exit'] as const)(
     'unwinds actual Auto preparation on %s without a late write',

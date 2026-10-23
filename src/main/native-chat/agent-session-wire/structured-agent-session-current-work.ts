@@ -1,7 +1,3 @@
-import {
-  continuingStructuredAgentSessionInput,
-  finalizingStructuredAgentSessionInput
-} from './structured-agent-session-handing-over'
 import { currentRequestsProjection } from './agent-session-current-requests'
 // The host's one operational projection of a chat's current work: the live generation's running
 // turn, the prompts it raised that still wait on the person, the sends it owes, and the queued
@@ -33,7 +29,11 @@ import type { StructuredAgentSessionWorkScope } from '../../../shared/structured
 import { isUnansweredStructuredAgentSessionDispatch } from '../../../shared/structured-agent-session-unanswered-dispatch'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { DISPATCH_DOUBT_PROVIDER_ENDED_UNANSWERED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
-import { structuredAgentSessionHandingOver } from './structured-agent-session-handing-over'
+import {
+  continuingStructuredAgentSessionInput,
+  finalizingStructuredAgentSessionInput,
+  structuredAgentSessionHandingOver
+} from './structured-agent-session-handing-over'
 
 export type StructuredAgentSessionCurrentWorkJournal = Pick<
   AgentSessionJournal,
