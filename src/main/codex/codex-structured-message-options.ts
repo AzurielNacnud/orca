@@ -1,4 +1,7 @@
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
+import { StructuredAgentSessionInputNotAdmitted } from '../native-chat/agent-session-wire/structured-agent-session-input-admission'
+import { agentSessionFailureFact } from '../../shared/agent-session-failure'
+import { codexDispatchRejection } from './codex-structured-turn-end-settlement'
 import type { StructuredAgentSessionAdapter } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { AgentSessionExecutionOptions } from '../../shared/agent-session-execution-options'
 import { AgentSessionOptionRejectedError } from '../native-chat/agent-session-wire/structured-agent-session-option-error'
@@ -112,13 +115,26 @@ export async function prepareCodexMessageDispatch(
   input: Parameters<StructuredAgentSessionAdapter['dispatch']>[0],
   registered: () => boolean
 ) {
+  const checkAbort = () => {
+    if (input.signal?.aborted) {
+      throw new StructuredAgentSessionInputNotAdmitted({
+        state: 'rejected',
+        ...codexDispatchRejection(
+          agentSessionFailureFact(session.ended ? 'providerExited' : 'cancelled')
+        )
+      })
+    }
+  }
   await input.beforeDispatch?.()
-  input.signal?.throwIfAborted()
+  checkAbort()
   const turnOptions = await waitForPromiseWithSignal(
     resolvedCodexMessageOptions(session, input.executionOptions),
     input.signal
-  )
-  input.signal?.throwIfAborted()
+  ).catch((error: unknown) => {
+    checkAbort()
+    throw error
+  })
+  checkAbort()
   return {
     ...input,
     turnOptions,

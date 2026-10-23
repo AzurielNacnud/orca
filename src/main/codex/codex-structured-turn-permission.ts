@@ -1,4 +1,5 @@
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
+import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import {
   StructuredAgentSessionInputNotAdmitted,
   type StructuredAgentSessionAdmitFreshInput,
@@ -18,7 +19,8 @@ type PermissionHost = {
 /** Prepared outside the host serialize so a configuration request never holds up accepting sends. */
 export async function prepareCodexTurnPermission(
   session: PermissionHost,
-  mode: AgentChatPermissionMode
+  mode: AgentChatPermissionMode,
+  signal?: AbortSignal
 ): Promise<void> {
   const state = session.permissions
   if (!state) {
@@ -29,7 +31,8 @@ export async function prepareCodexTurnPermission(
       ? undefined
       : state.acquiredMode === 'auto' && state.launchSandboxIntact
         ? state.acquiredSandbox
-        : await readCodexAutoSandbox(session.connection, state)
+        : await waitForPromiseWithSignal(readCodexAutoSandbox(session.connection, state), signal)
+  signal?.throwIfAborted()
   state.preparedAuto = auto
   state.preparedMode = mode
 }
@@ -80,7 +83,8 @@ export async function admitCodexTurnPermission(
   write: (
     permission: ReturnType<typeof codexTurnPermission>,
     body?: AgentJournalMessageItem
-  ) => Extract<StructuredAgentSessionInputAdmission, { kind: 'sent' }>
+  ) => Extract<StructuredAgentSessionInputAdmission, { kind: 'sent' }>,
+  signal?: AbortSignal
 ): Promise<unknown> {
   let prepared = false
   const enqueue: Parameters<StructuredAgentSessionAdmitFreshInput>[0] = (
@@ -101,7 +105,7 @@ export async function admitCodexTurnPermission(
       ? await admit(enqueue)
       : enqueue(session.permissions?.acquiredMode ?? 'ask', false)
     if (admission.kind === 'prepare') {
-      await prepareCodexTurnPermission(session, 'auto')
+      await prepareCodexTurnPermission(session, 'auto', signal)
       prepared = true
       continue
     }

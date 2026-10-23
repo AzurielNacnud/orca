@@ -57,10 +57,6 @@ function checkDispatchAuthority(
   signal?: AbortSignal,
   isCurrent?: () => boolean
 ): void {
-  if (signal?.aborted) {
-    host.dispatchEchoes.disarm(id)
-    signal.throwIfAborted()
-  }
   if (isCurrent?.() === false) {
     host.dispatchEchoes.disarm(id)
     throw new StructuredAgentSessionInputNotAdmitted({
@@ -68,6 +64,13 @@ function checkDispatchAuthority(
       ...codexDispatchRejection(
         agentSessionFailureFact('providerExited', { neverReachedAgent: true })
       )
+    })
+  }
+  if (signal?.aborted) {
+    host.dispatchEchoes.disarm(id)
+    throw new StructuredAgentSessionInputNotAdmitted({
+      state: 'rejected',
+      ...codexDispatchRejection(agentSessionFailureFact('cancelled'))
     })
   }
 }
@@ -190,6 +193,7 @@ export async function startCodexTurn(
     runningTurnId = await codexRunningOrOpeningTurn(host, input.signal)
   } catch (error) {
     host.dispatchEchoes.disarm(input.clientMessageId)
+    checkDispatchAuthority(host, input.clientMessageId, input.signal, input.isCurrent)
     throw error
   }
   let steered = steerable(runningTurnId) ? await steerCodexTurn(host, runningTurnId, input) : null
@@ -234,10 +238,11 @@ export async function startCodexTurn(
   }
   let answer: unknown
   try {
-    answer = await admitCodexTurnPermission(host, input.admitFreshInput, enqueue)
+    answer = await admitCodexTurnPermission(host, input.admitFreshInput, enqueue, input.signal)
   } catch (error) {
     if (!enqueued) {
       host.dispatchEchoes.disarm(input.clientMessageId)
+      checkDispatchAuthority(host, input.clientMessageId, input.signal, input.isCurrent)
     }
     if (
       previousOptions &&

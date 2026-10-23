@@ -1,4 +1,7 @@
-import { continuingStructuredAgentSessionInput } from './structured-agent-session-handing-over'
+import {
+  continuingStructuredAgentSessionInput,
+  finalizingStructuredAgentSessionInput
+} from './structured-agent-session-handing-over'
 // The one settlement of what ended generations left unfinished. An observed exit runs it, with
 // what it saw.
 //
@@ -46,6 +49,7 @@ export type StructuredAgentSessionLeftoverSettlementInput = {
   /** This host's sight of a child's root exit, which ends its generation even when the release
    *  write failed (`StructuredAgentSessionHostSession.lastEndedChild`). */
   ended?: StructuredAgentSessionWorkEvidence['ended']
+  finalizingOwner?: () => void
 }
 
 export type StructuredAgentSessionLeftoverSettlement =
@@ -105,7 +109,15 @@ export async function settleStructuredAgentSessionLeftovers(
         const dispatches = [
           ...exited.dispatches,
           ...stale.dispatches.filter((entry) => !settledByExit.has(entry.clientMessageId))
-        ].filter((entry) => !continuingStructuredAgentSessionInput(journal, entry.clientMessageId))
+        ].filter(
+          (entry) =>
+            !continuingStructuredAgentSessionInput(journal, entry.clientMessageId) &&
+            !finalizingStructuredAgentSessionInput(
+              journal,
+              entry.clientMessageId,
+              input.finalizingOwner
+            )
+        )
         planned = mutations.length + dispatches.length
         return { mutations, dispatches }
       }

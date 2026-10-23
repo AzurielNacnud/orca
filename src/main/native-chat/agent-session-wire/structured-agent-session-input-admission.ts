@@ -17,6 +17,20 @@ export type StructuredAgentSessionAdmitFreshInput = (
   signal?: AbortSignal
 ) => Promise<StructuredAgentSessionInputAdmission>
 
+export type StructuredAgentSessionAdmitHostInput = (
+  enqueue: Parameters<StructuredAgentSessionAdmitFreshInput>[0],
+  signal: AbortSignal | undefined,
+  prepare: (fence: number) => Promise<AgentJournalMessageItem>
+) => ReturnType<StructuredAgentSessionAdmitFreshInput>
+
+export type StructuredAgentSessionContinueInput = (
+  signal: AbortSignal | undefined,
+  rebind: (fence: number) => Promise<void>
+) => Promise<
+  | { kind: 'ready'; isCurrent: () => boolean }
+  | { kind: 'failed'; fence: number; outcome: AgentSessionDispatchOutcome }
+>
+
 /** Host-local control, never a provider failure or a replay of a possibly written request. */
 export class StructuredAgentSessionInputNotAdmitted extends Error {
   constructor(readonly outcome?: Extract<AgentSessionDispatchOutcome, { state: 'rejected' }>) {

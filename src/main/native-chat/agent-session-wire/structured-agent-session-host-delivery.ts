@@ -38,6 +38,7 @@ import {
 import { acceptedNoLaterThan } from './structured-agent-session-start-failure-row'
 import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
 import { recordStructuredAgentSessionRanOptions } from './structured-agent-session-ran-options'
+import { settleStructuredAgentSessionLeftovers } from './structured-agent-session-leftover-settlement'
 
 export type StructuredAgentSessionConversationDelivery = {
   loop: StructuredAgentSessionDeliveryLoop
@@ -163,6 +164,33 @@ export function createStructuredAgentSessionConversationDelivery(input: {
       ),
     logger: deps.logger,
     record: (sessionId) => deps.store.getRecord(sessionId),
+    holdClosedInput: async (sessionId, id, fence) => {
+      const session = sessions.get(sessionId)
+      if (
+        session &&
+        !(await holdClosedStructuredAgentSessionSends(deps, sessionId, session.journal, {
+          mark: 'settled',
+          unrun: (s) => s.clientMessageId === id && s.fence === fence
+        }))
+      ) {
+        throw new Error('settling an unwritten closed input failed')
+      }
+    },
+    settleLeftovers: async (sessionId, owner) => {
+      const session = sessions.get(sessionId)
+      if (session) {
+        const result = await settleStructuredAgentSessionLeftovers({
+          store: deps.store,
+          sessionId,
+          journal: session.journal,
+          ended: session.lastEndedChild,
+          finalizingOwner: owner
+        })
+        if (!result.ok) {
+          throw result.error
+        }
+      }
+    },
     currentWork: (sessionId) =>
       hostStructuredAgentSessionCurrentWork({ store: deps.store, sessions }, sessionId),
     readChildWork: input.clientDelivery.readChildWork,

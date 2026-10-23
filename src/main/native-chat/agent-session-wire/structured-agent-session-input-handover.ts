@@ -1,4 +1,7 @@
-import { StructuredAgentSessionInputNotAdmitted } from './structured-agent-session-input-admission'
+import {
+  StructuredAgentSessionInputNotAdmitted,
+  type StructuredAgentSessionInputAdmission
+} from './structured-agent-session-input-admission'
 import { waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -45,9 +48,9 @@ export function beginStructuredAgentSessionInputHandover(
   const isCurrent = () =>
     deps.sessions.get(sessionId) === session && session.child === binding && !binding.close
   const validate = (signal?: AbortSignal) => {
-    signal?.throwIfAborted()
     const work = deps.currentWork(sessionId)
     if (
+      signal?.aborted ||
       isDisposed() ||
       !isCurrent() ||
       binding.phase !== 'ready' ||
@@ -79,8 +82,9 @@ export function beginStructuredAgentSessionInputHandover(
       failureTextContext: deps.failureTextContext(sessionId),
       record: () => deps.record(sessionId),
 
-      admitFreshInput: (enqueue, signal, prepare) =>
-        deps.serialize(sessionId, async () => {
+      admitFreshInput: async (enqueue, signal, prepare) => {
+        let admission: StructuredAgentSessionInputAdmission | undefined
+        const invoked = deps.serialize(sessionId, async () => {
           validate(signal)
           const body = await prepare(binding.fence)
           validate(signal)
@@ -88,8 +92,24 @@ export function beginStructuredAgentSessionInputHandover(
           if (!mode) {
             throw new Error('input handover has no permission choice')
           }
-          return enqueue(mode, deps.retainedWork?.(sessionId, next.clientMessageId) === true, body)
-        }),
+          admission = enqueue(
+            mode,
+            deps.retainedWork?.(sessionId, next.clientMessageId) === true,
+            body
+          )
+          return admission
+        })
+        try {
+          return await waitForPromiseWithSignal(invoked, signal)
+        } catch (error) {
+          // Enqueue is synchronous; Promise delivery must not turn an actual write into a withdrawal.
+          if (admission?.kind === 'sent') {
+            return admission
+          }
+          validate(signal)
+          throw error
+        }
+      },
       continueInput: async (signal, rebind) => {
         const failed = async (
           cause: StartFailure['cause'],
@@ -156,35 +176,47 @@ export function beginStructuredAgentSessionInputHandover(
               signal
             )
           }
-          const rebound = await deps.serialize(sessionId, async () => {
-            signal?.throwIfAborted()
-            const current = deps.sessions.get(sessionId)?.child
-            if (
-              !ownsInput() ||
-              !current ||
-              current !== child ||
-              current.close ||
-              current.phase !== 'ready'
-            ) {
-              const ended = session.lastEndedChild
-              return failed(
-                (ended && (!child || sameProviderChild(ended, child))
-                  ? structuredAgentSessionEndedChildFailure(ended)
-                  : undefined) ?? { failure: agentSessionFailureFact('startFailed') },
-                child?.fence ?? deps.conversationFence(sessionId),
-                child?.generation ?? next.clientMessageId
-              )
-            }
-            binding = current
-            await rebind(current.fence)
-            validate(signal)
-            return null
-          })
+          const rebound = await waitForPromiseWithSignal(
+            deps.serialize(sessionId, async () => {
+              signal?.throwIfAborted()
+              const current = deps.sessions.get(sessionId)?.child
+              if (
+                !ownsInput() ||
+                !current ||
+                current !== child ||
+                current.close ||
+                current.phase !== 'ready'
+              ) {
+                const ended = session.lastEndedChild
+                return failed(
+                  (ended && (!child || sameProviderChild(ended, child))
+                    ? structuredAgentSessionEndedChildFailure(ended)
+                    : undefined) ?? { failure: agentSessionFailureFact('startFailed') },
+                  child?.fence ?? deps.conversationFence(sessionId),
+                  child?.generation ?? next.clientMessageId
+                )
+              }
+              binding = current
+              await rebind(current.fence)
+              validate(signal)
+              return null
+            }),
+            signal
+          )
           if (rebound) {
             return rebound
           }
           return { kind: 'ready', isCurrent }
         } catch (error) {
+          if (signal?.aborted) {
+            const ended = session.lastEndedChild
+            return failed(
+              (ended?.cause === 'exit' ? structuredAgentSessionEndedChildFailure(ended) : null) ?? {
+                failure: agentSessionFailureFact('cancelled')
+              },
+              ended?.fence ?? binding.fence
+            )
+          }
           return deps.serialize(sessionId, () =>
             failed(
               {
@@ -205,6 +237,13 @@ export function beginStructuredAgentSessionInputHandover(
       acquireAborts: deps.acquireAborts,
       deliveryOrder: deps.deliveryOrder,
       workChanged: () => deps.workChanged?.(sessionId),
+      holdClosedInput: (id, fence) =>
+        deps.holdClosedInput?.(sessionId, id, fence) ?? Promise.resolve(),
+      settleEndedInput: async (owner) => {
+        if (session.lastEndedChild && sameProviderChild(session.lastEndedChild, binding)) {
+          await deps.settleLeftovers?.(sessionId, owner)
+        }
+      },
       recordRanOptions: (handed) =>
         deps.recordRanOptions?.(sessionId, binding.fence)(handed) ?? Promise.resolve()
     },

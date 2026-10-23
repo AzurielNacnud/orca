@@ -11,9 +11,36 @@ type Handover = {
   unadmitted: boolean
   signal?: AbortSignal
   pending?: () => boolean
+  finalization?: { close: () => void; completion: Promise<void> }
 }
 const handingOver = new WeakMap<HandoverJournal, Map<string, Handover>>()
 const NONE: ReadonlySet<string> = new Set()
+
+/** Outcome responsibility survives cancellation; only its exact owner may bypass delegation. */
+export function finalizingStructuredAgentSessionInput(
+  journal: HandoverJournal,
+  clientMessageId: string,
+  except?: () => void
+): boolean {
+  const input = handingOver.get(journal)?.get(clientMessageId)
+  return input?.finalization !== undefined && input.owner !== except
+}
+
+/** Close cooperates with the existing result owner without joining it under host ordering. */
+export function closeStructuredAgentSessionHandovers(
+  journal: HandoverJournal
+): Promise<void> | undefined {
+  const finalizers = [...(handingOver.get(journal)?.values() ?? [])].flatMap(
+    (input) => input.finalization ?? []
+  )
+  if (finalizers.length === 0) {
+    return undefined
+  }
+  for (const finalizer of finalizers) {
+    finalizer.close()
+  }
+  return Promise.all(finalizers.map((input) => input.completion)).then(() => {})
+}
 
 /** The sends this journal's chat is handing over now. */
 export function structuredAgentSessionHandingOver(journal: HandoverJournal): ReadonlySet<string> {
@@ -70,7 +97,8 @@ export async function whileStructuredAgentSessionHandingOver<T>(
 export function beginStructuredAgentSessionHandover(
   journal: HandoverJournal,
   clientMessageId: string,
-  workChanged?: () => void
+  workChanged?: () => void,
+  finalization?: { close: () => void }
 ): () => void {
   let sends = handingOver.get(journal)
   if (!sends) {
@@ -78,15 +106,24 @@ export function beginStructuredAgentSessionHandover(
     handingOver.set(journal, sends)
   }
   let held = true
+  const completed = Promise.withResolvers<void>()
   const release = (): void => {
     if (held) {
       held = false
       if (sends.get(clientMessageId)?.owner === release) {
         sends.delete(clientMessageId)
       }
-      workChanged?.()
+      try {
+        workChanged?.()
+      } finally {
+        completed.resolve()
+      }
     }
   }
-  sends.set(clientMessageId, { owner: release, unadmitted: false })
+  sends.set(clientMessageId, {
+    owner: release,
+    unadmitted: false,
+    ...(finalization ? { finalization: { ...finalization, completion: completed.promise } } : {})
+  })
   return release
 }

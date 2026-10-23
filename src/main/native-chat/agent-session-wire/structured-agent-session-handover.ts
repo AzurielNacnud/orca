@@ -1,8 +1,12 @@
-import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
-import { StructuredAgentSessionInputNotAdmitted } from './structured-agent-session-input-admission'
 // Handing one accepted message to the provider: two commits around a provider call that runs
 // outside the session's serialize, so a send is accepted while the call is in flight.
 
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import {
+  StructuredAgentSessionInputNotAdmitted,
+  type StructuredAgentSessionAdmitHostInput,
+  type StructuredAgentSessionContinueInput
+} from './structured-agent-session-input-admission'
 import {
   agentSessionFailureFact,
   providerDiagnosticOf
@@ -10,7 +14,6 @@ import {
 import type { AgentSessionExecutionOptions } from '../../../shared/agent-session-execution-options'
 import type { StructuredAgentSessionHandedOptions } from './structured-agent-session-ran-options'
 import { isAgentSessionOptionRejectedError } from './structured-agent-session-option-error'
-import { abortSignalReason } from '../../../shared/abort-signal-reason'
 import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type {
@@ -19,10 +22,7 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import { DISPATCH_DOUBT_PERSISTENCE_FAILED } from '../agent-session-journal/journal-dispatch-doubt-reasons'
 import { contextStructuredAgentSessionCurrentWork } from './structured-agent-session-current-work'
-import type {
-  AgentSessionDispatchOutcome,
-  StructuredAgentSessionAdapter
-} from './structured-agent-session-adapter'
+import type { AgentSessionDispatchOutcome } from './structured-agent-session-adapter'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   handOverStructuredAgentSessionCommand,
@@ -39,34 +39,20 @@ import {
 } from './structured-agent-session-handing-over'
 
 export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverContext & {
-  admitFreshInput?: (
-    enqueue: Parameters<
-      NonNullable<Parameters<StructuredAgentSessionAdapter['dispatch']>[0]['admitFreshInput']>
-    >[0],
-    signal: AbortSignal | undefined,
-    prepare: (fence: number) => Promise<AgentJournalMessageItem>
-  ) => ReturnType<
-    NonNullable<Parameters<StructuredAgentSessionAdapter['dispatch']>[0]['admitFreshInput']>
-  >
-  continueInput?: (
-    signal: AbortSignal | undefined,
-    rebind: (fence: number) => Promise<void>
-  ) => Promise<
-    | { kind: 'ready'; isCurrent: () => boolean }
-    | { kind: 'failed'; fence: number; outcome: AgentSessionDispatchOutcome }
-  >
+  admitFreshInput?: StructuredAgentSessionAdmitHostInput
+  continueInput?: StructuredAgentSessionContinueInput
   acquireAborts?: Pick<StructuredAgentSessionAcquireAborts, 'begin'>
   deliveryOrder?: StructuredAgentSessionDeliveryOrder
   workChanged?: () => void
+  holdClosedInput?: (clientMessageId: string, fence: number) => Promise<void>
+  settleEndedInput?: (owner: () => void) => Promise<void>
   /** A message the agent took: a chat keeps, where it has none saved, the options it ran. */
   recordRanOptions?: (handed: StructuredAgentSessionHandedOptions) => Promise<void>
 }
 
-/** A handover whose pending row and abort handle are committed: the provider call runs outside the
- *  session's serialize and answers with the commit that resolves it. */
+/** One input operation runs provider work outside ordering and commits its result inside it. */
 export type StructuredAgentSessionPendingHandover = {
-  dispatch: () => Promise<() => Promise<void>>
-  release?: () => void
+  run: (commit: (resolve: () => Promise<void>) => Promise<void>) => Promise<void>
 }
 
 /**
@@ -107,12 +93,19 @@ export async function beginSubmissionHandover(
   const turnScope = contextStructuredAgentSessionCurrentWork(ctx).turnScope()
   let carried = carriedStoppedHistory(ctx, turnScope, submission, body)
   let ownsChild = stillCurrent
+  let closing = false
+  let unwritten = false
   const release = ctx.deliveryOrder?.activateSend(ctx.sessionId, clientMessageId)
   // The pending row precedes the adapter's own report of which sends it holds.
   const released = beginStructuredAgentSessionHandover(
     ctx.journal,
     clientMessageId,
-    ctx.workChanged
+    ctx.workChanged,
+    {
+      close: () => {
+        closing = true
+      }
+    }
   )
   const attempt = ctx.acquireAborts?.begin(ctx.sessionId, true)
   try {
@@ -145,76 +138,91 @@ export async function beginSubmissionHandover(
   // live counter never re-anchors at turn-open.
   const requestedAt = structuredAgentSessionHandoverOrigin(ctx.journal, submission)
   return {
-    release: () => {
-      released()
-      release?.()
-    },
-    dispatch: async () => {
-      let outcome: AgentSessionDispatchOutcome | null
+    run: async (commit) => {
       try {
-        for (;;) {
-          try {
-            markStructuredAgentSessionInputUnadmitted(ctx.journal, clientMessageId, released, false)
-            outcome = attempt?.signal.aborted
-              ? cancelledDispatch()
-              : ownsChild()
-                ? await dispatchSafely(
-                    ctx,
-                    clientMessageId,
-                    carried ? withStoppedHistory(body, carried.messages) : body,
-                    requestedAt,
-                    submission.options,
-                    ownsChild,
-                    prepareFresh,
-                    attempt?.signal
-                  )
-                : null
-            break
-          } catch (error) {
-            if (!(error instanceof StructuredAgentSessionInputNotAdmitted)) {
-              throw error
-            }
-            if (error.outcome) {
-              outcome = error.outcome
+        let outcome: AgentSessionDispatchOutcome | null
+        try {
+          for (;;) {
+            try {
+              markStructuredAgentSessionInputUnadmitted(
+                ctx.journal,
+                clientMessageId,
+                released,
+                false
+              )
+              unwritten = attempt?.signal.aborted === true
+              outcome = unwritten
+                ? cancelledDispatch()
+                : ownsChild()
+                  ? await dispatchSafely(
+                      ctx,
+                      clientMessageId,
+                      carried ? withStoppedHistory(body, carried.messages) : body,
+                      requestedAt,
+                      submission.options,
+                      ownsChild,
+                      prepareFresh,
+                      attempt?.signal
+                    )
+                  : null
               break
+            } catch (error) {
+              if (!(error instanceof StructuredAgentSessionInputNotAdmitted)) {
+                throw error
+              }
+              if (error.outcome) {
+                unwritten = true
+                outcome = error.outcome
+                break
+              }
+              if (!ctx.continueInput) {
+                throw error
+              }
+              markStructuredAgentSessionInputUnadmitted(
+                ctx.journal,
+                clientMessageId,
+                released,
+                true,
+                attempt?.signal
+              )
+              const next = await ctx.continueInput(attempt?.signal, async (fence) => {
+                await prepareFresh(fence)
+              })
+              if (next.kind === 'failed') {
+                unwritten = true
+                ctx.fence = next.fence
+                outcome = next.outcome
+                break
+              }
+              ownsChild = next.isCurrent
             }
-            if (!ctx.continueInput) {
-              throw error
-            }
-            markStructuredAgentSessionInputUnadmitted(
-              ctx.journal,
-              clientMessageId,
-              released,
-              true,
-              attempt?.signal
-            )
-            const next = await ctx.continueInput(attempt?.signal, async (fence) => {
-              await prepareFresh(fence)
-            })
-            if (next.kind === 'failed') {
-              ctx.fence = next.fence
-              outcome = next.outcome
-              break
-            }
-            ownsChild = next.isCurrent
           }
+        } catch (error) {
+          outcome = {
+            state: 'unknown',
+            reason: error instanceof Error ? error.message : String(error)
+          }
+        } finally {
+          markStructuredAgentSessionInputUnadmitted(ctx.journal, clientMessageId, released, false)
+          attempt?.end()
         }
-      } catch (error) {
-        outcome = attempt?.signal.aborted
-          ? cancelledDispatch()
-          : { state: 'unknown', reason: error instanceof Error ? error.message : String(error) }
+        await commit(async () => {
+          await (closing && unwritten && ctx.holdClosedInput
+            ? ctx.holdClosedInput(clientMessageId, ctx.fence)
+            : resolveHandover(ctx, clientMessageId, outcome))
+          if (!outcome || outcome.state === 'admitted') {
+            await ctx.settleEndedInput?.(released)
+          }
+          if (outcome?.state === 'accepted' || outcome?.state === 'admitted') {
+            await ctx.recordRanOptions?.({
+              message: submission.options,
+              executed: outcome.ranOptions
+            })
+          }
+        })
       } finally {
-        markStructuredAgentSessionInputUnadmitted(ctx.journal, clientMessageId, released, false)
-        attempt?.end()
-      }
-      return async () => {
-        await resolveHandover(ctx, clientMessageId, outcome)
-        if (outcome?.state === 'accepted' || outcome?.state === 'admitted') {
-          await ctx.recordRanOptions?.({
-            message: submission.options,
-            executed: outcome.ranOptions
-          })
-        }
+        released()
+        release?.()
       }
     }
   }
@@ -295,13 +303,10 @@ async function dispatchSafely(
       fence: ctx.fence,
       requestedAt
     })
-    return signal?.aborted && outcome.state === 'rejected' ? cancelledDispatch() : outcome
+    return outcome
   } catch (error) {
     if (error instanceof StructuredAgentSessionInputNotAdmitted) {
       throw error
-    }
-    if (signal?.aborted && error === abortSignalReason(signal)) {
-      return cancelledDispatch()
     }
     if (isAgentSessionOptionRejectedError(error)) {
       return {

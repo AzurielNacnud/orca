@@ -73,7 +73,7 @@ export class StructuredAgentSessionEventRecovery {
             fence,
             hostInstance: structuredAgentSessionHostInstance(),
             hold: { cause },
-            unrun: true
+            unrun: (s) => !finalizingStructuredAgentSessionInput(journal, s.clientMessageId)
           })
         }
       },
@@ -138,3 +138,4 @@ export class StructuredAgentSessionEventRecovery {
     await settleStructuredAgentSessionChildExit(this.exitContext, event)
   }
 }
+import { finalizingStructuredAgentSessionInput } from './structured-agent-session-handing-over'

@@ -8,6 +8,11 @@
 // Both are written for a caller already inside the session's serialize: the queue is not
 // reentrant, so every public entry point takes it once and calls these.
 
+import {
+  closeStructuredAgentSessionHandovers,
+  finalizingStructuredAgentSessionInput,
+  structuredAgentSessionHandingOver
+} from './structured-agent-session-handing-over'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { holdUnsentSends } from '../agent-session-journal/journal-unsent-send-hold'
@@ -82,13 +87,18 @@ export async function holdClosedStructuredAgentSessionSends(
   deps: ConversationCloseDeps,
   sessionId: string,
   journal: StructuredAgentSessionHostSession['journal'],
-  close: { mark: 'always' | 'settled'; which?: (submission: AgentJournalSubmission) => boolean }
+  close: {
+    mark: 'always' | 'settled'
+    which?: (submission: AgentJournalSubmission) => boolean
+    unrun?: (submission: AgentJournalSubmission) => boolean
+  }
 ): Promise<boolean> {
   const fence = structuredAgentSessionConversationFence(deps.store, sessionId)
   const { which } = close
   const settled = await holdUnsentSends(journal, {
     fence,
     hostInstance: structuredAgentSessionHostInstance(),
+    ...(close.unrun ? { unrun: close.unrun } : {}),
     hold: { cause: 'chatClosed', ...(which ? { which } : {}) }
   }).then(
     (newest) => ({ ok: true, newest }),
@@ -230,6 +240,9 @@ export function structuredAgentSessionConversationClosable(
 ): boolean {
   return (
     session.child === null &&
+    ![...structuredAgentSessionHandingOver(session.journal)].some((id) =>
+      finalizingStructuredAgentSessionInput(session.journal, id)
+    ) &&
     !session.journal.submissions().some(isQueuedAgentJournalSubmission) &&
     session.journal.pendingSubmissions().length === 0 &&
     !(atRest && session.journal.queuedMessages.awaitReopenMark())
@@ -258,6 +271,50 @@ export async function closeStructuredAgentSessionConversationUnderSerialize(
   context.closeStatus(sessionId)
   await session.journal.close()
   return true
+}
+
+/** Close stops resources first; the exact outstanding result retires its journal afterward. */
+export function beginFinalizedStructuredAgentSessionClose(
+  context: {
+    sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
+    serialize: (sessionId: string, task: () => Promise<void>) => Promise<void>
+    closeConversation: (sessionId: string) => Promise<boolean>
+    deps: () => Pick<StructuredAgentSessionHostDeps, 'logger'>
+  },
+  sessionId: string,
+  session: StructuredAgentSessionHostSession | undefined
+): (() => void) | undefined {
+  if (!session) {
+    return undefined
+  }
+  const acceptedBy = session.journal.cursor().sequence
+  const completion = closeStructuredAgentSessionHandovers(session.journal)
+  if (!completion) {
+    return undefined
+  }
+  return () => {
+    const ended = session.lastEndedChild
+    void completion
+      .then(() =>
+        context.serialize(sessionId, async () => {
+          if (
+            context.sessions.get(sessionId) === session &&
+            !session.child &&
+            session.lastEndedChild === ended &&
+            !session.journal.submissions().some((s) => (s.acceptedSequence ?? 0) > acceptedBy)
+          ) {
+            await context.closeConversation(sessionId)
+          }
+        })
+      )
+      .catch((error: unknown) =>
+        context.deps().logger.warn('closing a finalized chat handle failed', {
+          scope: 'handover-close',
+          sessionId,
+          error
+        })
+      )
+  }
 }
 
 /** Stops every provider child owned by this host while keeping failed evictions reachable. */

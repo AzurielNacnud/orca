@@ -460,6 +460,9 @@ describe('CodexStructuredSessionAdapter.dispatch', () => {
       {
         threadId: THREAD_ID,
         clientUserMessageId: 'client-1',
+        approvalPolicy: 'untrusted',
+        approvalsReviewer: 'user',
+        sandboxPolicy: { type: 'readOnly' },
         input: [
           { type: 'text', text: 'ship it' },
           { type: 'localImage', path: '/tmp/shot.png' },

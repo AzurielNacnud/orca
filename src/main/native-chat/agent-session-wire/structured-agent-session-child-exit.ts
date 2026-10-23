@@ -153,7 +153,7 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
   // The host's own phase decides, so a provider that omits the flag still gets a start that
   // failed told as one: the row says so.
   const exitedDuringStartup = child.phase === 'starting'
-  if (child.phase === 'starting') {
+  if (child.phase === 'starting' || !expected) {
     context.abortOpen?.(sessionId)
   }
   // A close during startup settles what the child was handed, never echoed, by who asked: a

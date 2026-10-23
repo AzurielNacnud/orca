@@ -1,4 +1,9 @@
-import { continuingStructuredAgentSessionInput } from './structured-agent-session-handing-over'
+import {
+  continuingStructuredAgentSessionInput,
+  finalizingStructuredAgentSessionInput
+} from './structured-agent-session-handing-over'
+import { registerCodexInputFinalization } from './structured-agent-session-codex-input-finalization.spec'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
@@ -385,10 +390,17 @@ it.each(['config', 'order', 'initial'] as const)(
     if (wait === 'initial') {
       await pick('auto')
     }
+    const deps = host.collaboratorsForTests().conversationDelivery.loop['deps']
+    const ran = deps.recordRanOptions!
+    const recorded = vi.fn()
+    vi.spyOn(deps, 'recordRanOptions').mockImplementation((id, fence) => async (options) => {
+      recorded(id, fence, options)
+      await ran(id, fence)(options)
+    })
     const id = await permissionSend('keep my words', { personality: 'friendly' })
     if (wait === 'order') {
       await entered.promise
-      expect(await row(id)).toMatchObject({ dispatchState: 'queued' })
+      expect(isQueuedAgentJournalSubmission((await row(id))!)).toBe(true)
       expect(starts()).toHaveLength(0)
     } else {
       await vi.waitFor(() => expect(old.calls.some((r) => r.method === 'config/read')).toBe(true))
@@ -434,6 +446,13 @@ it.each(['config', 'order', 'initial'] as const)(
     turns.echo(id)
     expect((await settled)?.value.submission).toMatchObject({ dispatchState: 'accepted', fence: 2 })
     await vi.waitFor(() =>
+      expect(recorded).toHaveBeenCalledWith(
+        SESSION,
+        2,
+        expect.objectContaining({ message: { personality: 'friendly' } })
+      )
+    )
+    await vi.waitFor(() =>
       expect(host['deps'].store.getRecord(SESSION)?.options).toMatchObject({
         model: 'gpt-live',
         effort: 'medium'
@@ -455,7 +474,9 @@ it.each(['ask', 'auto', 'empty'] as const)(
       payloadFingerprint: 'stopped',
       body: hostTestMessage('words that were not delivered'),
       fence: 1,
-      source: { kind: 'user' }
+      source: { kind: 'user' },
+      origin: 'client',
+      handoverRecorded: true
     })
     await journal.resolveDispatch({
       clientMessageId: stopped,
@@ -571,7 +592,7 @@ it.each([
     }
   }
   if (failure === 'unproven-exit') {
-    vi.spyOn(adapter, 'close').mockResolvedValue(false)
+    vi.spyOn(adapter, 'disposeSession').mockResolvedValue(false)
   }
   const lost = Promise.withResolvers<unknown>()
   if (failure === 'post-write-stop') {
@@ -588,37 +609,11 @@ it.each([
     codex.routes['thread/start'] = codex.routes['thread/resume'] = () =>
       Promise.withResolvers().promise
     await vi.waitFor(() => expect(codex.connections).toHaveLength(2))
+    await vi.waitFor(() => expect(continuingStructuredAgentSessionInput(journal, id)).toBe(true))
     if (failure === 'crash') {
       await vi.waitFor(() => expect(continuingStructuredAgentSessionInput(journal, id)).toBe(true))
       expect(await row(id)).toMatchObject({ dispatchState: 'pending' })
-      const snapshotRoot = join(root, 'crash')
-      await mkdir(snapshotRoot)
-      await openTestJournalHostDatabase(root).db.backup(journalDatabasePath(snapshotRoot))
-      const fresh = fakeCodex()
-      const restartedAdapter = adapterFor(fresh)
-      const restarted = new StructuredAgentSessionHost({
-        ...host['deps'],
-        adapter: restartedAdapter,
-        store: await openTestAgentSessionRecordStore(snapshotRoot),
-        journalDatabase: openTestJournalHostDatabase(snapshotRoot),
-        probeOwner: async () => ({ outcome: 'pid-absent' })
-      })
-      try {
-        await restarted.restoreReadableSessions()
-        const recovered = await restarted.journalSnapshot(SESSION)
-        const reopened = restarted.collaboratorsForTests().sessions.get(SESSION)!.journal
-        expect(reopened).not.toBe(journal)
-        expect(continuingStructuredAgentSessionInput(reopened, id)).toBe(false)
-        expect(recovered.submissions.find((s) => s.clientMessageId === id)).toMatchObject({
-          dispatchState: 'unknown',
-          recovered: true
-        })
-        expect(fresh.connections).toHaveLength(0)
-      } finally {
-        await restarted.flushAllStreamedEvents()
-        await restartedAdapter.closeAll()
-        closeTestJournalHostDatabase(snapshotRoot)
-      }
+      await assertInputRecoveredAfterSnapshot(id)
     }
     if (failure === 'exit') {
       codex.connections[1]?.handlers.onExit?.(new Error('Codex died before ready'), {
@@ -641,74 +636,116 @@ it.each([
   )
 })
 
-it.each([
-  'queue-stop',
-  'queue-close',
-  'queue-quit',
-  'pending-stop',
-  'pending-close',
-  'pending-quit',
-  'pending-exit'
-] as const)('keeps input unwritten across %s at final admission', async (boundary) => {
-  const { sessions, conversationDelivery, serialize } = host.collaboratorsForTests()
-  const journal = sessions.get(SESSION)!.journal
-  const paused = Promise.withResolvers<unknown>()
-  const held = Promise.withResolvers<void>()
-  const entered = Promise.withResolvers<void>()
-  codex.routes['config/read'] = () => paused.promise
-  const id = await permissionSend('do not write after cancellation', { personality: 'friendly' })
-  await vi.waitFor(() =>
-    expect(codex.connections[0]?.calls.some((r) => r.method === 'config/read')).toBe(true)
-  )
-  const settled = host.waitForSendSettlement(SESSION, id)
-  const resolve = journal.resolveDispatch.bind(journal)
-  const deps = conversationDelivery.loop['deps']
+it('keeps an actual sent envelope when Stop precedes its Promise delivery and the reply is lost', async () => {
+  const deps = host.collaboratorsForTests().conversationDelivery.loop['deps']
   const ordered = deps.serialize
-  const blocking = boundary.startsWith('queue-')
-    ? serialize(SESSION, () => held.promise)
-    : Promise.resolve()
-  if (boundary.startsWith('queue-')) {
-    vi.spyOn(deps, 'serialize').mockImplementation((sessionId, task) => {
-      entered.resolve()
-      return ordered(sessionId, task)
-    })
-  } else {
-    vi.spyOn(journal, 'resolveDispatch').mockImplementation(async (...args) => {
-      if (args[0].state === 'pending') {
-        entered.resolve()
-        await held.promise
-      }
-      return resolve(...args)
-    })
-  }
-  try {
-    paused.resolve(config)
-    await entered.promise
-    const stopping = boundary.endsWith('exit')
-      ? Promise.resolve(
-          codex.connections[0]?.handlers.onExit?.(new Error('Codex exited before input'), {
-            expected: false
-          })
-        )
-      : boundary.endsWith('quit')
-        ? host.flushAllStreamedEvents()
-        : boundary.endsWith('close')
-          ? host.close(SESSION, 'user-close')
-          : stop()
-    expect(starts()).toHaveLength(0)
-    held.resolve()
-    await blocking
-    await stopping
-    expect((await settled)?.value.submission).toMatchObject({ dispatchState: 'rejected' })
-    const snapshot = await host.journalSnapshot(SESSION)
-    await vi.waitFor(async () => expect((await row(id))?.dispatchState).toBe('rejected'))
-    expect(snapshot.submissions.find((s) => s.clientMessageId === id)?.reason).not.toContain(
-      'owns its provider child'
+  const lost = Promise.withResolvers<unknown>()
+  const journal = host['sessions'].get(SESSION)!.journal
+  const child = adapter['sessions'].get(SESSION)!
+  const translator = child.translator
+  const echoed = vi.spyOn(child.dispatchEchoes, 'settle')
+  codex.routes['turn/start'] = () => lost.promise
+  let stopping: Promise<unknown> | undefined
+  let frameEnded = false
+  const dispatch = adapter.dispatch.bind(adapter)
+  vi.spyOn(adapter, 'dispatch').mockImplementation(async (input) => {
+    vi.spyOn(deps, 'serialize').mockImplementation((sessionId, task) =>
+      ordered(sessionId, async () => {
+        const result = await task()
+        if (!stopping && starts().length === 1) {
+          expect(result).toMatchObject({ kind: 'sent', response: expect.any(Promise) })
+          expect(starts()[0]?.params?.clientUserMessageId).toBe(id)
+          stopping = stop()
+        }
+        return result
+      })
     )
-    expect(starts()).toHaveLength(0)
-    expect(continuingStructuredAgentSessionInput(journal, id)).toBe(false)
+    try {
+      return await dispatch(input)
+    } finally {
+      frameEnded = true
+    }
+  })
+  const id = await permissionSend('one actual write')
+  try {
+    await vi.waitFor(() => expect(stopping).toBeDefined())
+    expect(starts()).toHaveLength(1)
+    expect(frameEnded).toBe(false)
+    lost.reject(new CodexAppServerTimeoutError('reply lost after the write'))
+    await stopping
+    expect((await host.waitForSendSettlement(SESSION, id))?.value.submission).toMatchObject({
+      dispatchState: 'unknown'
+    })
+    expect(starts()).toHaveLength(1)
+    expect(codex.connections).toHaveLength(1)
+    expect(adapter['sessions'].get(SESSION)?.connection).toBe(codex.connections[0])
+    expect(adapter['sessions'].get(SESSION)?.ended).toBe(false)
+    expect(child.translator).toBe(translator)
+    expect(translator).not.toBeNull()
+    turns.routes['turn/start']()
+    turns.start()
+    turns.echo(id)
+    await vi.waitFor(async () => expect((await row(id))?.dispatchState).toBe('accepted'))
+    expect(echoed).toHaveBeenCalledWith(id)
+    expect(echoed.mock.results.some((result) => result.value === true)).toBe(true)
+    expect(codex.connections).toHaveLength(1)
+    expect(starts()).toHaveLength(1)
+    expect(finalizingStructuredAgentSessionInput(host['sessions'].get(SESSION)!.journal, id)).toBe(
+      false
+    )
   } finally {
-    held.resolve()
-    vi.restoreAllMocks()
+    lost.resolve({})
+    await stopping
+    await vi.waitFor(() => expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false))
   }
 })
+
+async function assertInputRecoveredAfterSnapshot(id: string): Promise<void> {
+  const journal = host['sessions'].get(SESSION)!.journal
+  const snapshotRoot = join(root, 'crash')
+  await mkdir(snapshotRoot)
+  await openTestJournalHostDatabase(root).db.backup(journalDatabasePath(snapshotRoot))
+  const fresh = fakeCodex()
+  const restartedAdapter = adapterFor(fresh)
+  const restarted = new StructuredAgentSessionHost({
+    ...host['deps'],
+    adapter: restartedAdapter,
+    store: await openTestAgentSessionRecordStore(snapshotRoot),
+    journalDatabase: openTestJournalHostDatabase(snapshotRoot),
+    probeOwner: async () => ({ outcome: 'pid-absent' })
+  })
+  try {
+    await restarted.restoreReadableSessions()
+    const recovered = await restarted.journalSnapshot(SESSION)
+    const reopened = restarted.collaboratorsForTests().sessions.get(SESSION)!.journal
+    expect(reopened).not.toBe(journal)
+    expect(continuingStructuredAgentSessionInput(reopened, id)).toBe(false)
+    expect(recovered.submissions.find((s) => s.clientMessageId === id)).toMatchObject({
+      dispatchState: 'unknown',
+      recovered: true
+    })
+    expect(fresh.connections).toHaveLength(0)
+  } finally {
+    await restarted.flushAllStreamedEvents()
+    await restartedAdapter.closeAll()
+    closeTestJournalHostDatabase(snapshotRoot)
+  }
+}
+
+export function codexInputFinalizationFixture() {
+  return {
+    host,
+    adapter,
+    codex,
+    config,
+    turns,
+    permissionSend,
+    stop,
+    pick,
+    row,
+    starts,
+    assertInputRecoveredAfterSnapshot
+  }
+}
+
+registerCodexInputFinalization(codexInputFinalizationFixture)

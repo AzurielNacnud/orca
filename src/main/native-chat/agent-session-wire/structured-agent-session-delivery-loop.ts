@@ -1,4 +1,3 @@
-import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
 // The one thing that starts a provider child for a send, the one thing that hands a message to
 // it, and the one thing that settles a queued message because of a start, a child or a leftover.
 //
@@ -15,6 +14,7 @@ import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permiss
 // earlier host process left queued is never handed over: the open, or this loop's first step,
 // settles it first (`journal-unsent-send-hold.ts`).
 
+import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
 import { beginStructuredAgentSessionInputHandover } from './structured-agent-session-input-handover'
 import type { StructuredAgentSessionDeliveryOrder } from './structured-agent-session-delivery-order'
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
@@ -82,6 +82,8 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   currentWork: (sessionId: string) => StructuredAgentSessionCurrentWork | null
   /** What is current changed with no row (`publishGenerationEnded`). */
   workChanged?: (sessionId: string) => void
+  holdClosedInput?: (sessionId: string, clientMessageId: string, fence: number) => Promise<void>
+  settleLeftovers?: (sessionId: string, owner: () => void) => Promise<void>
   readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
   childWorkOpen: (sessionId: string) => boolean
   /** A person's Stop is still ending the session's work: the status feed's own reading. */
@@ -190,10 +192,7 @@ export class StructuredAgentSessionDeliveryLoop {
           // The provider call runs outside; its resolution is the next commit. Tracked, so quit's
           // drain waits for both after its abort ends the call.
           await this.deps.trackStart(
-            handed
-              .dispatch()
-              .then((resolve) => this.deps.serialize(sessionId, resolve))
-              .finally(() => handed.release?.())
+            handed.run((resolve) => this.deps.serialize(sessionId, resolve))
           )
         }
       }

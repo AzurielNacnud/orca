@@ -86,7 +86,7 @@ export async function holdUnsentSends(
     hold: UnsentSendHold
     /** In place of the queued sends: those a child that ended before it answered its start was
      *  handed and never echoed. It ran none, so each is unsent as surely as a queued one. */
-    unrun?: true
+    unrun?: true | ((submission: AgentJournalSubmission) => boolean)
   }
 ): Promise<number | null> {
   const { hold } = input
@@ -94,7 +94,7 @@ export async function holdUnsentSends(
     .submissions()
     .filter((entry) =>
       input.unrun
-        ? isUnansweredHandedOverSubmission(entry)
+        ? isUnansweredHandedOverSubmission(entry) && (input.unrun === true || input.unrun(entry))
         : isQueuedAgentJournalSubmission(entry) &&
           (hold.cause === 'hostRestarted'
             ? journal.wroteBeforeOpen(entry.acceptedSequence)

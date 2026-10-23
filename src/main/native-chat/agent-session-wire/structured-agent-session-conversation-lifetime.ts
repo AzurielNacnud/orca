@@ -13,6 +13,7 @@ import { createJournalOpenReadRefusals } from '../agent-session-journal/journal-
 import type { StructuredAgentSessionConversations } from './structured-agent-session-conversations'
 import { releaseLeaseOfEndedStructuredAgentSessionChild } from './structured-agent-session-child-close'
 import {
+  beginFinalizedStructuredAgentSessionClose,
   holdClosedStructuredAgentSessionSends,
   closeStructuredAgentSessionConversationUnderSerialize,
   stopStructuredAgentSessionAgentUnderSerialize,
@@ -86,6 +87,8 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     )
   }
 
+  const closeContext = { sessions, serialize, closeConversation, deps }
+
   const hasOpenDispatch = (sessionId: string): boolean => {
     const record = deps().store.getRecord(sessionId)
     return record !== null && deps().hasOpenDispatch?.(record) === true
@@ -99,6 +102,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     onCloseError?: (error: unknown) => void
   ): Promise<T> => {
     const session = sessions.get(sessionId)
+    const finishClose = beginFinalizedStructuredAgentSessionClose(closeContext, sessionId, session)
     if (session) {
       // Settled and marked before the stop, so no start delivers it, and nothing it closed with
       // sends by itself, even if the handle stays open.
@@ -107,6 +111,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
       })
     }
     const result = await stop()
+    finishClose?.()
     try {
       await closeConversation(sessionId)
     } catch (error) {
