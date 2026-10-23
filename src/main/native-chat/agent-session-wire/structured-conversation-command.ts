@@ -171,7 +171,7 @@ async function clearUnderSerialize(
     } catch (error) {
       neverThrowingStructuredAgentSessionLogger(context.deps.logger).warn(
         'Chat name publication failed',
-        { sessionId, error }
+        { scope: 'conversation-name', sessionId, error }
       )
     }
   }

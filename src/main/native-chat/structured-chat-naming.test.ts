@@ -71,7 +71,7 @@ function rig(provider: 'claude' | 'codex') {
     return record
   }
   const setConversationName = vi.fn(
-    (_id: string, name: string | null, expected: string | null, contextId: string | null) =>
+    (_id: string, name: string | null, expected: string | null, contextId?: string | null) =>
       compareAndSetAgentSessionRecordName(mutate, name, expected, contextId)
   )
   const setUserConversationName = vi.fn(

@@ -90,9 +90,12 @@ export class StructuredAgentSessionJournalProjections {
       // A journalled submission bumps `lastSequence`, so the send-time working
       // signal reaches the cache; the lease fence does not, hence the extra key.
       const snapshot = journal.snapshot()
-      const sameContext = projection?.epoch === cursor.epoch && projection.contextId === contextId
-      let firstInputSubmissionKey = sameContext ? projection.firstInputSubmissionKey : null
-      const start = sameContext ? projection.submissionCount : 0
+      const sameContext =
+        projection?.epoch === cursor.epoch && projection.contextId === contextId
+          ? projection
+          : undefined
+      let firstInputSubmissionKey = sameContext?.firstInputSubmissionKey ?? null
+      const start = sameContext?.submissionCount ?? 0
       const floor = sameContext ? 0 : (journal.context.floor()?.sequence ?? 0)
       const submissions =
         !firstInputSubmissionKey && snapshot.submissions.length !== start
