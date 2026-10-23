@@ -1,10 +1,12 @@
-import { createNormalizedAiVaultScopeCwdMatcher } from '../../../../shared/ai-vault-scope-cwd-match'
+import {
+  createNormalizedAiVaultScopeCwdMatcher,
+  sessionFileExecutionNamespace
+} from '../../../../shared/ai-vault-scope-cwd-match'
 import {
   LOCAL_EXECUTION_HOST_ID,
   normalizeExecutionHostId,
   type ExecutionHostId
 } from '../../../../shared/execution-host'
-import { sessionFileExecutionNamespace } from '../../../../shared/ai-vault-scope-cwd-match'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import { normalizeRuntimePathForComparison } from '../../../../shared/cross-platform-path'
 
