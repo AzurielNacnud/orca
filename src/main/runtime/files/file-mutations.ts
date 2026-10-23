@@ -9,6 +9,10 @@ import type { RuntimeFileCommandHost } from './file-command-host'
 import { resolveRuntimeAuthorizedPath } from './chat-scratch-file-root'
 import { constants, copyFile, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import type {
+  FileWriteDiskPrecondition,
+  FileWriteResult
+} from '../../../shared/file-write-disk-precondition'
 
 type RuntimeFileMutationHost = Pick<
   RuntimeFileCommandHost,
@@ -24,8 +28,9 @@ export class RuntimeFileMutations {
     content: string,
     expectedSshConnectionGeneration?: number,
     expectedSshTargetId?: string,
-    expectedExecutionHostId?: string
-  ): Promise<{ ok: true }> {
+    expectedExecutionHostId?: string,
+    diskPrecondition?: FileWriteDiskPrecondition
+  ): Promise<FileWriteResult> {
     const target = await resolveFileExplorerPath(this.host, worktreeSelector, relativePath)
     assertRuntimeFileMutationExpectation(
       target.executionHostId,
@@ -33,8 +38,11 @@ export class RuntimeFileMutations {
       expectedSshTargetId,
       expectedSshConnectionGeneration
     )
-    await requireRuntimeFileProvider(target, this.host).writeFile(target.path, content)
-    return { ok: true }
+    return requireRuntimeFileProvider(target, this.host).writeFileWithDiskPrecondition(
+      target.path,
+      content,
+      diskPrecondition
+    )
   }
 
   async writeFileExplorerFileBase64(

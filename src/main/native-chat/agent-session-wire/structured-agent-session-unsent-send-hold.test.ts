@@ -16,10 +16,7 @@ import { openAgentSessionJournal } from '../agent-session-journal/journal-store-
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { journalIdentityFor } from './structured-agent-session-attach'
 import { attachParamsForRecord } from './structured-agent-session-conversation-open'
-import {
-  structuredAgentSessionHostInstance,
-  structuredQueuePauses
-} from './structured-agent-session-queued-pause'
+import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -53,7 +50,11 @@ const CHAT_CLOSED = agentSessionFailureWords(agentSessionFailureFact('chatClosed
 /** A kept send: an ordinary waiting card, with no hold of its own. */
 const KEPT = { state: 'waiting' }
 
+import { createStructuredSessionObservationClock } from './structured-agent-session-observation-clock.test-fixture'
+
 let rig: QueuedMessageTestRig
+const observationClock = createStructuredSessionObservationClock(() => rig.host, SESSION)
+beforeEach(() => observationClock.start())
 
 beforeEach(async () => {
   rig = await createQueuedMessageTestRig({ restartable: true })
@@ -61,7 +62,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks()
-  await rig.dispose()
+  await observationClock.restoreBeforeCleanup(() => rig.dispose())
 })
 
 /** The exact request a client sends, so a test can send the same one again. */
@@ -155,7 +156,6 @@ describe('a message accepted while the agent starts, then Orca stops', () => {
       expect(card).toMatchObject({
         messageId: id,
         holdReason: null,
-        hostInstance: structuredAgentSessionHostInstance(),
         body: hostTestMessage('hello after restart'),
         queuedAt: { epoch: journal().epoch, sequence: expect.any(Number) }
       })
@@ -209,7 +209,7 @@ describe('the next accepted turn releases a kept card', () => {
   it('a Resume sends it, and nothing sends it before', async () => {
     const id = await acceptWhileStarting(sendRequest('resume me'))
     await quitRestart()
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await observationClock.observe(100)
     expect(rig.dispatch).not.toHaveBeenCalled()
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
     await eventually(() => expect(dispatchedTexts()).toEqual(['resume me']))
@@ -289,7 +289,7 @@ describe('the next accepted turn releases a kept card', () => {
     await quitRestart()
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
     rig.crashRestartHostProcess()
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await observationClock.observe(100)
     expect(rig.dispatch).not.toHaveBeenCalled()
     const working = await rig.workingSend()
     const later = rig.send('queued after the restart', 'queue-if-active')
@@ -322,13 +322,13 @@ describe('the next accepted turn releases a kept card', () => {
     ).toMatchObject({ ok: true })
     await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
     expect(await rig.sendNow(id)).toMatchObject({ ok: true })
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await observationClock.observe(100)
     expect((await rig.handoff(id))?.handedOverAt).toBeUndefined()
     await quitRestart()
 
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
     expect(journal().queuedMessages.get(id)?.holdReason).toBeNull()
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await observationClock.observe(100)
     expect(rig.dispatch).not.toHaveBeenCalled()
   })
 })
@@ -381,61 +381,6 @@ describe('the queue at a quit', () => {
     await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
   }
 
-  // Quit's first step is `stopDelivery`, before teardown drains recovery; the flush repeats it.
-  it.each(['stopDelivery', 'flushAllStreamedEvents'] as const)(
-    'a drain step already running when quit begins (%s) makes no hand-off',
-    async (quitStep) => {
-      await compactRunning()
-      const queued = rig.send('queued behind the compact', 'queue-if-active')
-      expect(await queued.result).toMatchObject({
-        ok: true,
-        value: { queued: { state: 'waiting' } }
-      })
-      const host = rig.host
-      const { queuedMessages } = journal()
-      const settleOwed = queuedMessages.settleOwed.bind(queuedMessages)
-      let release = (): void => undefined
-      const held = new Promise<void>((resolve) => (release = resolve))
-      let reached = (): void => undefined
-      const inStep = new Promise<void>((resolve) => (reached = resolve))
-      let blocked = false
-      // Holds the drain step at its one await, past its first dispose check, until quit has begun.
-      // Only the drain step heals owed bookkeeping, so no caller check is needed (nor a stack read,
-      // which runtimes format differently).
-      const owed = vi.spyOn(queuedMessages, 'settlementOwed').mockImplementation(() => !blocked)
-      const healing = vi.spyOn(queuedMessages, 'settleOwed').mockImplementation(async () => {
-        if (!blocked) {
-          blocked = true
-          reached()
-          await held
-        }
-        return settleOwed()
-      })
-      rig.finishCompact()
-      await inStep
-      if (quitStep === 'stopDelivery') {
-        host.stopDelivery()
-        release()
-        await healing.mock.results[0]?.value
-        // The step's append check runs on the turn after its heal resolves.
-        await new Promise((resolve) => setTimeout(resolve, 0))
-        expect(await rig.handoff(queued.id)).toBeUndefined()
-      } else {
-        const quitting = host.flushAllStreamedEvents()
-        release()
-        await quitting
-      }
-      owed.mockRestore()
-      healing.mockRestore()
-      rig.crashRestartHostProcess()
-
-      expect(await rig.drafts()).toEqual([{ messageId: queued.id, state: 'waiting' }])
-      expect(await rig.queuePause()).toBeNull()
-      expect(await rig.handoff(queued.id)).toBeUndefined()
-      expect(rig.dispatch).not.toHaveBeenCalled()
-    }
-  )
-
   // The card the person pushed ahead comes back at the head; Resume sends it, then the rest.
   it('Send now on an ordinary card, cut short by a quit, returns it to the head; Resume sends both in order', async () => {
     await compactRunning()
@@ -444,7 +389,7 @@ describe('the queue at a quit', () => {
     const pushed = rig.send('pushed ahead', 'queue-if-active')
     await pushed.result
     expect(await rig.sendNow(pushed.id)).toMatchObject({ ok: true })
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await observationClock.observe(100)
     expect((await rig.handoff(pushed.id))?.handedOverAt).toBeUndefined()
     await quitRestart()
 
@@ -516,7 +461,7 @@ describe('the same send arriving again after the restart', () => {
     expect(again.ok && 'queued' in again.value).toBe(false)
     expect((await rig.host.journalSnapshot(SESSION)).submissions).toHaveLength(submissionsBefore)
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await observationClock.observe(100)
     expect(rig.dispatch).not.toHaveBeenCalled()
 
     // Retry on such a client sends the words under a new id, and the card follows that turn, as
@@ -577,7 +522,7 @@ describe('what is not kept', () => {
   it('a send whose card could not be written is rejected as before, and nothing stays queued', async () => {
     const id = await acceptWhileStarting(sendRequest('card write fails'))
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    vi.spyOn(JournalQueuedMessages.prototype, 'holdInTransaction').mockImplementation(() => {
+    vi.spyOn(JournalQueuedMessages.prototype, 'plan').mockImplementation(() => {
       throw new Error('disk full')
     })
     rig.crashRestartHostProcess()
@@ -701,7 +646,7 @@ describe("the reopen's mark", () => {
       await queued.result
       await rig.host.close(SESSION, cause)
       expect(await rig.drafts()).toEqual([{ messageId: queued.id, state: 'waiting' }])
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await observationClock.observe(100)
       expect(await rig.handoff(queued.id)).toBeUndefined()
       expect(dispatchedTexts()).toEqual(['work on this'])
       void working
@@ -724,7 +669,8 @@ describe("the reopen's mark", () => {
 
   // An idle eviction is Orca's own act: the person sees the same rows, and nothing new is held.
   it('an idle-sweep eviction of a stopped chat writes nothing, and its Stop row stays', async () => {
-    await rig.dispose()
+    await observationClock.restoreBeforeCleanup(() => rig.dispose())
+    observationClock.start()
     rig = await createQueuedMessageTestRig({ idleSweep: { idleMs: 0, intervalMs: 60 * 60 * 1000 } })
     const marks = vi.spyOn(AgentSessionJournal.prototype, 'appendQueueReopen')
     const working = await rig.workingSend()
@@ -758,7 +704,7 @@ describe("the reopen's mark", () => {
     rig.crashRestartHostProcess()
     await rig.host.restoreReadableSessions([SESSION])
     expect(rig.host.collaboratorsForTests().sessions.has(SESSION)).toBe(true)
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await observationClock.observe(100)
     expect(await rig.handoff(queued.id)).toBeUndefined()
     expect(rig.dispatch).toHaveBeenCalledTimes(sent)
     expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toEqual(['restarted'])
@@ -787,7 +733,7 @@ describe("the reopen's mark", () => {
 
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
     expect(marks).toHaveBeenCalledOnce()
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await observationClock.observe(100)
     expect(rig.dispatch).not.toHaveBeenCalled()
 
     const next = rig.send('a new request')

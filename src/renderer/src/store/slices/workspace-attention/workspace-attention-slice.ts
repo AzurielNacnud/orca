@@ -11,10 +11,12 @@ import { removeTabsAttention } from './subject-attention-transitions'
 import {
   markWorkspaceUnreadFlag,
   onScreenHostId,
-  settleWorkspaceUnreadFlag
+  settleWorkspaceUnreadFlag,
+  noteWorkspaceRead
 } from './workspace-unread-flag'
 import { workspaceMarkerTabIds } from './workspace-live-markers'
 import { isTabOnScreen } from '@/hooks/agent-auto-ack-targets'
+import { isWorkspaceNotificationMutedBySidebarFilters } from '@/attention/hidden-workspace-notification-mute'
 
 export const createWorkspaceAttentionSlice: StateCreator<
   AppState,
@@ -83,6 +85,10 @@ export const createWorkspaceAttentionSlice: StateCreator<
       if (isTabOnScreen(get(), worktreeId, tabId, 'terminal')) {
         return
       }
+      // Why here too: the bell's marker is written before its delayed banner reaches the attention policy.
+      if (isWorkspaceNotificationMutedBySidebarFilters(get(), worktreeId)) {
+        return
+      }
       markWorkspaceUnreadFlag(set, get, worktreeId)
       markTabUnread(tabId, 'terminal-bell')
       if (paneAttentionEnabled()) {
@@ -114,6 +120,7 @@ export const createWorkspaceAttentionSlice: StateCreator<
     },
     setWorkspaceUnreadByUser: (worktreeId, isUnread, executionHostId) => {
       if (!isUnread) {
+        noteWorkspaceRead(worktreeId)
         removeAndDismiss(workspaceMarkerTabIds(get(), worktreeId))
       }
       // Why: the toggle writes only the clicked host's row; the markers it removes are

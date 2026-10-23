@@ -1,4 +1,5 @@
 import type {
+  AsyncIoHealthRequest,
   FullDiskAccessStatusRequest,
   PingRequest,
   PtySpawnHealthRequest,
@@ -172,6 +173,9 @@ export type KillRequest = {
   payload: {
     sessionId: string
     immediate?: boolean
+    expectedIncarnationId?: string
+    requireNoAgentOwner?: boolean
+    requireUnattached?: boolean
   }
 }
 
@@ -316,6 +320,7 @@ export type DaemonRequest =
   | PingRequest
   | SystemResolverHealthRequest
   | PtySpawnHealthRequest
+  | AsyncIoHealthRequest
   | FullDiskAccessStatusRequest
   | GetSnapshotRequest
   | GetSizeRequest
@@ -359,6 +364,7 @@ export type SystemResolverHealthResult = {
 }
 
 export type SessionInfo = {
+  foregroundProcess?: string
   sessionId: string
   incarnationId?: string
   state: SessionState

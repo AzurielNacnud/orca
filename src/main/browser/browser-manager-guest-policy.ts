@@ -4,7 +4,9 @@ import {
   type PopupOwnerContext
 } from './browser-manager-types'
 import { BrowserManagerGuestCleanup } from './browser-manager-guest-cleanup'
+import { allowPageUnload } from './browser-guest-unload-policy'
 import { installDocPreviewGuestPolicy } from './doc-preview-guest-policy'
+import { installGuestDevToolsWindowBehavior } from './browser-guest-devtools-window'
 
 export abstract class BrowserManagerGuestPolicy extends BrowserManagerGuestCleanup {
   attachGuestPolicies(
@@ -31,12 +33,21 @@ export abstract class BrowserManagerGuestPolicy extends BrowserManagerGuestClean
     guest.setBackgroundThrottling(false)
     const disposePopupPolicy = this.installGuestPopupPolicy(guest)
     const disposeNavigationPolicy = this.installGuestNavigationPolicy(guest)
+    const disposeDevToolsWindow = installGuestDevToolsWindowBehavior({
+      guest,
+      getKeybindings: () => this.settingsResolver?.().keybindings,
+      isViewportEmulated: () => {
+        const tabId = this.tabIdByWebContentsId.get(guest.id)
+        return tabId !== undefined && this.isViewportPresetActive(tabId, guest.id)
+      }
+    })
 
     // Why: store cleanup so unregisterGuest can drop these listeners on teardown and let the WebContents wrapper GC.
     this.policyCleanupByGuestId.set(guest.id, () => {
       disposeDetachTracking()
       disposePopupPolicy()
       disposeNavigationPolicy()
+      disposeDevToolsWindow()
     })
   }
 
@@ -54,10 +65,12 @@ export abstract class BrowserManagerGuestPolicy extends BrowserManagerGuestClean
       this.cleanupGuestPolicyAttachment(guest.id)
     }
     guest.on('destroyed', handleDestroyed)
+    guest.on('will-prevent-unload', allowPageUnload)
     this.policyCleanupByGuestId.set(guest.id, () => {
       disposeDocPolicy()
       try {
         guest.off('destroyed', handleDestroyed)
+        guest.off('will-prevent-unload', allowPageUnload)
       } catch {
         // guest may already be destroyed
       }

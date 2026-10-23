@@ -2,6 +2,7 @@
 // runtime/browser error allowlists define the contract the CLI relies on to
 // format human-facing messages. Centralizing this mapping keeps the allowlist
 // auditable in one place instead of spread across per-method branches.
+import { AGENT_LAUNCH_SURFACE_UNAVAILABLE_CODE } from '../../../shared/agent-launch-surface'
 import {
   agentSessionRefusalReference,
   isAgentSessionRefusalError,
@@ -20,6 +21,7 @@ import {
   AGENT_SKILL_SELECTOR_AMBIGUOUS_CODE,
   AGENT_SKILL_SELECTOR_NOT_FOUND_CODE,
   AGENT_SKILL_SHARING_BUSY_CODE,
+  AGENT_SKILL_BUNDLE_NAME_TAKEN_CODE,
   AGENT_SKILL_SHARING_UNSUPPORTED_ENVIRONMENT_CODE
 } from '../../../shared/agent-skill-sharing-contract'
 import {
@@ -77,6 +79,9 @@ const RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   AGENT_LAUNCH_TARGET_FORBIDDEN_CODE,
   'agent_launch_replay_unsupported',
   'runtime_unavailable',
+  'chat_fork_source_unavailable',
+  'chat_fork_runtime_incompatible',
+  'chat_fork_anchor_changed',
   'selector_not_found',
   'selector_ambiguous',
   'terminal_handle_stale',
@@ -96,6 +101,8 @@ const RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   'remote_update_manual_required',
   'remote_update_not_available',
   'remote_update_not_downloaded',
+  'connectors_disabled',
+  'external_conversation_not_found',
   ...AGENT_SESSION_RPC_ERROR_CODES
 ])
 
@@ -103,6 +110,7 @@ const COMPUTER_PASSTHROUGH_CODES: ReadonlySet<string> = new Set(Object.values(CO
 const LINEAR_PASSTHROUGH_CODES: ReadonlySet<string> = new Set(LINEAR_ERROR_CODES)
 const STRUCTURED_RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   WORKTREE_CREATE_COLLISION_CODE,
+  AGENT_LAUNCH_SURFACE_UNAVAILABLE_CODE,
   'worktree_id_requires_full_path',
   'run_not_found',
   'run_required',
@@ -113,6 +121,7 @@ const STRUCTURED_RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   'inject_rejected',
   'dispatch_not_found',
   'dispatch_run_mismatch',
+  'task_run_mismatch',
   'terminal_not_found',
   // A handle that names a live agent session with no terminal. Distinct from
   // `terminal_handle_stale`, which claims the handle went dead — nothing went stale here.
@@ -165,6 +174,7 @@ const STRUCTURED_RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   AGENT_SKILL_SELECTOR_AMBIGUOUS_CODE,
   AGENT_SKILL_SELECTOR_NOT_FOUND_CODE,
   AGENT_SKILL_SHARING_BUSY_CODE,
+  AGENT_SKILL_BUNDLE_NAME_TAKEN_CODE,
   AGENT_SKILL_SHARING_UNSUPPORTED_ENVIRONMENT_CODE,
   SKILL_INSTALL_RPC_ERROR_CODE,
   // Why: an owner conflict is a distinct client decision (reload the host, re-adopt,

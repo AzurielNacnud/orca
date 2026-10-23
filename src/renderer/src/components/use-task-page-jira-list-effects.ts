@@ -1,6 +1,6 @@
 import { translate } from '@/i18n/i18n'
 import { isRuntimeProviderSearchQueryWithinLimit } from '@/runtime/runtime-provider-search-bounds'
-import { withCurrentSprintClause } from '../../../shared/jira-jql-predicate'
+import { withCurrentSprintClause } from '../../../shared/jira/jira-jql-predicate'
 import {
   buildJiraStatusCatalog,
   getJiraStatusCatalogScopeKey
@@ -18,7 +18,7 @@ import { searchTaskPageJiraIssues } from '@/components/task-page-jira-search'
 import { JIRA_ITEM_LIMIT, TASK_SEARCH_DEBOUNCE_MS } from './task-page-source-context'
 import { readLinkedJiraIssues } from './task-page-jira-linked-issues'
 import { ipcOrRuntimeTargetForHostId } from '@/runtime/runtime-client-target'
-import { buildJiraPresetJql } from '../../../shared/jira-preset-jql'
+import { buildJiraPresetJql } from '../../../shared/jira/jira-preset-jql'
 import { restrictJiraQueryToProject } from '../../../shared/jira-project-reference'
 export function useTaskPageJiraListEffects(model: TaskPageLinearCollectionEffectsModel) {
   const {
@@ -57,6 +57,7 @@ export function useTaskPageJiraListEffects(model: TaskPageLinearCollectionEffect
     jiraSavedFiltersLoading,
     selectedJiraStatuses,
     jiraQuickFiltersLoading,
+    jiraFavouriteFilter,
     setJiraStatusCatalog,
     setJiraProjectStatusOrder,
     displayedJiraIssues
@@ -87,11 +88,10 @@ export function useTaskPageJiraListEffects(model: TaskPageLinearCollectionEffect
       jiraSearchPersistReadyRef.current = true
       return
     }
-    setTaskResumeState({
-      jiraQuery: appliedJiraSearch.trim()
-    })
+    setTaskResumeState({ jiraQuery: appliedJiraSearch.trim() })
   }, [appliedJiraSearch, setTaskResumeState, taskResumeApplied, jiraSearchPersistReadyRef])
-  const jiraRemoteSearch = jiraHasWorkspace ? '' : appliedJiraSearch
+  const favourite = jiraHasWorkspace ? null : jiraFavouriteFilter
+  const jiraRemoteSearch = jiraHasWorkspace ? '' : (favourite?.jql ?? appliedJiraSearch)
   const previousJiraRefreshNonceRef = useRef(jiraRefreshNonce)
   useEffect(() => {
     if (!taskResumeApplied) {
@@ -115,13 +115,30 @@ export function useTaskPageJiraListEffects(model: TaskPageLinearCollectionEffect
     const savedFilter = jiraSavedFilters.find((filter) => filter.id === jiraActiveSavedFilterId)
     const exactSavedJql = savedFilter?.jql === trimmed
     const searchWithinLimit = async (query: string) => {
+      if (
+        favourite &&
+        (!jiraTaskSourceContext ||
+          selectedJiraSiteId !== favourite.siteId ||
+          (jiraProjectFilter && jiraProjectFilter.siteId !== favourite.siteId))
+      ) {
+        throw new Error(
+          translate(
+            'jira.favourites.siteMismatch',
+            'Choose a project from the favourite’s Jira site, or clear the project filter.'
+          )
+        )
+      }
       if (!isRuntimeProviderSearchQueryWithinLimit(query)) {
         queryTooLong = true
         throw new Error('Query exceeds the request limit.')
       }
       return searchJiraIssues(query, JIRA_ITEM_LIMIT, {
         sourceContext: jiraTaskSourceContext,
-        ...(jiraProjectFilter ? { siteId: jiraProjectFilter.siteId } : {}),
+        ...(favourite
+          ? { siteId: favourite.siteId }
+          : jiraProjectFilter
+            ? { siteId: jiraProjectFilter.siteId }
+            : {}),
         force
       })
     }
@@ -137,7 +154,7 @@ export function useTaskPageJiraListEffects(model: TaskPageLinearCollectionEffect
                 : sprintJql
               return searchWithinLimit(query)
             },
-            exactSavedJql ? 'jql' : 'input'
+            favourite || exactSavedJql ? 'jql' : 'input'
           ).then((result) => ({ ...result, error: null }))
         : jiraProjectFilter
           ? searchWithinLimit(
@@ -242,6 +259,7 @@ export function useTaskPageJiraListEffects(model: TaskPageLinearCollectionEffect
     jiraSavedFiltersLoading,
     selectedJiraStatuses,
     jiraQuickFiltersLoading,
+    favourite,
     taskResumeApplied,
     jiraTaskSourceContext,
     jiraTaskSourceScopeKey,

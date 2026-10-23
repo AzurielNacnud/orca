@@ -22,7 +22,6 @@ import type { TerminalTitleFactMeta } from '../../../../shared/terminal-output-s
 
 export abstract class OrcaRuntimeWithEmitDaemonPtyTransientFact extends OrcaRuntimeWithScheduleWaitBlockedCheck {
   protected abstract retirePtyAgentLaunchAuthority(ptyId: string): void
-  protected abstract disposeHeadlessTerminal(ptyId: string): void
 
   /** A transient fact the daemon detected while it held scan authority —
    *  emitted through the same fact channel as byte-scanned facts. Arrives
@@ -137,11 +136,12 @@ export abstract class OrcaRuntimeWithEmitDaemonPtyTransientFact extends OrcaRunt
         connectionId
       }
     }
-    if (pty?.paneKey) {
+    const recorded = this.paneOfPty(pty)
+    if (pty && recorded.paneKey) {
       return {
         worktreeId: pty.worktreeId,
-        ...(pty.tabId ? { tabId: pty.tabId } : {}),
-        paneKey: pty.paneKey,
+        ...(recorded.tabId ? { tabId: recorded.tabId } : {}),
+        paneKey: recorded.paneKey,
         connectionId
       }
     }

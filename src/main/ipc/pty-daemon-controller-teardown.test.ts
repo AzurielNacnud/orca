@@ -3,6 +3,10 @@ import { setupPtyIpcSuite } from './pty-ipc-test-harness'
 import { registerPtyHandlers } from './pty/register-handlers'
 import { setPtyOwnership } from './pty/provider/ownership-state'
 import { setLocalPtyProvider } from './pty/provider/registry'
+import type { IPtyProvider } from '../providers/pty-provider-contract'
+import type { RuntimePtyController } from '../runtime/runtime-pty-controller-contract'
+import { TerminalIntentionalStops } from '../runtime/terminal-intentional-stops'
+import { SSH_PROVIDER_UNREGISTERED_REASON } from '../../shared/pty-liveness-verdict'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
 vi.mock('fs', () => import('./pty-ipc-mock-registry').then((m) => m.fsModuleMock()))
@@ -194,7 +198,10 @@ describe('registerPtyHandlers', () => {
           await vi.advanceTimersByTimeAsync(1_000)
           await expect(stopPromise).resolves.toBe(true)
 
-          expect(listProcesses.mock.calls[0]?.[0]).toEqual({ deadlineMs: callerDeadlineMs })
+          expect(listProcesses.mock.calls[0]?.[0]).toEqual({
+            deadlineMs: callerDeadlineMs,
+            ptyIds: ['local-pty']
+          })
           const settlementDeadlines = listProcesses.mock.calls
             .slice(1)
             .map(([opts]) => opts?.deadlineMs)
@@ -256,6 +263,63 @@ describe('registerPtyHandlers', () => {
 
         expect(runtime.onPtyExit).toHaveBeenCalledWith('local-incarnated', 0, 'incarnation-live')
       })
+      it('skips the keep-history settle poll once this incarnation exit was observed', async () => {
+        const exitListeners = new Set<
+          (payload: { id: string; code: number; incarnationId?: string }) => void
+        >()
+        const listProcesses = vi.fn(async () => [])
+        const provider: IPtyProvider = {
+          spawn: vi.fn(async () => ({ id: 'local-sleeping', incarnationId: 'incarnation-1' })),
+          write: vi.fn(),
+          writeWithSettlement: vi.fn(),
+          resetInputModes: vi.fn(),
+          resize: vi.fn(),
+          shutdown: vi.fn(async () => {
+            for (const listener of exitListeners) {
+              listener({ id: 'local-sleeping', code: 0, incarnationId: 'incarnation-1' })
+            }
+          }),
+          sendSignal: vi.fn(),
+          getCwd: vi.fn(),
+          getInitialCwd: vi.fn(),
+          clearBuffer: vi.fn(),
+          acknowledgeDataEvent: vi.fn(),
+          hasChildProcesses: vi.fn(),
+          getForegroundProcess: vi.fn(),
+          serialize: vi.fn(),
+          revive: vi.fn(),
+          onData: vi.fn(() => () => {}),
+          onReplay: vi.fn(() => () => {}),
+          onExit: vi.fn((listener) => {
+            exitListeners.add(listener)
+            return () => exitListeners.delete(listener)
+          }),
+          listProcesses,
+          attach: vi.fn(),
+          getDefaultShell: vi.fn(),
+          getProfiles: vi.fn()
+        }
+        setLocalPtyProvider(provider)
+        const runtime = {
+          setPtyController: vi.fn<(controller: RuntimePtyController) => void>(),
+          onPtyExit: vi.fn(),
+          registerPty: vi.fn(),
+          onPtySpawned: vi.fn()
+        }
+        handlers.clear()
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handlers read only the stubbed runtime members.
+        registerPtyHandlers(mainWindow as never, runtime as never)
+        const controller = runtime.setPtyController.mock.calls[0]?.[0]
+
+        await controller?.spawn?.({ cols: 80, rows: 24 })
+        const startedAt = Date.now()
+        await expect(
+          controller?.stopAndWait?.('local-sleeping', { keepHistory: true })
+        ).resolves.toBe(true)
+
+        expect(listProcesses).toHaveBeenCalledTimes(1)
+        expect(Date.now() - startedAt).toBeLessThan(500)
+      })
       it('runtime controller kill tombstones app-scoped SSH ids when ownership and provider are absent', async () => {
         const localShutdown = vi.fn()
         setLocalPtyProvider({
@@ -303,7 +367,11 @@ describe('registerPtyHandlers', () => {
         expect(controller.kill('ssh:ssh-1@@relay-pty')).toBe(false)
 
         expect(localShutdown).not.toHaveBeenCalled()
-        expect(store.markSshRemotePtyLease).toHaveBeenCalledWith('ssh-1', 'relay-pty', 'terminated')
+        expect(store.markSshRemotePtyLease).toHaveBeenCalledWith(
+          'ssh-1',
+          'relay-pty',
+          expect.objectContaining({ unverifiableReason: SSH_PROVIDER_UNREGISTERED_REASON })
+        )
         expect(runtime.onPtyExit).toHaveBeenCalledWith('ssh:ssh-1@@relay-pty', -1, undefined)
       })
       it('marks a detached SSH lease terminated when runtime controller kill has no provider', async () => {
@@ -331,9 +399,249 @@ describe('registerPtyHandlers', () => {
         expect(store.markSshRemotePtyLease).toHaveBeenCalledWith(
           'ssh-1',
           'remote-pty',
-          'terminated'
+          expect.objectContaining({ unverifiableReason: SSH_PROVIDER_UNREGISTERED_REASON })
         )
         expect(runtime.onPtyExit).toHaveBeenCalledWith('remote-pty', -1, undefined)
+      })
+    })
+  })
+})
+
+describe('PTY SSH lease lifecycle', () => {
+  const { handlers, mainWindow } = setupPtyIpcSuite()
+
+  describe('spawn environment', () => {
+    describe('daemon-active provider (parity with LocalPtyProvider)', () => {
+      it('controller kill does not duplicate exits when the provider emits exit during shutdown', async () => {
+        const exitListeners = new Set<(payload: { id: string; code: number }) => void>()
+        const shutdown = vi.fn(async (id: string) => {
+          for (const listener of exitListeners) {
+            listener({ id, code: 0 })
+          }
+        })
+        const runtime = {
+          setPtyController: vi.fn(),
+          onPtyExit: vi.fn()
+        }
+        setLocalPtyProvider({
+          spawn: vi.fn(),
+          write: vi.fn(),
+          resize: vi.fn(),
+          shutdown,
+          sendSignal: vi.fn(),
+          getCwd: vi.fn(),
+          getInitialCwd: vi.fn(),
+          clearBuffer: vi.fn(),
+          acknowledgeDataEvent: vi.fn(),
+          hasChildProcesses: vi.fn(),
+          getForegroundProcess: vi.fn(),
+          serialize: vi.fn(),
+          revive: vi.fn(),
+          onData: vi.fn(() => () => {}),
+          onReplay: vi.fn(() => () => {}),
+          onExit: vi.fn((listener: (payload: { id: string; code: number }) => void) => {
+            exitListeners.add(listener)
+            return () => exitListeners.delete(listener)
+          }),
+          listProcesses: vi.fn(async () => []),
+          attach: vi.fn(),
+          getDefaultShell: vi.fn(),
+          getProfiles: vi.fn()
+        } as never)
+        handlers.clear()
+        registerPtyHandlers(mainWindow as never, runtime as never)
+        const controller = runtime.setPtyController.mock.calls[0]?.[0] as {
+          kill: (ptyId: string) => boolean
+        }
+
+        expect(controller.kill('local-pty')).toBe(true)
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(runtime.onPtyExit).toHaveBeenCalledTimes(1)
+        expect(runtime.onPtyExit).toHaveBeenCalledWith('local-pty', 0, undefined, {
+          providerExitObserved: true
+        })
+        expect(
+          mainWindow.webContents.send.mock.calls.filter((call) => call[0] === 'pty:exit')
+        ).toEqual([['pty:exit', { id: 'local-pty', code: 0, hostId: 'local' }]])
+      })
+      it('controller stopAndWait skips the synthetic exit when the provider emitted one', async () => {
+        vi.useFakeTimers()
+        const exitListeners = new Set<(payload: { id: string; code: number }) => void>()
+        const shutdown = vi.fn(async (id: string) => {
+          for (const listener of exitListeners) {
+            listener({ id, code: 0 })
+          }
+        })
+        const runtime = {
+          setPtyController: vi.fn(),
+          onPtyExit: vi.fn()
+        }
+        setLocalPtyProvider({
+          spawn: vi.fn(),
+          write: vi.fn(),
+          resize: vi.fn(),
+          shutdown,
+          sendSignal: vi.fn(),
+          getCwd: vi.fn(),
+          getInitialCwd: vi.fn(),
+          clearBuffer: vi.fn(),
+          acknowledgeDataEvent: vi.fn(),
+          hasChildProcesses: vi.fn(),
+          getForegroundProcess: vi.fn(),
+          serialize: vi.fn(),
+          revive: vi.fn(),
+          onData: vi.fn(() => () => {}),
+          onReplay: vi.fn(() => () => {}),
+          onExit: vi.fn((listener: (payload: { id: string; code: number }) => void) => {
+            exitListeners.add(listener)
+            return () => exitListeners.delete(listener)
+          }),
+          listProcesses: vi.fn(async () => []),
+          attach: vi.fn(),
+          getDefaultShell: vi.fn(),
+          getProfiles: vi.fn()
+        } as never)
+        handlers.clear()
+        registerPtyHandlers(mainWindow as never, runtime as never)
+        const controller = runtime.setPtyController.mock.calls[0]?.[0] as {
+          stopAndWait: (ptyId: string, opts?: { keepHistory?: boolean }) => Promise<boolean>
+        }
+
+        const stopPromise = controller.stopAndWait('local-pty')
+        await vi.advanceTimersByTimeAsync(1_200)
+        await expect(stopPromise).resolves.toBe(true)
+
+        expect(runtime.onPtyExit).toHaveBeenCalledTimes(1)
+        expect(runtime.onPtyExit).toHaveBeenCalledWith('local-pty', 0, undefined, {
+          providerExitObserved: true
+        })
+        expect(
+          mainWindow.webContents.send.mock.calls.filter((call) => call[0] === 'pty:exit')
+        ).toEqual([['pty:exit', { id: 'local-pty', code: 0, hostId: 'local' }]])
+      })
+      it('classifies host reversible-stop exits for the attached renderer', async () => {
+        vi.useFakeTimers()
+        const exitListeners = new Set<(payload: { id: string; code: number }) => void>()
+        const runtime = {
+          setPtyController: vi.fn(),
+          onPtyExit: vi.fn(),
+          intentionalPtyStops: new TerminalIntentionalStops()
+        }
+        setLocalPtyProvider({
+          spawn: vi.fn(),
+          write: vi.fn(),
+          resize: vi.fn(),
+          shutdown: vi.fn(async (id: string) => {
+            for (const listener of exitListeners) {
+              listener({ id, code: 0 })
+            }
+          }),
+          sendSignal: vi.fn(),
+          getCwd: vi.fn(),
+          getInitialCwd: vi.fn(),
+          clearBuffer: vi.fn(),
+          acknowledgeDataEvent: vi.fn(),
+          hasChildProcesses: vi.fn(),
+          getForegroundProcess: vi.fn(),
+          serialize: vi.fn(),
+          revive: vi.fn(),
+          onData: vi.fn(() => () => {}),
+          onReplay: vi.fn(() => () => {}),
+          onExit: vi.fn((listener: (payload: { id: string; code: number }) => void) => {
+            exitListeners.add(listener)
+            return () => exitListeners.delete(listener)
+          }),
+          listProcesses: vi.fn(async () => []),
+          attach: vi.fn(),
+          getDefaultShell: vi.fn(),
+          getProfiles: vi.fn()
+        } as never)
+        handlers.clear()
+        registerPtyHandlers(mainWindow as never, runtime as never)
+        const controller = runtime.setPtyController.mock.calls[0]?.[0] as {
+          stopAndWait: (ptyId: string) => Promise<boolean>
+        }
+        const settleStop = runtime.intentionalPtyStops.mark('local-pty', 'reversible', null)
+
+        const stopPromise = controller.stopAndWait('local-pty')
+        await vi.advanceTimersByTimeAsync(1_200)
+        await expect(stopPromise).resolves.toBe(true)
+        settleStop(true)
+
+        expect(
+          mainWindow.webContents.send.mock.calls.filter((call) => call[0] === 'pty:exit')
+        ).toEqual([
+          ['pty:exit', { id: 'local-pty', code: 0, hostId: 'local', preserveRendererBinding: true }]
+        ])
+      })
+      it('splits the teardown budget so the liveness RPC gets only what shutdown left', async () => {
+        // Why: sequential RPCs must share one absolute deadline; otherwise both get
+        // the full ~9.5s bound and their sum overruns the 10s sweep deadline (Finding 1).
+        // Fake timers freeze Date.now() at entry, then let the shutdown RPC burn a
+        // deterministic slice of the budget so the leaf-observed remainders are provable.
+        vi.useFakeTimers()
+        // Each provider call records the budget an RPC leaf would see at issue time.
+        const remainingAtLeaf: number[] = []
+        const shutdown = vi.fn(async (_id: string, opts?: { deadlineMs?: number }) => {
+          remainingAtLeaf.push((opts?.deadlineMs ?? 0) - Date.now())
+          await new Promise<void>((resolve) => setTimeout(resolve, 1000))
+        })
+        const listProcesses = vi.fn(async (opts?: { deadlineMs?: number }) => {
+          remainingAtLeaf.push((opts?.deadlineMs ?? 0) - Date.now())
+          return []
+        })
+        setLocalPtyProvider({
+          spawn: vi.fn(),
+          write: vi.fn(),
+          resize: vi.fn(),
+          shutdown,
+          sendSignal: vi.fn(),
+          getCwd: vi.fn(),
+          getInitialCwd: vi.fn(),
+          clearBuffer: vi.fn(),
+          acknowledgeDataEvent: vi.fn(),
+          hasChildProcesses: vi.fn(),
+          getForegroundProcess: vi.fn(),
+          serialize: vi.fn(),
+          revive: vi.fn(),
+          onData: vi.fn(() => () => {}),
+          onReplay: vi.fn(() => () => {}),
+          onExit: vi.fn(() => () => {}),
+          listProcesses,
+          attach: vi.fn(),
+          getDefaultShell: vi.fn(),
+          getProfiles: vi.fn()
+        } as never)
+        const runtime = {
+          setPtyController: vi.fn(),
+          onPtyExit: vi.fn()
+        }
+        handlers.clear()
+        registerPtyHandlers(mainWindow as never, runtime as never)
+        const controller = runtime.setPtyController.mock.calls[0]?.[0] as {
+          stopAndWait: (
+            ptyId: string,
+            opts?: { keepHistory?: boolean; deadlineMs?: number }
+          ) => Promise<boolean>
+        }
+
+        const deadlineMs = Date.now() + 4321
+        const stopPromise = controller.stopAndWait('local-pty', { deadlineMs })
+        await vi.advanceTimersByTimeAsync(1000)
+        await expect(stopPromise).resolves.toBe(true)
+
+        // Both calls carry the same absolute deadline...
+        expect(shutdown).toHaveBeenCalledWith(
+          'local-pty',
+          expect.objectContaining({ immediate: true, deadlineMs })
+        )
+        // ...so at the leaves the shutdown RPC sees the full 4321ms budget, while the
+        // SUBSEQUENT liveness list RPC sees only what shutdown left: the 1000ms it
+        // consumed is gone, so 4321 - 1000 = 3321 remain until the shared deadline.
+        expect(remainingAtLeaf).toEqual([4321, 3321])
+        vi.useRealTimers()
       })
     })
   })

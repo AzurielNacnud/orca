@@ -24,10 +24,7 @@ import type {
 } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionChildExit } from './structured-agent-session-child-exit'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
-import {
-  markStructuredQueueReopen,
-  structuredAgentSessionHostInstance
-} from './structured-agent-session-queued-pause'
+import { markStructuredQueueReopen } from './structured-agent-session-queued-pause'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
 import type { AgentSessionResumeTrigger } from '../../../shared/agent-session-resume-marker'
 import {
@@ -49,6 +46,8 @@ export type StructuredAgentSessionLifetimeContext = {
   now: () => number
   /** Re-projects the session's status after its agent stopped and the chat stays. */
   publishStatus?: (sessionId: string) => void
+  /** A generation ended (`StructuredAgentSessionClientDelivery.publishGenerationEnded`). */
+  generationEnded?: (sessionId: string) => void
   /** Hands the delivery loop what is queued; for a caller inside the session's serialize. */
   wakeDelivery?: (sessionId: string) => void
   /** The one exit handler (`structured-agent-session-child-exit`), for a caller inside the
@@ -86,7 +85,6 @@ export async function holdClosedStructuredAgentSessionSends(
   const { which } = close
   const settled = await holdUnsentSends(journal, {
     fence,
-    hostInstance: structuredAgentSessionHostInstance(),
     hold: { cause: 'chatClosed', ...(which ? { which } : {}) }
   }).then(
     (newest) => ({ ok: true, newest }),
@@ -117,12 +115,7 @@ export async function holdRestartedStructuredAgentSessionSends(
   journal: StructuredAgentSessionHostSession['journal'],
   fence: number
 ): Promise<void> {
-  const hostInstance = structuredAgentSessionHostInstance()
-  const settled = await holdUnsentSends(journal, {
-    fence,
-    hostInstance,
-    hold: { cause: 'hostRestarted' }
-  })
+  const settled = await holdUnsentSends(journal, { fence, hold: { cause: 'hostRestarted' } })
   if (settled !== null) {
     await markStructuredQueueReopen(sessionId, journal, fence, logger, settled + 1)
   }
@@ -156,6 +149,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       cause,
       ...('quit' in ending && ending.quit ? { quit: true as const } : {}),
       reason: ('reason' in ending ? ending.reason : undefined) ?? null,
+      ...('failure' in ending && ending.failure ? { failure: ending.failure } : {}),
       recorded,
       requestedAt: session.journal.cursor()
     }
@@ -195,6 +189,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
         journal: session.journal,
         sessionId,
         fence: child.fence,
+        rowFence: Math.max(child.fence, record?.lease.runtimeFence ?? child.fence),
         generation: child.generation ?? 'unknown',
         turnItemId: quitCuts,
         trigger: ending.quit,

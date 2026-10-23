@@ -27,6 +27,7 @@ import type { AgentSessionJournal } from './journal-store'
 import type { JournalWriteBody } from './journal-write-queue'
 import type { JournalAttachmentClaim } from './journal-submission-hook'
 import { claimAgentSessionAttachmentsInTransaction } from '../agent-session-attachments/agent-session-attachment-claims'
+import { isJournalStreamedTextRevision } from './journal-streamed-text-revision'
 
 export type JournalStoreHost = {
   /** Fires the journal's commit listener for a durable change that appended no
@@ -75,35 +76,27 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     database: host.database,
     readOnly: host.readOnly,
     highestFence: () => host.state().highestFence,
+    state: host.state,
     queuePauseRestatement: () =>
       journalQueuePauseRestatement(
         host.state().queuePauseMarks,
         host.state().latestAcceptedTurnSequence,
         host.journal().queuedMessages.pauses()
       ),
+    queueRestatement: () => host.journal().queuedMessages.restatement(),
     cursor: host.cursor,
     adopt: host.adopt
   })
-  const claimAttachments: JournalAttachmentClaim = (db, body, required) =>
+  const claimAttachments: JournalAttachmentClaim = (db, body, required, previous) =>
     claimAgentSessionAttachmentsInTransaction(db, {
       // Uploaded attachments are stored beside the journal database.
       stateDirectory: host.database().stateDirectory,
       sessionId: host.identity.sessionId,
       body,
       required,
+      ...(previous ? { previous } : {}),
       now: host.now()
     })
-  const queuedMessages = new JournalQueuedMessages({
-    sessionId: host.identity.sessionId,
-    now: host.now,
-    serialize: host.serialize,
-    database: host.database,
-    readOnly: host.readOnly,
-    state: host.state,
-    reopenFloor: () => host.journal().reopenFloor(),
-    committed: host.notifyCommitted,
-    claimAttachments
-  })
   const rowWriter = new JournalRowWriter({
     sessionId: host.identity.sessionId,
     now: host.now,
@@ -113,10 +106,18 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
     highestFence: () => host.state().highestFence,
     nextSequence: () => host.state().lastSequence + 1,
     commit: host.commit,
-    // Every rejection is a dispatch row through this one writer; the draft
-    // returned-transition rides it so no path can bypass the hook.
-    inTransaction: (db, row) => queuedMessages.onRowInTransaction(db, row),
-    rolledBack: () => queuedMessages.invalidate()
+    streamedTextRevision: (row) => isJournalStreamedTextRevision(host.state(), row)
+  })
+  const queuedMessages = new JournalQueuedMessages({
+    sessionId: host.identity.sessionId,
+    serialize: host.serialize,
+    database: host.database,
+    readOnly: host.readOnly,
+    state: host.state,
+    reopenFloor: () => host.journal().reopenFloor(),
+    writer: rowWriter,
+    committed: host.notifyCommitted,
+    claimAttachments
   })
   const lifecycleBatchAppender = new JournalLifecycleBatchAppender({
     state: host.state,
@@ -132,17 +133,10 @@ export function createJournalStoreCollaborators(host: JournalStoreHost): Journal
       writer: rowWriter,
       cards: queuedMessages
     }),
-    stops: new JournalStopAcceptor({
-      writer: rowWriter,
-      state: host.state,
-      liveTurnId: () => host.journal().activeTurnId()
-    }),
-    // Behind the stored fact: settles drafts whose consumed submission the loaded journal shows
-    // refused (a downgrade wrote no hook), then prunes. Bookkeeping, never failing the open.
+    stops: new JournalStopAcceptor({ writer: rowWriter, state: host.state }),
+    // Moves the cards an earlier build wrote into the journal, once per open; never fails it.
     restore: () =>
-      restoreJournalStore(host, { epochController }).then(() =>
-        queuedMessages.repairAndPruneAtOpen()
-      ),
+      restoreJournalStore(host, { epochController }).then(() => queuedMessages.importAtOpen()),
     rowWriter,
     submissionWriter: new JournalSubmissionWriter({
       state: host.state,

@@ -16,7 +16,7 @@ export const LIVENESS_PROBE_TIMEOUT_MS = 2_000
 const MAX_TOMBSTONES = 1000
 
 export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
-  async attach(id: string): Promise<Pick<PtySpawnResult, 'providerSequence'> | void> {
+  async attach(id: string): Promise<Pick<PtySpawnResult, 'providerSequence' | 'lastTitle'> | void> {
     await this.ensureConnected()
     if (!this.canDelegateBackgroundToDaemon) {
       this.setPtyBackgrounded(id, false)
@@ -41,7 +41,13 @@ export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
     if (result.exitedBeforeSpawnReply) {
       throw new SessionNotFoundError(id)
     }
-    return result.providerSequence ? { providerSequence: result.providerSequence } : undefined
+    // Why lastTitle: a runtime adopting a surviving session (e.g. a restarted server) never saw it.
+    return result.providerSequence || result.lastTitle
+      ? {
+          ...(result.providerSequence ? { providerSequence: result.providerSequence } : {}),
+          ...(result.lastTitle ? { lastTitle: result.lastTitle } : {})
+        }
+      : undefined
   }
 
   hasPty(id: string): boolean {
@@ -171,6 +177,14 @@ export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
       { sessionId: id, immediate: opts.immediate ?? false },
       remainingDaemonRequestTimeoutMs(opts.deadlineMs)
     )
+    await this.completeShutdownWithHistoryLock(id, opts)
+  }
+
+  /** Complete an explicit close without issuing another kill; the caller holds the spawn/history lock. */
+  protected async completeShutdownWithHistoryLock(
+    id: string,
+    opts: { keepHistory?: boolean }
+  ): Promise<void> {
     this.activeSessionIds.delete(id)
     this.clearSessionAwaitingDaemonRecovery(id)
     this.dirtySessionVersions.delete(id)

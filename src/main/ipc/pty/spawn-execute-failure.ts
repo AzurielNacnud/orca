@@ -1,3 +1,4 @@
+import type { PtyRegistrationClaim } from '../../runtime/runtime-terminal-state-records'
 import type { PtySpawnResult } from '../../providers/pty-provider-contract'
 import type { OrcaRuntimeService } from '../../runtime/orca-runtime'
 import { classifyError } from '../../telemetry/classify-error'
@@ -17,6 +18,7 @@ type PtySpawnExecuteState = {
   sessionSizeBeforeAttach: { cols: number; rows: number } | undefined
   preparedProvisionalExecutionContext: boolean
   pendingRegistrationPtyId: string | null
+  pendingRegistrationClaim?: PtyRegistrationClaim
   rejectedRegistrationCandidate: PtySpawnResult | null
 }
 
@@ -29,8 +31,8 @@ export function failPtySpawnExecute(
     /** This spawn minted the session id, so the state built for it must go. */
     ownsNewSession: boolean
     telemetry: { agent_kind?: unknown } | undefined
-    // TEMPORARY(C5a-2): keeps host starts out of agent_error as on main; C5a-2 deletes this input.
-    recordsAgentError: boolean
+    /** This request awaited another request's claimed start, whose own catch records its failure. */
+    joinedAnotherStart?: boolean
   }
 ): Error {
   const runtime = ctx.deps.runtime
@@ -42,17 +44,11 @@ export function failPtySpawnExecute(
       resetIncarnation: true
     })
   }
-  const rawMessage = err instanceof Error ? err.message : String(err)
-  if (rawMessage === 'agent_session_exited_during_start' && ctx.rejectedRegistrationCandidate) {
-    runtime?.releaseRejectedPtyRegistrationFence?.(
-      ctx.rejectedRegistrationCandidate.id,
-      ctx.rejectedRegistrationCandidate.incarnationId
-    )
-  }
   if (ctx.pendingRegistrationPtyId) {
     runtime?.cancelPendingPtyRegistration?.(
       ctx.pendingRegistrationPtyId,
-      ctx.rejectedRegistrationCandidate?.incarnationId
+      ctx.rejectedRegistrationCandidate?.incarnationId,
+      ctx.pendingRegistrationClaim
     )
     ctx.pendingRegistrationPtyId = null
   }
@@ -79,7 +75,7 @@ export function failPtySpawnExecute(
     : ctx.isClaudeLaunch
       ? ('claude-code' as const)
       : null
-  if (lane.recordsAgentError && agentKind) {
+  if (agentKind && !lane.joinedAnotherStart) {
     track('agent_error', {
       agent_kind: agentKind,
       error_class: classifyError(spawnError).error_class,

@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { translate } from '@/i18n/i18n'
-import { buildJiraPresetJql } from '../../../shared/jira-preset-jql'
+import { buildJiraPresetJql } from '../../../shared/jira/jira-preset-jql'
 import {
   getJiraStatusCatalogScopeKey,
   includeSelectedJiraStatuses
@@ -60,7 +60,7 @@ export function TaskPageJiraStatusFilters({
     jiraQuickFiltersLoading ||
     jiraQuickFiltersPending ||
     jiraSavedFiltersPending
-  if (jiraSearchInput.trim()) {
+  if (jiraSearchInput.trim() || model.jiraFavouriteFilter) {
     return selectedJiraStatuses.length ? (
       <p className="mt-2 text-xs text-muted-foreground">
         {translate(

@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises'
 import { FOLDER_WORKSPACE_INSTANCE_SEPARATOR } from '../../shared/worktree/id'
 import type { Repo } from '../../shared/repo-types'
 import type { Worktree } from '../../shared/worktree/types'
-import { isENOENT } from '../ipc/filesystem-auth'
+import { isENOENT } from '../ipc/filesystem-path-containment'
 import {
   getLocalWorktreePathAccess,
   toLocalWorktreeRuntimePath
@@ -18,6 +18,8 @@ import {
   mergeRuntimeFolderWorkspace
 } from './runtime-folder-workspace'
 import type { RuntimeStore } from './runtime-store-contract'
+import { isWslMoveRepoBlocked } from '../persistence/moving-wsl-projects/wsl-move-background-backoff'
+import { hostWorktreeTargetForRepo } from '../persistence/host-qualified-worktree-meta'
 
 /** Callers hold a local removal route; an `ssh:` or `runtime:` host is refused before this. */
 export async function isLocalRuntimeWorktreePathMissing(
@@ -44,6 +46,8 @@ export function listRuntimeFolderWorkspaces(
   const rootId = getRuntimeFolderWorkspaceRootId(repo)
   const allMeta = store.getAllWorktreeMeta()
   const expectedHostId = getRepoExecutionHostId(repo)
+  // A project a WSL move is taking still lists, without stamping identities it lacks.
+  const canWrite = !isWslMoveRepoBlocked(repo)
   const ids = Object.keys(allMeta).filter(
     (worktreeId) =>
       isRuntimeFolderWorkspaceIdForRepo(repo, worktreeId) &&
@@ -58,12 +62,12 @@ export function listRuntimeFolderWorkspaces(
     const existing = getRepoOwnedWorktreeMeta(repo, worktreeId, allMeta, repoOwnerCount)
     const meta: Partial<WorktreeMeta> = existing?.instanceId
       ? existing
-      : existing || repoOwnerCount === 1
-        ? store.setWorktreeMeta(worktreeId, {
+      : canWrite && (existing || repoOwnerCount === 1)
+        ? store.setWorktreeMeta(hostWorktreeTargetForRepo(worktreeId, repo), {
             instanceId: getRuntimeFolderWorkspaceInstanceIdentity(repo, worktreeId),
             ...(existing ? {} : { displayName: repo.displayName, lastActivityAt: Date.now() })
           })
-        : {}
+        : (existing ?? {})
     return {
       ...mergeRuntimeFolderWorkspace(repo, worktreeId, meta),
       hostId: repoOwnerCount === 1 ? (meta.hostId ?? expectedHostId) : expectedHostId

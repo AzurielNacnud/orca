@@ -6,6 +6,7 @@ import { readGitCommandFailureText } from '../../shared/git-command-failure-text
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { GitAdmissionTier } from '../../shared/rpc-contract/git-admission-tier-params'
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
+import type { WorktreeCheckoutProgressListener } from './worktree-checkout-progress'
 
 export type AddWorktreeResult = {
   localBaseRefRefresh?: LocalBaseRefRefreshResult
@@ -22,6 +23,7 @@ export type GitWorktreeExecOptions = {
   timeout?: number
   includeCreatePreparations?: boolean
   admissionTier?: GitAdmissionTier
+  spawnOnWorkerThread?: boolean
 }
 
 export type WorktreeRemovalPreflightOptions = GitWorktreeExecOptions & {
@@ -30,6 +32,8 @@ export type WorktreeRemovalPreflightOptions = GitWorktreeExecOptions & {
 
 export type AddWorktreeOptions = GitWorktreeExecOptions & {
   checkoutExistingBranch?: boolean
+  /** Progress of the checkout `git worktree add` performs; never called for `--no-checkout`. */
+  onCheckoutProgress?: WorktreeCheckoutProgressListener
   suggestLocalBaseRefUpdate?: boolean
   remoteTrackingBase?: {
     base: string
@@ -88,6 +92,7 @@ export type GitExecOptionsForWorktree = {
   signal?: AbortSignal
   timeout?: number
   admissionTier?: GitAdmissionTier
+  spawnOnWorkerThread?: boolean
 }
 
 export function gitExecOptions(
@@ -99,7 +104,8 @@ export function gitExecOptions(
     ...(options.wslDistro ? { wslDistro: options.wslDistro } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
     ...(options.timeout ? { timeout: options.timeout } : {}),
-    ...(options.admissionTier ? { admissionTier: options.admissionTier } : {})
+    ...(options.admissionTier ? { admissionTier: options.admissionTier } : {}),
+    ...(options.spawnOnWorkerThread ? { spawnOnWorkerThread: true } : {})
   }
 }
 
