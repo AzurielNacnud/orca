@@ -84,7 +84,9 @@ function gate() {
 }
 
 // Count actual comparisons/visited nodes without replacing lookup or traversal decisions.
-function observeSession(store: ReturnType<typeof createPaneBindingStore>) {
+function observeSession(
+  store: Pick<ReturnType<typeof createPaneBindingStore>, 'getWorkspaceSession'>
+) {
   const counts = { tabs: 0, nodes: 0, reads: 0, fallback: false }
   const arrays = new WeakSet<object>()
   const nodes = new WeakSet<object>()
@@ -140,7 +142,7 @@ function mapRoots() {
   ]
   const payloads = new Set<object>()
   for (const root of roots) {
-    const result = 'result' in root ? root.result : root.outcome?.result
+    const result = 'count' in root ? root.result : root.outcome?.result
     if (result?.coldRestore) {
       payloads.add(result.coldRestore)
     }
@@ -218,7 +220,7 @@ describe('shared terminal spawn operation/retention scaling contract', () => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: existing mutable durable Store fixture implements this flow's I/O boundary.
       store as never
     )
-    const hostStart = installed.mock.calls.at(-1)?.[0].spawn
+    const hostStart = installed.mock.calls.at(-1)?.[0]?.spawn
     if (!hostStart) {
       throw new Error('missing runtime controller')
     }
@@ -399,9 +401,10 @@ describe('shared terminal spawn operation/retention scaling contract', () => {
         }
         if (layout && outcome === 'successor') {
           layout.ptyIdsByLeafId = { [panes[0]!.leafId]: 'successor' }
-          store.getWorkspaceSession().terminalPtyIncarnationsByPaneKey[
-            makePaneKey(panes[0]!.tabId, panes[0]!.leafId)
-          ] = 'successor-inc'
+          const session = store.getWorkspaceSession()
+          session.terminalPtyIncarnationsByPaneKey ??= {}
+          session.terminalPtyIncarnationsByPaneKey[makePaneKey(panes[0]!.tabId, panes[0]!.leafId)] =
+            'successor-inc'
         }
         return value
       })
