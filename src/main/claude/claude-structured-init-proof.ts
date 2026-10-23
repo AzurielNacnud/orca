@@ -61,6 +61,7 @@ export function readClaudeReportedPermissionMode(
       return 'auto'
     case 'bypassPermissions':
       return 'full-access'
+    case null:
     default:
       return null
   }
