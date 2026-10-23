@@ -8,6 +8,8 @@ import {
   getBrowserProfilesForHost,
   getDefaultBrowserProfileForHost
 } from '@/store/slices/browser/browser-host-state'
+import { resolveNewBrowserTabProfile } from '@/store/slices/browser/browser-new-tab-profile'
+import { getManagedBrowserProfileOwner } from '../../../shared/browser-profile-scope'
 
 function createPartitionResolver(
   state: AppState,
@@ -36,12 +38,23 @@ function createPartitionResolver(
 
 export function resolveBrowserLinkSession(
   state: AppState,
+  worktreeId: string,
   hostId: ExecutionHostId
 ): { sessionProfileId: string | null; sessionPartition: string | null } {
-  const sessionProfileId = getDefaultBrowserProfileForHost(state, hostId)
+  const hostKind = parseExecutionHostId(hostId)?.kind
+  const owner =
+    hostKind === 'local' || hostKind === 'ssh'
+      ? getManagedBrowserProfileOwner(state.settings?.browserProfileScope, worktreeId)
+      : null
+  const profile = owner
+    ? resolveNewBrowserTabProfile(state, worktreeId, hostId)
+    : { sessionProfileId: getDefaultBrowserProfileForHost(state, hostId) }
   return {
-    sessionProfileId,
-    sessionPartition: createPartitionResolver(state, hostId)(sessionProfileId, null)
+    sessionProfileId: profile.sessionProfileId,
+    sessionPartition: createPartitionResolver(state, hostId)(
+      profile.sessionProfileId,
+      profile.sessionPartition
+    )
   }
 }
 

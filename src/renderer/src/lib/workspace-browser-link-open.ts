@@ -50,7 +50,7 @@ export function workspaceBrowserLinkDestination(
     executionHostId,
     browserRuntimeEnvironmentId: runtimeId,
     profileHostId: sessionHostId,
-    ...resolveBrowserLinkSession(state, sessionHostId),
+    ...resolveBrowserLinkSession(state, request.workspaceId, sessionHostId),
     resource: { kind: 'website', url: request.url }
   }
 }

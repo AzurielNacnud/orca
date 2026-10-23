@@ -122,7 +122,9 @@ export function openDetectedFilePath(
     let hostGrantId: string | null = null
     let clientLocal = false
     if (!fileContext.sourceHostResolved) {
-      if (refuseExplicitNonEditorRoute()) return
+      if (refuseExplicitNonEditorRoute()) {
+        return
+      }
       // Why: with no owner the host is unknown — refuse rather than touch this machine's files.
       deps.onOpenFailure?.({
         verdict: 'unverifiable',

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type * as BrowserFocusModule from '@/components/browser-pane/host-guest/browser-focus'
 import type { RuntimeMobileSessionBrowserTab } from '../../../shared/runtime-types'
+import { getDefaultSettings } from '../../../shared/constants'
 import { useAppStore } from '../store'
 import { openWorkspaceBrowserTabForLink } from '../lib/workspace-browser-tab-open'
 import { selectBrowserLinkDestination } from '../lib/browser-link-destination'
@@ -130,9 +131,14 @@ function selectDestination() {
 }
 
 it.each([undefined, null])(
-  'keeps the remote default independent of a local profile (%s)',
+  'keeps the remote default independent of local workspace profiles (%s)',
   async (remoteDefault) => {
     useAppStore.setState({
+      settings: {
+        ...getDefaultSettings('/home/test'),
+        ...useAppStore.getState().settings,
+        browserProfileScope: 'worktree'
+      },
       defaultBrowserSessionProfileId: 'local-only-profile',
       defaultBrowserSessionProfileIdByHostId: { local: 'local-only-profile', [HOST]: remoteDefault }
     })

@@ -46,7 +46,7 @@ export function openPlannedFileBrowserLink(
       executionHostId,
       browserRuntimeEnvironmentId: null,
       profileHostId: LOCAL_EXECUTION_HOST_ID,
-      ...resolveBrowserLinkSession(state, LOCAL_EXECUTION_HOST_ID),
+      ...resolveBrowserLinkSession(state, params.worktreeId, LOCAL_EXECUTION_HOST_ID),
       resource:
         plan.status === 'doc-preview'
           ? { kind: 'document', docLocation }

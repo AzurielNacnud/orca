@@ -87,7 +87,7 @@ export function canOfferHttpLinkGroupAction(
       executionHostId: route.executionHostId,
       browserRuntimeEnvironmentId: owner.runtimeEnvironmentId,
       profileHostId,
-      ...resolveBrowserLinkSession(state, profileHostId),
+      ...resolveBrowserLinkSession(state, request.workspaceId, profileHostId),
       resource: { kind: 'website', url: request.url }
     },
     intent
