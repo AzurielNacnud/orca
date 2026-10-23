@@ -92,6 +92,10 @@ class SyncDatabase {
     this.db.exec(sql)
   }
 
+  function(...args: Parameters<DatabaseSync['function']>): void {
+    this.db.function(...args)
+  }
+
   prepare(sql: string): SqliteStatement {
     const cached = this.statementCache.get(sql)
     if (cached) {

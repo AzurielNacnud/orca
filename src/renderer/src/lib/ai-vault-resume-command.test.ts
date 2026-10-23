@@ -1,5 +1,6 @@
+import { getDefaultSettings } from '../../../shared/constants'
+import { TEST_REPO, makeWorktree } from '../store/slices/worktrees-slice-test-fixtures'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AppState } from '@/store/types'
 import {
   getAiVaultAgentProviderSession,
   buildAiVaultResumeCopyCommandForWorktree,
@@ -17,18 +18,9 @@ afterEach(() => {
 
 type RuntimePreference = { kind: 'windows-host' } | { kind: 'wsl'; distro: string }
 
-type AiVaultResumeCommandState = Pick<
-  AppState,
-  | 'activeRepoId'
-  | 'activeWorktreeId'
-  | 'folderWorkspaces'
-  | 'projectGroups'
-  | 'endpointProjects'
-  | 'endpointProjectHostSetups'
-  | 'repos'
-  | 'settings'
-  | 'worktreesByRepo'
->
+type AiVaultResumeCommandState = Parameters<
+  typeof buildAiVaultResumeCopyCommandForWorktree
+>[0]['state']
 
 function makeState(args: {
   worktreePath: string
@@ -40,7 +32,7 @@ function makeState(args: {
     activeWorktreeId: 'repo-1::worktree-1',
     folderWorkspaces: [],
     projectGroups: [],
-    repos: [{ id: 'repo-1', path: 'C:\\Users\\alice\\repo' }],
+    repos: [{ ...TEST_REPO, id: 'repo-1', path: 'C:\\Users\\alice\\repo' }],
     endpointProjectHostSetups: [
       {
         id: 'repo-1',
@@ -58,6 +50,10 @@ function makeState(args: {
     endpointProjects: [
       {
         id: 'repo-1',
+        displayName: 'repo',
+        badgeColor: '',
+        createdAt: 0,
+        updatedAt: 0,
         sourceRepoIds: ['repo-1'],
         ...(args.localWindowsRuntimePreference
           ? { localWindowsRuntimePreference: args.localWindowsRuntimePreference }
@@ -65,6 +61,7 @@ function makeState(args: {
       }
     ],
     settings: {
+      ...getDefaultSettings('/tmp'),
       localWindowsRuntimeDefault: { kind: 'windows-host' },
       ...(args.terminalWindowsShell ? { terminalWindowsShell: args.terminalWindowsShell } : {}),
       agentDefaultArgs: { claude: '', codex: '' },
@@ -72,14 +69,14 @@ function makeState(args: {
     },
     worktreesByRepo: {
       'repo-1': [
-        {
+        makeWorktree({
           id: 'repo-1::worktree-1',
           repoId: 'repo-1',
           path: args.worktreePath
-        }
+        })
       ]
     }
-  } as unknown as AiVaultResumeCommandState
+  }
 }
 
 function buildQueuedAiVaultResumeCommand(

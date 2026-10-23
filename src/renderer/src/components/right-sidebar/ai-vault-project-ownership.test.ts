@@ -2,8 +2,11 @@ import { expect, it } from 'vitest'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
-import { buildAiVaultProjectContext } from './ai-vault-session-projects'
-import { resolveProjectHostSetupProjection } from '../../../../shared/project-host-setup-hydration'
+import {
+  buildAiVaultProjectContext,
+  buildAiVaultSessionProjectById
+} from './ai-vault-session-projects'
+import { resolveProjectHostSetupProjection } from '../../../../shared/project-catalog-canonical-projection'
 import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
 
 const baseSession: AiVaultSession = {
@@ -130,3 +133,40 @@ function makeWorktree(overrides: Partial<Worktree>): Worktree {
     ...overrides
   }
 }
+
+it('retains both hosts of a same-id repo for indexing-off managed history and prior workspace ownership', () => {
+  const local = makeRepo({ id: 'same', path: '/local/app', addedAt: 1 })
+  const remote = makeRepo({
+    ...local,
+    path: '/remote/app',
+    executionHostId: 'runtime:remote',
+    addedAt: 2
+  })
+  const repos = [local, remote]
+  const projection = resolveProjectHostSetupProjection(repos, [], [])
+  const sessions = [
+    makeSession({ id: 'local-managed', cwd: '/managed/app/topic' }),
+    makeSession({
+      id: 'remote-managed',
+      cwd: '/managed/app/topic',
+      executionHostId: 'runtime:remote'
+    }),
+    makeSession({ id: 'prior', cwd: '/prior/topic' })
+  ]
+  const rows = buildAiVaultSessionProjectById({
+    repos,
+    projectHostSetupProjection: projection,
+    sessions,
+    worktrees: [
+      makeWorktree({
+        id: 'same::/current',
+        repoId: 'same',
+        hostId: 'local',
+        path: '/current',
+        priorWorktreeIds: ['same::/prior']
+      })
+    ],
+    settings: { workspaceDir: '/managed', nestWorkspaces: true }
+  })
+  expect([...rows.values()].map((row) => row.key)).toEqual(['repo:same', 'repo:same', 'repo:same'])
+})

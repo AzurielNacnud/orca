@@ -5,11 +5,8 @@ import type {
   AiVaultSearchResponse
 } from '../../shared/ai-vault-search-types'
 import type { ExecutionHostId } from '../../shared/execution-host'
-import {
-  searchAllExecutionHosts,
-  type SessionSearchHostLeg
-} from '../../shared/ai-vault-search-page-walk'
-import { encodeMergedSearchCursor } from '../../shared/ai-vault-search-merged-cursor'
+import { searchAllExecutionHosts, type SessionSearchHostLeg } from './ai-vault-search-all-hosts'
+import { encodeMergedSearchCursor } from './ai-vault-search-merged-cursor'
 
 /** A host that ranks a fixed list and fences its own cursors on a generation change. */
 class StubHost {
@@ -130,20 +127,29 @@ it('answers an empty merge when no host is reachable to ask', async () => {
   })
 })
 
-it('asks every leg for the merged order and passes freshness through unchanged', async () => {
+it('asks every leg for the merged order and passes both Project keys and freshness unchanged', async () => {
   const host = new StubHost('local', sessions('a', 2))
+  const remote = new StubHost('runtime:remote', sessions('b', 2))
+  const within = {
+    kind: 'project' as const,
+    projectKey: 'project:P',
+    canonicalProjectKey: 'repo:b'
+  }
   await searchAllExecutionHosts(
     {
       query: 'needle',
       freshness: 'wait-until-current',
+      within,
       filters: { sort: 'newest' },
       debug: true
     },
-    [host.leg()]
+    [host.leg(), remote.leg()]
   )
+  expect(remote.lastRequests[0]).toEqual(host.lastRequests[0])
   expect(host.lastRequests[0]).toEqual({
     query: 'needle',
     freshness: 'wait-until-current',
+    within,
     filters: { sort: 'newest' }
   })
 })

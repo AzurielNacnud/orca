@@ -27,10 +27,7 @@ import {
 } from '../../shared/execution-host'
 import { redactStatusForTransport } from '../../shared/ai-vault-search-transport'
 import { clearSessionSearchInService } from '../ai-vault/session-scanner-service-spawn'
-import {
-  searchAllExecutionHosts,
-  type SessionSearchHostLeg
-} from '../../shared/ai-vault-search-page-walk'
+import { searchAllExecutionHosts, type SessionSearchHostLeg } from './ai-vault-search-all-hosts'
 import { getActiveRuntimeAiVaultHostInfosResult } from './ai-vault'
 import { AI_VAULT_ALL_HOST_TIMEOUT_MS } from './ai-vault-all-host-timeouts'
 import {
@@ -46,6 +43,9 @@ export type RuntimeSessionSearchCall = (
 
 export type AiVaultSearchHandlerOptions = {
   callRuntimeSearch?: RuntimeSessionSearchCall
+  bindRuntimeSearch?: (
+    environmentId: string
+  ) => (method: string, params: Record<string, unknown>) => Promise<unknown>
   ensureStructuredSessionOwnership?: () => Promise<void>
 }
 
@@ -232,8 +232,9 @@ function remoteSearchClient(
 ): ReturnType<typeof createSessionSearchClient> | null {
   if (host.kind === 'runtime' && call) {
     const { environmentId } = host
+    const bound = handlerOptions.bindRuntimeSearch?.(environmentId)
     return createSessionSearchClient(
-      (method, params) => call(environmentId, method, params),
+      bound ?? ((method, params) => call(environmentId, method, params)),
       'relay'
     )
   }

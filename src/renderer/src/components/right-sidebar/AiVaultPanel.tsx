@@ -63,7 +63,8 @@ export default function AiVaultPanel({
   const {
     workspaceId: activeWorktreeId,
     worktree: activeWorktree,
-    repo: activeRepo
+    repo: activeRepo,
+    legacyProjectKey
   } = useAiVaultPanelWorkspace(workspace)
   const repos = useRepos()
   const allWorktrees = useAllWorktrees()
@@ -155,11 +156,18 @@ export default function AiVaultPanel({
       aiVaultSearchScopeIdentity({
         scope,
         activeWorktreeId: activeWorktree?.id,
-        activeProjectKey
+        activeProjectKey: legacyProjectKey
       }),
-    [activeProjectKey, activeWorktree?.id, scope]
+    [legacyProjectKey, activeWorktree?.id, scope]
   )
-  const search = useAiVaultPanelSearch(query, agents, searchWithin, executionHostScope, searchSort)
+  const search = useAiVaultPanelSearch(
+    query,
+    agents,
+    searchWithin,
+    executionHostScope,
+    searchSort,
+    activeProjectKey ?? undefined
+  )
   const { searching, searchHits } = search
   const sessions = searching ? search.sessions : history
   const requestedScanKey = aiVaultLocalScanKey({
@@ -178,9 +186,10 @@ export default function AiVaultPanel({
         repos,
         worktrees: allWorktrees,
         projectHostSetupProjection,
+        settings,
         sessions
       }),
-    [allWorktrees, projectHostSetupProjection, repos, sessions]
+    [allWorktrees, projectHostSetupProjection, repos, sessions, settings]
   )
   const effectiveActiveWorktreeId = activeWorktreeId ?? activeWorktree?.id ?? null
   const {

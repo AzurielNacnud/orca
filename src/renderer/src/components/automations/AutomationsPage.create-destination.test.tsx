@@ -32,7 +32,6 @@ import {
 import { listedRow } from './automations-page-listed-items'
 import { makeAutomation, REPO_ID, WORKSPACE_ID } from './automations-page-fixtures'
 import type { Repo } from '../../../../shared/repo-types'
-import type { ProjectHostSetup } from '../../../../shared/project-types'
 
 installAutomationsPageHarness()
 
@@ -75,7 +74,7 @@ function addSshProject(): void {
   // Without a ready setup on that host the project has no run context, and a
   // save against it is refused before any destination is stated.
   mocks.state.endpointProjectHostSetups = [
-    ...(mocks.state.endpointProjectHostSetups as ProjectHostSetup[]),
+    ...mocks.state.endpointProjectHostSetups,
     {
       id: 'setup-ssh',
       projectId: 'project-ssh',
@@ -104,7 +103,7 @@ function addCollidingRuntimeProject(): void {
   } as Repo
   mocks.state.repos = [...(mocks.state.repos as Repo[]), repo]
   mocks.state.endpointProjectHostSetups = [
-    ...(mocks.state.endpointProjectHostSetups as ProjectHostSetup[]),
+    ...mocks.state.endpointProjectHostSetups,
     {
       id: 'setup-runtime-collision',
       projectId: 'project-runtime-collision',

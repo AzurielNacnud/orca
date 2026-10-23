@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { resolveProjectHostSetupProjection } from './project-host-setup-hydration'
+import { resolveProjectHostSetupProjection } from './project-catalog-canonical-projection'
 import { projectHostSetupProjectionFromRepos } from './project-host-setup-projection'
 import { adoptEndpointProjectCatalog, adoptEndpointRepo } from './endpoint-catalog-adoption'
 import type { Repo } from './repo-types'

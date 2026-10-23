@@ -1,7 +1,5 @@
-import {
-  getProjectHostSetupProjectionFromState,
-  type ProjectCatalogReadState
-} from '@/store/project-host-setup-selector'
+import type { WorktreeRuntimeOwnerState } from './worktree-runtime-owner-state'
+import { getProjectHostSetupProjectionFromState } from '@/store/project-host-setup-selector'
 import type { AppState } from '@/store/types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { parseWslUncPath } from '../../../shared/wsl-paths'
@@ -20,7 +18,8 @@ import { getIndexedRepoMap } from '@/store/worktree-repo-index'
 import { defaultScopeHost } from './default-creation-host'
 import {
   getLocalPreflightProjectId,
-  getLocalProjectRuntimeWorkspace
+  getLocalProjectRuntimeWorkspace,
+  type LocalProjectRuntimeState
 } from './local-project-runtime-workspace'
 import { getActiveWorkspaceOwnerTarget } from './resolved-worktree-execution-host'
 import { getEnvironmentRuntimeContextKey } from './provider-runtime-context'
@@ -44,13 +43,6 @@ export {
   _hasWslPreflightContextCacheEntryForTest,
   resetLocalPreflightContextCachesForTests
 } from './local-preflight-context-cache'
-
-type LocalProjectRuntimeState = Pick<
-  AppState,
-  'activeRepoId' | 'activeWorktreeId' | 'repos' | 'settings' | 'worktreesByRepo'
-> &
-  Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups'>> &
-  ProjectCatalogReadState
 
 // Why: the shared indexes are WeakMap-keyed on slice identity, so a fresh `{}`
 // or `[]` fallback would miss the cache on every read.
@@ -165,7 +157,7 @@ export function getLocalRepoProjectExecutionRuntimeContext(
 }
 
 export function getLocalPreflightContext(
-  state: AppState,
+  state: LocalProjectRuntimeState & WorktreeRuntimeOwnerState,
   appPlatform: NodeJS.Platform = getRendererAppPlatform(),
   wslContext: LocalProjectRuntimeWslContext = getCachedLocalProjectRuntimeWslContext()
 ): LocalPreflightContext {
@@ -188,7 +180,7 @@ export function getLocalPreflightContext(
 }
 
 export function getLocalAgentPreflightContext(
-  state: AppState,
+  state: LocalProjectRuntimeState & WorktreeRuntimeOwnerState,
   appPlatform: NodeJS.Platform = getRendererAppPlatform(),
   wslContext: LocalProjectRuntimeWslContext = getCachedLocalProjectRuntimeWslContext(),
   worktreeId?: string | null
@@ -268,7 +260,9 @@ export function getLocalAgentPreflightContext(
   return undefined
 }
 
-function isActiveWorkspaceOnAnotherHost(state: AppState): boolean {
+function isActiveWorkspaceOnAnotherHost(
+  state: LocalProjectRuntimeState & WorktreeRuntimeOwnerState
+): boolean {
   const activeWorktree = getLocalProjectRuntimeWorkspace(state, undefined)
   const repo = getLocalRuntimeRepoForWorktree(state, activeWorktree)
   return Boolean(repo) && (!isLocalRuntimeRepo(repo) || !isLocalRuntimeWorktree(activeWorktree))
@@ -287,7 +281,10 @@ function getCachedLocalProjectRuntimeWslContext(): LocalProjectRuntimeWslContext
   }
 }
 
-function getLocalPreflightWslDistro(state: AppState, worktreeId?: string | null): string | null {
+function getLocalPreflightWslDistro(
+  state: LocalProjectRuntimeState & WorktreeRuntimeOwnerState,
+  worktreeId?: string | null
+): string | null {
   const activeWorktree = getLocalProjectRuntimeWorkspace(state, worktreeId)
   const repo = getLocalRuntimeRepoForWorktree(state, activeWorktree)
   if (!isLocalRuntimeRepo(repo) || !isLocalRuntimeWorktree(activeWorktree)) {

@@ -8,6 +8,7 @@ import { getRepoHostIdentityForParts, getRepoSetupOwnerScope } from './repo-host
 import type { Repo } from './repo-types'
 import type { WorktreeMeta } from './worktree/meta-types'
 import { projectHostSetupProjectionFromRepos } from './project-host-setup-projection'
+import { resolveProjectHostSetupProjection } from './project-host-setup-hydration'
 
 type SetupOwner = Pick<ProjectHostSetup, 'projectId' | 'repoId'> &
   Partial<Pick<ProjectHostSetup, 'id' | 'hostId' | 'executionHostId' | 'connectionId'>>
@@ -119,10 +120,20 @@ export function getProjectHostSetupWorktreeMeta(
   setups: readonly ProjectHostSetup[],
   repo: Repo
 ): Pick<WorktreeMeta, 'projectId' | 'hostId' | 'projectHostSetupId'> {
-  const setup = getProjectHostSetupForRepo(setups, repo)
+  const setup = getProjectHostSetupForRepo(
+    resolveProjectHostSetupProjection([repo], [], setups).setups,
+    repo
+  )
   return {
     projectId: setup.projectId,
     hostId: setup.hostId,
     projectHostSetupId: setup.id
   }
+}
+
+export function getProjectHostSetupsForProject(
+  setups: readonly ProjectHostSetup[],
+  projectId: string
+): readonly ProjectHostSetup[] {
+  return setups.filter((setup) => setup.projectId === projectId)
 }

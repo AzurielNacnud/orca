@@ -3,7 +3,8 @@ import {
   projectHostSetupProjectionFromRepos,
   type ProjectHostSetupProjection
 } from '../../../shared/project-host-setup-projection'
-import { resolveProjectHostSetupProjection } from '../../../shared/project-host-setup-hydration'
+import { resolveProjectHostSetupProjection } from '../../../shared/project-catalog-canonical-projection'
+import { resolveProjectHostSetupProjection as resolveCompatibility } from '../../../shared/project-host-setup-hydration'
 import type { AppState } from './types'
 
 const derivedProjectionByRepos = new WeakMap<AppState['repos'], ProjectHostSetupProjection>()
@@ -71,3 +72,26 @@ export const selectCanonicalProjects = (
 export const selectCanonicalProjectHostSetups = (
   state: Parameters<typeof getProjectHostSetupProjectionFromState>[0]
 ) => getProjectHostSetupProjectionFromState(state).setups
+
+const compatibilityByCanonical = new WeakMap<
+  ProjectHostSetupProjection,
+  ProjectHostSetupProjection
+>()
+export function getProjectHostSetupCompatibilityFromState(
+  state: ProjectCatalogReadState
+): ProjectHostSetupProjection {
+  const canonical = getProjectHostSetupProjectionFromState({
+    ...state,
+    projectHostSetupProjection: undefined
+  })
+  let compatibility = compatibilityByCanonical.get(canonical)
+  if (!compatibility) {
+    compatibility = resolveCompatibility(
+      state.repos,
+      state.endpointProjects ?? [],
+      state.endpointProjectHostSetups ?? []
+    )
+    compatibilityByCanonical.set(canonical, compatibility)
+  }
+  return compatibility
+}

@@ -38,6 +38,8 @@ import {
 import { sessionRowFilter } from './session-search-row-filter'
 import { ensureSessionSearchQuerySchema } from './session-search-query-schema'
 import { EMPTY_SNIPPET, sessionSearchSnippet } from './session-search-snippet'
+import { sessionSearchProjectOwns } from './session-search-project-ownership'
+import type { SessionSearchProjectOwnership } from './session-search-project-ownership'
 import { sessionSourcePresence } from './session-search-source-presence'
 
 /**
@@ -76,11 +78,22 @@ export type SessionSearchEngineOptions = {
 export class SessionSearchEngine {
   private readonly retrieval: SessionSearchRetrieval
   private readonly candidateLimit: number
+  private ownership?: SessionSearchProjectOwnership
 
   constructor(
     private readonly db: SyncDatabase,
     private readonly options: SessionSearchEngineOptions = {}
   ) {
+    this.db.function('canonical_project_owns', { deterministic: true }, (cwd, filePath) =>
+      Number(
+        Boolean(
+          this.ownership &&
+          typeof cwd === 'string' &&
+          typeof filePath === 'string' &&
+          sessionSearchProjectOwns(this.ownership, cwd, filePath)
+        )
+      )
+    )
     this.candidateLimit = options.sessionCandidateLimit ?? SESSION_SEARCH_CANDIDATE_LIMIT_DEFAULT
     // Installed here and not on the first search, so the generation triggers are
     // watching before anything this engine will be asked to page over is
@@ -94,6 +107,7 @@ export class SessionSearchEngine {
   }
 
   search(request: SessionSearchRequest): SessionSearchResponse {
+    this.ownership = request.filters?.ownership
     const startedAt = performance.now()
     ensureSessionSearchQuerySchema(this.db)
     const generation = readIndexGeneration(this.db)
@@ -115,7 +129,13 @@ export class SessionSearchEngine {
     // cost a query, and the caller has to hear about it either way.
     const pageKey = sessionSearchPageKey(request)
     const offset = request.cursor
-      ? decodeSessionSearchCursor(request.cursor, generation, pageKey, incarnation)
+      ? decodeSessionSearchCursor(
+          request.cursor,
+          generation,
+          pageKey,
+          incarnation,
+          this.ownership?.fingerprint
+        )
       : 0
 
     const plan = planSessionSearchQuery(split.text)
@@ -142,7 +162,13 @@ export class SessionSearchEngine {
       page: {
         hasMore,
         cursor: hasMore
-          ? encodeSessionSearchCursor(generation, offset + limit, pageKey, incarnation)
+          ? encodeSessionSearchCursor(
+              generation,
+              offset + limit,
+              pageKey,
+              incarnation,
+              this.ownership?.fingerprint
+            )
           : null
       },
       truncated: {

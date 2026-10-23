@@ -4,7 +4,13 @@ import { unavailableSessionSearchStatus } from '../../../../shared/ai-vault-sear
 import { AI_VAULT_AGENTS } from '../../../../shared/ai-vault-types'
 
 const callRuntimeResult = vi.hoisted(() => vi.fn())
-vi.mock('./web-runtime-calls', () => ({ callRuntimeResult }))
+vi.mock('./web-runtime-calls', () => ({
+  callRuntimeResult,
+  callEnvironmentEnvelope: async (_selector: string, method: string, params: unknown) => ({
+    ok: true,
+    result: await callRuntimeResult(method, params)
+  })
+}))
 vi.mock('./web-runtime-session', () => ({
   requireActiveEnvironment: () => ({ id: 'owning-host' })
 }))

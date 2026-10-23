@@ -17,6 +17,13 @@ import { selectWorktreesByRepo } from '@/store/workspace-record-selectors'
 type RuntimeWorkspaceState = Pick<AppState, 'activeWorktreeId' | 'repos' | 'worktreesByRepo'> &
   Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups'>>
 
+export type LocalProjectRuntimeState = Pick<
+  AppState,
+  'activeRepoId' | 'activeWorktreeId' | 'repos' | 'settings' | 'worktreesByRepo'
+> &
+  Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups'>> &
+  ProjectCatalogReadState
+
 const EMPTY_WORKTREES_BY_REPO: AppState['worktreesByRepo'] = {}
 
 export function getLocalProjectRuntimeWorkspace(

@@ -19,7 +19,7 @@ export function selfScopedList(automations: Automation[]): Record<string, unknow
 }
 
 type RuntimeFixtureMocks = {
-  state: Record<string, unknown>
+  state: Record<string, unknown> & { endpointProjectHostSetups: ProjectHostSetup[] }
   repoMap: Map<string, unknown>
   worktreeMap: Map<string, unknown>
 }
@@ -55,7 +55,7 @@ export function addRuntimeProject(mocks: RuntimeFixtureMocks, runtimeId: string)
     updatedAt: 1
   }
   const repos = mocks.state.repos as Repo[]
-  const setups = mocks.state.endpointProjectHostSetups as ProjectHostSetup[]
+  const setups = mocks.state.endpointProjectHostSetups
   const worktreesByRepo = mocks.state.worktreesByRepo as Record<string, Worktree[]>
   mocks.state.repos = [...repos, repo]
   mocks.state.endpointProjectHostSetups = [...setups, setup]

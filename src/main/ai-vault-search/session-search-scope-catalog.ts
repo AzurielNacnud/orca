@@ -1,3 +1,4 @@
+import type { ExecutionHostId } from '../../shared/execution-host'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Project, ProjectHostSetup } from '../../shared/project-types'
 import type { Repo } from '../../shared/repo-types'
@@ -7,16 +8,10 @@ import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 // Persisted state, never a git scan: a handful of prefixes answers a search that
 // enumerating hundreds of working trees would not.
 export type SessionSearchScopeCatalog = {
-  repos: readonly Pick<
-    Repo,
-    'id' | 'path' | 'kind' | 'worktreeBasePath' | 'connectionId' | 'executionHostId'
-  >[]
-  projects: readonly Pick<Project, 'id' | 'sourceRepoIds'>[]
-  projectHostSetups: readonly (Pick<
-    ProjectHostSetup,
-    'projectId' | 'repoId' | 'path' | 'worktreeBasePath'
-  > &
-    Partial<Pick<ProjectHostSetup, 'id' | 'hostId' | 'executionHostId' | 'connectionId'>>)[]
+  repos: readonly Repo[]
+  projects: readonly Project[]
+  projectHostSetups: readonly ProjectHostSetup[]
+  executionHostId?: ExecutionHostId
   /** Registered workspaces of this host, keyed by worktree id. */
   worktreeMeta: Readonly<
     Record<

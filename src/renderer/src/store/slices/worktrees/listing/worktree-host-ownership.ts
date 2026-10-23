@@ -1,5 +1,5 @@
 import {
-  getProjectHostSetupProjectionFromState,
+  getProjectHostSetupCompatibilityFromState,
   type ProjectCatalogReadState
 } from '@/store/project-host-setup-selector'
 import type { AppState } from '../../../types'
@@ -130,7 +130,7 @@ export function getProjectHostSetupForRepoHost(
   repoId: string,
   hostId: ExecutionHostId
 ): ProjectHostSetup | undefined {
-  return getProjectHostSetupProjectionFromState(state).setups.find(
+  return getProjectHostSetupCompatibilityFromState(state).setups.find(
     (setup) => setup.repoId === repoId && setup.hostId === hostId
   )
 }

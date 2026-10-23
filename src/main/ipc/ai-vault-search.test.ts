@@ -273,3 +273,32 @@ describe('local search hits owned by a native chat', () => {
     warn.mockRestore()
   })
 })
+
+it('binds the desktop leg once before awaited agent status and reuses the producer address', async () => {
+  const bound = vi.fn(async (method: string) =>
+    method === 'aiVault.searchStatus'
+      ? { ...unavailableSessionSearchStatus(), supportedAgents: ['codex'] }
+      : searchResults()
+  )
+  const bindRuntimeSearch = vi.fn(() => bound)
+  registerAiVaultSearchHandlers({ callRuntimeSearch: runtimeSearch, bindRuntimeSearch })
+  const within = {
+    kind: 'project' as const,
+    projectKey: 'project:P',
+    canonicalProjectKey: 'repo:b'
+  }
+  await aiVaultApi.searchSessions(
+    { query: 'needle', filters: { agents: ['codex'] }, within },
+    'runtime:selected'
+  )
+  expect(bindRuntimeSearch).toHaveBeenCalledExactlyOnceWith('selected')
+  expect(bound.mock.calls.map(([method]) => method)).toEqual([
+    'aiVault.searchStatus',
+    'aiVault.searchSessions'
+  ])
+  expect(bound).toHaveBeenLastCalledWith(
+    'aiVault.searchSessions',
+    expect.objectContaining({ within })
+  )
+  expect(runtimeSearch).not.toHaveBeenCalled()
+})

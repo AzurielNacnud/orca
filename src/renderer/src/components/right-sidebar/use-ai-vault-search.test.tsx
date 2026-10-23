@@ -1,8 +1,6 @@
-import { useAppStore } from '@/store'
+import { createSessionSearchClient } from '../../../../shared/ai-vault-search-client'
+import { AiVaultSearchRequestSchema } from '../../../../shared/ai-vault-search-contract'
 import type * as StoreModule from '@/store'
-import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
-import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
-import type { Repo } from '../../../../shared/repo-types'
 // @vitest-environment happy-dom
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -399,50 +397,29 @@ it('keeps full-text search for a host that is merely not ready', async () => {
   unmount()
 })
 
-it('reaches native Project search with the store workspace index and current independent owner', async () => {
-  const repos: Repo[] = ['a', 'b'].map((id, index) => ({
-    id,
-    path: `/${id}`,
-    displayName: id,
-    badgeColor: '',
-    addedAt: index,
-    upstream: { owner: 'acme', repo: 'app' }
-  }))
-  const projection = projectHostSetupProjectionFromRepos(repos)
-  const shared = projection.setups.find((setup) => setup.repoId === 'a')!.projectId
-  useAppStore.setState({
-    repos,
-    endpointProjects: [{ ...projection.projects[0]!, sourceRepoIds: ['a', 'b'] }],
-    endpointProjectHostSetups: projection.setups.map((setup) => ({ ...setup, projectId: shared })),
-    worktreesByRepo: {
-      b: [
-        makeWorktree({
-          id: 'b::/linked/b',
-          repoId: 'b',
-          path: '/linked/b',
-          projectId: shared,
-          hostId: 'local'
-        })
-      ]
+// The real client parses before transport; top-level intent would disappear here.
+it('carries both Project identities through the actual panel parser and continuation', async () => {
+  const requests: AiVaultSearchRequest[] = []
+  const client = createSessionSearchClient(async (_method, params) => {
+    requests.push(AiVaultSearchRequestSchema.parse(params))
+    return {
+      ...empty,
+      page: { cursor: requests.length === 1 ? 'next' : null, hasMore: requests.length === 1 }
     }
-  })
-  searchSessions.mockResolvedValue({
-    ...searchResults(),
-    hits: [{ ...searchHit(), cwd: '/linked/b', sessionId: 'b-session' }]
-  })
-  const request: AiVaultSearchRequest = {
-    query: 'needle',
-    within: { kind: 'project', projectKey: 'repo:b' }
-  }
-  const hook = renderHook(() => useAiVaultSearch(request, 'local', ''))
+  }, 'ipc')
+  searchSessions.mockImplementation((request) => client.searchSessions(request))
+  const within = { kind: 'project', projectKey: 'project:shared' } as const
+  const { result, unmount } = renderHook(() =>
+    useAiVaultPanelSearch('needle', ALL_AGENTS, within, 'all', 'relevance', 'repo:b')
+  )
   await debounce()
-  expect(searchSessions.mock.calls[0]?.[0].within).toEqual({
-    kind: 'project',
-    projectKey: 'repo:b'
-  })
-  expect(hook.result.current.hits.map((hit) => hit.sessionId)).toEqual(['b-session'])
-  expect(
-    useAppStore.getState().endpointProjectHostSetups.every((setup) => setup.projectId === shared)
-  ).toBe(true)
-  hook.unmount()
+  act(() => result.current.loadMore())
+  await debounce()
+  expect(requests.map((request) => request.within)).toEqual([
+    { ...within, canonicalProjectKey: 'repo:b' },
+    { ...within, canonicalProjectKey: 'repo:b' }
+  ])
+  expect(requests.map((request) => request.cursor)).toEqual([undefined, 'next'])
+  expect(within).toEqual({ kind: 'project', projectKey: 'project:shared' })
+  unmount()
 })

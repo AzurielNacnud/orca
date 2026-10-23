@@ -11,10 +11,7 @@ import {
 } from '../ai-vault-search/session-search-indexer-test-fixture'
 import type { AiVaultSearchResponse } from '../../shared/ai-vault-search-types'
 import type { ExecutionHostId } from '../../shared/execution-host'
-import {
-  searchAllExecutionHosts,
-  type SessionSearchHostLeg
-} from '../../shared/ai-vault-search-page-walk'
+import { searchAllExecutionHosts, type SessionSearchHostLeg } from './ai-vault-search-all-hosts'
 
 /**
  * Three real indexes over real transcripts, wired as three legs. Everything a

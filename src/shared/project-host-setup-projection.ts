@@ -1,3 +1,4 @@
+import { normalizeSavedGitRemoteIdentity } from './git-remote-identity'
 import { getRepoExecutionHostId } from './execution-host'
 import {
   normalizeProjectHostSetupRow,
@@ -76,17 +77,6 @@ export function getGitRemoteProviderIdentity(
   )
 }
 
-function getProjectGitRemoteIdentity(
-  repo: Pick<Repo, 'gitRemoteIdentity'>
-): NonNullable<Repo['gitRemoteIdentity']> | null {
-  const identity = repo.gitRemoteIdentity
-  const canonicalKey =
-    typeof identity?.canonicalKey === 'string' ? identity.canonicalKey.trim() : ''
-  const remoteName = typeof identity?.remoteName === 'string' ? identity.remoteName.trim() : ''
-  const remoteUrl = typeof identity?.remoteUrl === 'string' ? identity.remoteUrl.trim() : ''
-  return canonicalKey && remoteName && remoteUrl ? { canonicalKey, remoteName, remoteUrl } : null
-}
-
 /** True when the repo resolves to a GitHub provider identity (via explicit
  *  upstream or a GitHub-sourced avatar icon). Used to scope GitHub-CLI setup
  *  prompts to users who actually have GitHub-backed projects. */
@@ -99,7 +89,10 @@ export function isGitHubBackedRepo(
 export function hasProjectRemoteIdentity(
   repo: Pick<Repo, 'upstream' | 'repoIcon' | 'gitRemoteIdentity'>
 ): boolean {
-  return getProjectProviderIdentity(repo) !== null || getProjectGitRemoteIdentity(repo) !== null
+  return (
+    getProjectProviderIdentity(repo) !== null ||
+    normalizeSavedGitRemoteIdentity(repo.gitRemoteIdentity) !== null
+  )
 }
 
 /** True while nothing has settled the repo's remote identity yet: the background
@@ -123,7 +116,7 @@ export function getProjectIdentityKey(
   if (identity) {
     return getProjectIdForProviderIdentity(identity)
   }
-  const gitRemoteIdentity = getProjectGitRemoteIdentity(repo)
+  const gitRemoteIdentity = normalizeSavedGitRemoteIdentity(repo.gitRemoteIdentity)
   if (gitRemoteIdentity) {
     return `${GIT_REMOTE_PROJECT_ID_PREFIX}${gitRemoteIdentity.canonicalKey}`
   }
@@ -259,7 +252,7 @@ export function mergeCatalogUpdatedAt(left: number, right: number): number {
 
 function createProjectFromRepo(repo: Repo, projectId: string): Project {
   const identity = getProjectProviderIdentity(repo)
-  const gitRemoteIdentity = getProjectGitRemoteIdentity(repo)
+  const gitRemoteIdentity = normalizeSavedGitRemoteIdentity(repo.gitRemoteIdentity)
   const addedAt = catalogTimestampFromAddedAt(repo.addedAt)
   return {
     id: projectId,
@@ -317,6 +310,20 @@ export function projectHostSetupProjectionFromRepos(
   _now?: number,
   setupFacts: readonly ProjectHostSetup[] = []
 ): ProjectHostSetupProjection {
+  return projectHostSetupProjection(repos, setupFacts, true)
+}
+
+export function projectHostSetupCompatibilityFromRepos(
+  repos: readonly Repo[]
+): ProjectHostSetupProjection {
+  return projectHostSetupProjection(repos, [], false)
+}
+
+function projectHostSetupProjection(
+  repos: readonly Repo[],
+  setupFacts: readonly ProjectHostSetup[],
+  claims: boolean
+): ProjectHostSetupProjection {
   const projectById = new Map<string, ProjectAccumulator>()
   const setups: ProjectHostSetup[] = []
 
@@ -334,7 +341,7 @@ export function projectHostSetupProjectionFromRepos(
     const setupMethod = facts?.setupMethod ?? setup.setupMethod
     return normalizeProjectHostSetupRow({ ...setup, setupMethod })
   })
-  const outclaimed = getOutclaimedProjectSetups(remoteSetups)
+  const outclaimed = claims ? getOutclaimedProjectSetups(remoteSetups) : new Set<ProjectHostSetup>()
   for (const [index, repo] of repos.entries()) {
     const remoteSetup = remoteSetups[index]
     const setup = outclaimed.has(remoteSetup)
@@ -354,11 +361,4 @@ export function projectHostSetupProjectionFromRepos(
     projects: [...projectById.values()].map((entry) => normalizeProjectRow(entry.project)),
     setups
   }
-}
-
-export function getProjectHostSetupsForProject(
-  setups: readonly ProjectHostSetup[],
-  projectId: string
-): readonly ProjectHostSetup[] {
-  return setups.filter((setup) => setup.projectId === projectId)
 }

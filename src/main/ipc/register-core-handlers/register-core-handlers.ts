@@ -101,7 +101,10 @@ import {
   resolveRuntimeAiVaultSessionTitles,
   scanRuntimeAiVaultSessions
 } from '../../ai-vault/runtime-session-scanner'
-import { callRuntimeSessionSearch } from '../../ai-vault/runtime-session-search-call'
+import {
+  callRuntimeSessionSearch,
+  bindRuntimeSessionSearch
+} from '../../ai-vault/runtime-session-search-call'
 import { ensureStructuredAgentSessionHostUnlessRefused } from '../../runtime/structured-agent-session-host-refusal'
 import { getAgentSessionAttachmentStore } from '../../native-chat/agent-session-attachments/agent-session-attachment-store-registry'
 import type { PluginService } from '../../plugins/plugin-service'
@@ -273,6 +276,8 @@ export function registerCoreHandlers(
   registerAiVaultSearchHandlers({
     callRuntimeSearch: (environmentId, method, params) =>
       callRuntimeSessionSearch(app.getPath('userData'), environmentId, method, params),
+    bindRuntimeSearch: (environmentId) =>
+      bindRuntimeSessionSearch(app.getPath('userData'), environmentId),
     ensureStructuredSessionOwnership
   })
   registerAiVaultHandlers({

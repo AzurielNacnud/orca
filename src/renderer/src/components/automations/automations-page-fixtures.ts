@@ -226,7 +226,7 @@ export function makeWorktree(overrides: Partial<Worktree> = {}): Worktree {
 }
 
 export type AutomationsPageStoreFixtures = {
-  state: Record<string, unknown>
+  state: Record<string, unknown> & { endpointProjectHostSetups: ProjectHostSetup[] }
   repoMap: Map<string, Repo>
   worktreeMap: Map<string, Worktree>
 }

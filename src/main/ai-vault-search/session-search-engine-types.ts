@@ -1,3 +1,4 @@
+import type { SessionSearchProjectOwnership } from './session-search-project-ownership'
 import type { AiVaultAgent } from '../../shared/ai-vault-types'
 import type { TranscriptMessageRole } from '../ai-vault/session-transcript-consumers'
 
@@ -37,6 +38,7 @@ export type SessionSearchScope = 'conversation' | 'all'
 export type SessionSearchSort = 'relevance' | 'newest'
 
 export type SessionSearchFilters = {
+  ownership?: SessionSearchProjectOwnership
   agents?: readonly AiVaultAgent[]
   /** Only sessions whose cwd is that path or inside it. */
   scopePaths?: readonly string[]

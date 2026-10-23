@@ -1,5 +1,6 @@
+import { getDefaultSettings } from '../../../shared/constants'
+import { TEST_REPO, makeWorktree } from '../store/slices/worktrees-slice-test-fixtures'
 import { describe, expect, it, vi } from 'vitest'
-import type { AppState } from '@/store/types'
 
 vi.mock('@/lib/new-workspace', () => ({
   CLIENT_PLATFORM: 'darwin'
@@ -15,23 +16,33 @@ function makeState(worktreeHostId?: string): ResumeShellState {
     activeWorktreeId: 'repo-1::worktree-1',
     folderWorkspaces: [],
     projectGroups: [],
-    repos: [{ id: 'repo-1', path: '/home/alice/repo' }],
-    endpointProjects: [{ id: 'repo-1', sourceRepoIds: ['repo-1'] }],
+    repos: [{ ...TEST_REPO, id: 'repo-1', path: '/home/alice/repo' }],
+    endpointProjects: [
+      {
+        id: 'repo-1',
+        displayName: 'repo',
+        badgeColor: '',
+        createdAt: 0,
+        updatedAt: 0,
+        sourceRepoIds: ['repo-1']
+      }
+    ],
     settings: {
+      ...getDefaultSettings('/tmp'),
       agentDefaultArgs: { codex: '' },
       agentDefaultEnv: { codex: {} }
     },
     worktreesByRepo: {
       'repo-1': [
-        {
+        makeWorktree({
           id: 'repo-1::worktree-1',
           repoId: 'repo-1',
           path: '/home/alice/repo',
           ...(worktreeHostId ? { hostId: worktreeHostId } : {})
-        }
+        })
       ]
     }
-  } as unknown as AppState
+  }
 }
 
 describe('copied real-home Codex resume command', () => {

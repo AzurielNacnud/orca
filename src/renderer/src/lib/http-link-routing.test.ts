@@ -29,6 +29,7 @@ function noActiveWorkspace(): {
   return { activeWorktreeId: null, activeWorkspaceExecutionHostId: null }
 }
 
+const endpointProjects: Project[] = []
 const storeState = {
   settings: undefined as
     | {
@@ -43,7 +44,7 @@ const storeState = {
   ...noActiveWorkspace(),
   createBrowserTab: createBrowserTabMock,
   repos: [] as Repo[],
-  endpointProjects: [] as Project[],
+  endpointProjects,
   worktreesByRepo: {} as Record<
     string,
     { id: string; projectId?: string; repoId?: string; displayName?: string }[]

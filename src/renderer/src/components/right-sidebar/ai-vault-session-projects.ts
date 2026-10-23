@@ -1,9 +1,14 @@
-import { createNormalizedAiVaultScopeCwdMatcher } from '../../../../shared/ai-vault-scope-cwd-match'
+import {
+  getRepoHostIdentity,
+  getRepoHostIdentityForParts
+} from '../../../../shared/repo-host-identity'
+import type { GlobalSettings } from '../../../../shared/global-settings-types'
+import { managedWorktreeDirectories } from '../../../../shared/worktree/ownership'
+import { splitWorktreeIdForFilesystem } from '../../../../shared/worktree/id'
 import { resolveActiveProjectKey } from './ai-vault-project-key'
 import { toAiVaultProjectKey } from '../../../../shared/ai-vault-project-key'
 import {
   getRepoExecutionHostId,
-  LOCAL_EXECUTION_HOST_ID,
   normalizeExecutionHostId,
   type ExecutionHostId
 } from '../../../../shared/execution-host'
@@ -15,7 +20,11 @@ import type { Worktree } from '../../../../shared/worktree/types'
 import { normalizeRuntimePathForComparison } from '../../../../shared/cross-platform-path'
 import {
   aiVaultSessionProjectCwdKey,
-  matchAiVaultProjectCandidates
+  matchAiVaultProjectCandidates,
+  makeProjectCandidate,
+  resolveCandidateHostId,
+  hasCandidatePath,
+  type SessionProjectCandidate
 } from './ai-vault-session-project-candidates'
 import {
   folderGroupKey,
@@ -33,16 +42,6 @@ export type AiVaultProjectContext = {
   sessionProjectById: Map<string, AiVaultSessionProject>
 }
 
-type SessionProjectCandidate = {
-  source: 'worktree' | 'setup'
-  normalizedPath: string
-  hostKey: ExecutionHostId
-  projectId: string | null
-  repoId: string | null
-  // Precomputed so a 500-session pass doesn't re-normalize every root per session.
-  ownsNormalizedCwd: ReturnType<typeof createNormalizedAiVaultScopeCwdMatcher>
-}
-
 type ProjectResolverArgs = {
   repos: readonly Repo[]
   worktrees: readonly Worktree[]
@@ -50,6 +49,7 @@ type ProjectResolverArgs = {
   activeRepo: Repo | null
   activeWorktree: Worktree | null
   sessions: readonly AiVaultSession[]
+  settings?: Pick<GlobalSettings, 'workspaceDir' | 'nestWorkspaces' | 'workspaceDirHistory'>
 }
 
 export function buildAiVaultProjectContext({
@@ -83,12 +83,19 @@ export function buildAiVaultSessionProjectById({
   repos,
   worktrees,
   projectHostSetupProjection,
-  sessions
+  sessions,
+  settings
 }: Omit<ProjectResolverArgs, 'activeRepo' | 'activeWorktree'>): Map<string, AiVaultSessionProject> {
-  const repoById = new Map(repos.map((repo) => [repo.id, repo]))
+  const repoById = new Map(repos.map((repo) => [getRepoHostIdentity(repo), repo]))
   const owners = getProjectHostSetupLookup(projectHostSetupProjection.setups)
   const projectLabelByKey = buildProjectLabelByKey(repos, projectHostSetupProjection)
-  const candidates = buildProjectCandidates(worktrees, projectHostSetupProjection, repoById, owners)
+  const candidates = buildProjectCandidates(
+    worktrees,
+    projectHostSetupProjection,
+    repoById,
+    owners,
+    settings
+  )
   const sessionProjectById = new Map<string, AiVaultSessionProject>()
   const projectsByHostAndCwd = new Map<
     ExecutionHostId | null,
@@ -146,36 +153,53 @@ function buildProjectCandidates(
   worktrees: readonly Worktree[],
   projection: ProjectHostSetupProjection,
   repoById: ReadonlyMap<string, Repo>,
-  owners: ReturnType<typeof getProjectHostSetupLookup>
+  owners: ReturnType<typeof getProjectHostSetupLookup>,
+  settings?: ProjectResolverArgs['settings']
 ): SessionProjectCandidate[] {
   const candidates: SessionProjectCandidate[] = []
   const setupRepoIds = new Set<string>()
+  const pathKey = (host: string, path: string) =>
+    JSON.stringify([host, normalizeRuntimePathForComparison(path)])
+  const occupied = new Set([
+    ...worktrees.map((row) => pathKey(row.hostId ?? 'local', row.path)),
+    ...projection.setups.map((row) => pathKey(row.executionHostId ?? row.hostId, row.path))
+  ])
 
   for (const worktree of worktrees) {
     if (!hasCandidatePath(worktree.path)) {
       continue
     }
-    const repo = repoById.get(worktree.repoId)
-    const setup = owners.forWorkspace(worktree)
-    candidates.push(
-      makeProjectCandidate({
-        source: 'worktree',
-        path: worktree.path,
-        hostKey: resolveCandidateHostId(
-          worktree.hostId,
-          setup?.hostId,
-          repo ? getRepoExecutionHostId(repo) : null
-        ),
-        projectId: owners.projectId(worktree) ?? null,
-        repoId: worktree.repoId
-      })
+    const repo = repoById.get(
+      getRepoHostIdentityForParts(worktree.repoId, worktree.hostId ?? 'local')
     )
+    const setup = owners.forWorkspace(worktree)
+    const candidate = makeProjectCandidate({
+      source: 'worktree',
+      path: worktree.path,
+      hostKey: resolveCandidateHostId(
+        worktree.hostId,
+        setup?.hostId,
+        repo ? getRepoExecutionHostId(repo) : null
+      ),
+      projectId: owners.projectId(worktree) ?? null,
+      repoId: worktree.repoId
+    })
+    candidates.push(candidate)
+    for (const id of worktree.priorWorktreeIds ?? []) {
+      const prior = splitWorktreeIdForFilesystem(id)
+      if (
+        prior?.repoId === worktree.repoId &&
+        !occupied.has(pathKey(candidate.hostKey, prior.worktreePath))
+      ) {
+        candidates.push(makeProjectCandidate({ ...candidate, path: prior.worktreePath }))
+      }
+    }
   }
 
   for (const setup of projection.setups) {
     if (setup.repoId) {
       if (hasCandidatePath(setup.path)) {
-        setupRepoIds.add(setup.repoId)
+        setupRepoIds.add(getRepoHostIdentityForParts(setup.repoId, getRepoExecutionHostId(setup)))
       }
     }
     if (!hasCandidatePath(setup.path)) {
@@ -193,7 +217,21 @@ function buildProjectCandidates(
   }
 
   for (const repo of repoById.values()) {
-    if (setupRepoIds.has(repo.id)) {
+    if (settings) {
+      const hostKey = getRepoExecutionHostId(repo)
+      for (const path of managedWorktreeDirectories(repo, settings)) {
+        candidates.push(
+          makeProjectCandidate({
+            source: 'setup',
+            path,
+            hostKey,
+            repoId: repo.id,
+            projectId: owners.projectId({ repoId: repo.id, hostId: hostKey }) ?? null
+          })
+        )
+      }
+    }
+    if (setupRepoIds.has(getRepoHostIdentity(repo))) {
       continue
     }
     if (!hasCandidatePath(repo.path)) {
@@ -211,34 +249,6 @@ function buildProjectCandidates(
   }
 
   return candidates
-}
-
-function makeProjectCandidate(
-  fields: Omit<SessionProjectCandidate, 'normalizedPath' | 'ownsNormalizedCwd'> & { path: string }
-): SessionProjectCandidate {
-  const { path, ...rest } = fields
-  const normalizedPath = normalizeRuntimePathForComparison(path)
-  return {
-    ...rest,
-    normalizedPath,
-    ownsNormalizedCwd: createNormalizedAiVaultScopeCwdMatcher([path])
-  }
-}
-
-function resolveCandidateHostId(
-  ...values: readonly (string | null | undefined)[]
-): ExecutionHostId {
-  for (const value of values) {
-    const hostId = normalizeExecutionHostId(value)
-    if (hostId) {
-      return hostId
-    }
-  }
-  return LOCAL_EXECUTION_HOST_ID
-}
-
-function hasCandidatePath(pathValue: string): boolean {
-  return pathValue.trim().length > 0
 }
 
 function resolveSessionProject(
@@ -268,7 +278,15 @@ function resolveSessionProject(
   }
 
   const bestCandidate = hostMatches[0]
-  if (!bestCandidate) {
+  if (
+    !bestCandidate ||
+    hostMatches.some(
+      (candidate) =>
+        compareCandidates(candidate, bestCandidate) === 0 &&
+        toAiVaultProjectKey(candidate.projectId, candidate.repoId) !==
+          toAiVaultProjectKey(bestCandidate.projectId, bestCandidate.repoId)
+    )
+  ) {
     return folderProject(cwd)
   }
 

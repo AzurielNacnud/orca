@@ -20,8 +20,6 @@ import type { AiVaultSearchScopeIdentity } from '../../../../shared/ai-vault-sea
 import { resolveAiVaultSearchSettings } from '../../../../shared/ai-vault-search-settings'
 import { isWebClientLocation } from '@/lib/web-client-location'
 import { useAppStore } from '@/store'
-import { searchCanonicalProject } from '../../../../shared/ai-vault-project-search'
-import { selectProjectSearchCatalog } from '../../store/project-search-catalog'
 import { aiVaultSearchHitToSession } from './ai-vault-search-session'
 
 type SearchIdentity = {
@@ -59,16 +57,8 @@ export function useAiVaultSearch(
     }
     let cancelled = false
     let pending = false
-    const search = (query: AiVaultSearchRequest, host: ExecutionHostScope) => {
-      const state = useAppStore.getState()
-      return searchCanonicalProject(
-        query,
-        host,
-        selectProjectSearchCatalog(state),
-        (request, host) => window.api.aiVault.searchSessions(request, host, () => !cancelled),
-        () => !cancelled
-      )
-    }
+    const search = (query: AiVaultSearchRequest, host: ExecutionHostScope) =>
+      window.api.aiVault.searchSessions(query, host, () => !cancelled)
     async function run(cursor?: string) {
       if (pending || cancelled || !request || !scope) {
         return
@@ -159,7 +149,8 @@ export function useAiVaultPanelSearch(
   /** Which scope the host resolves; undefined searches everything it has. */
   within: AiVaultSearchScopeIdentity | undefined,
   executionHostScope: ExecutionHostScope,
-  sort: AiVaultSearchSort
+  sort: AiVaultSearchSort,
+  canonicalProjectKey?: string
 ) {
   const settings = useAppStore((state) => state.settings?.aiVaultSearch)
   const policy = resolveAiVaultSearchSettings({ aiVaultSearch: settings })
@@ -187,10 +178,17 @@ export function useAiVaultPanelSearch(
             query: trimmed,
             // Relevance is the host's own default, so only the other order travels.
             filters: { agents: [...agents], ...(sort === 'relevance' ? {} : { sort }) },
-            ...(within ? { within } : {})
+            ...(within
+              ? {
+                  within:
+                    within.kind === 'project' && canonicalProjectKey
+                      ? { ...within, canonicalProjectKey }
+                      : within
+                }
+              : {})
           }
         : null,
-    [searching, scope, agents, trimmed, within, sort]
+    [searching, scope, agents, trimmed, within, sort, canonicalProjectKey]
   )
   const search = useAiVaultSearch(request, scope, JSON.stringify(policy))
   const hostSearchOff =
