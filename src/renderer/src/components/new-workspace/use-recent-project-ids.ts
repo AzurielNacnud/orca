@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
-import { useProjectHostSetupProjection } from '@/store/selectors'
+import { useAllWorktrees, useProjectHostSetupProjection } from '@/store/selectors'
 import { getProjectHostSetupLookup } from '../../../../shared/project-host-setup-lookup'
 import type { ProjectHostSetup } from '../../../../shared/project-types'
 import type { Worktree } from '../../../../shared/worktree/types'
-import { useAllWorktrees } from '@/store/selectors'
 import { NEW_WORKSPACE_PROJECT_GROUP_OPTION_PREFIX } from '@/lib/new-workspace-project-options'
 
 /**
