@@ -90,9 +90,10 @@ export abstract class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntim
     const pasteIngestMs = getTerminalPasteIngestMs(writeHostPlatform, pasteByteLength)
     // Why no gate for a ready composer: a live Claude never settles it, so Enter always waited out
     // its 8 s cap, where the desktop's own paste submitted in about 2 s.
-    const renderGate = options.composerReady
-      ? null
-      : this.createAgentPromptRenderGate(ptyId, pasteIngestMs, agent)
+    const renderGate =
+      options.composerReady || options.waitForRender === false
+        ? null
+        : this.createAgentPromptRenderGate(ptyId, pasteIngestMs, agent)
     const waitTextCache: AgentPromptWaitTextCache = {}
     const preSubmitBaseline = submitWithPaste
       ? this.getAgentPromptActivity(handle, ptyId, waitTextCache)

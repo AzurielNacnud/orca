@@ -25,7 +25,11 @@ afterEach(() => {
 })
 
 async function createHarness(agent: TuiAgent = 'claude') {
-  const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, agent)
+  const writeTimes: number[] = []
+  const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(
+    () => writeTimes.push(Date.now()),
+    agent
+  )
   let permission = false
   vi.spyOn(runtime, 'getTerminalAgentStatus').mockImplementation(async () => ({
     handle,
@@ -54,6 +58,7 @@ async function createHarness(agent: TuiAgent = 'claude') {
     runtime,
     handle,
     writes,
+    writeTimes,
     submit,
     wait,
     block: () => {
@@ -65,6 +70,7 @@ async function createHarness(agent: TuiAgent = 'claude') {
 describe('host-owned terminal prompt submissions', () => {
   it('serializes whole submissions from different clients when the second note is shorter', async () => {
     vi.useFakeTimers()
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
     const { submit, wait, writes } = await createHarness()
     const admission = submit('large', 'x'.repeat(320_000))
     await vi.advanceTimersByTimeAsync(1000)
@@ -89,6 +95,49 @@ describe('host-owned terminal prompt submissions', () => {
         result: { submission: { requestId, status: 'submitted', send: { accepted: true } } }
       })
     }
+  })
+
+  it.each(['claude', 'codex'] as const)(
+    'submits a small %s note without waiting for a render marker',
+    async (agent) => {
+      vi.useFakeTimers()
+      const { submit, wait, writes } = await createHarness(agent)
+      const prompt = 'browser feedback'
+      const delay = resolveAgentPromptSubmitDelayForAgent(process.platform, prompt, agent)
+
+      await submit('small', prompt)
+      await vi.advanceTimersByTimeAsync(delay - 1)
+      expect(writes).toEqual([`\x1b[200~${prompt}\x1b[201~`])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(writes.at(-1)).toBe('\r')
+      await expect(wait('small')).resolves.toMatchObject({
+        ok: true,
+        result: { submission: { status: 'submitted' } }
+      })
+      await vi.runAllTimersAsync()
+      expect(writes.filter((text) => text === '\r')).toHaveLength(1)
+    }
+  )
+
+  it('keeps the ConPTY ingest floor when submitting notes without a render marker', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    const { submit, wait, writes, writeTimes } = await createHarness('codex')
+    const prompt = 'x'.repeat(320_000)
+    const delay = resolveAgentPromptSubmitDelayForAgent('win32', prompt, 'codex')
+
+    const admission = submit('ingest', prompt)
+    await vi.advanceTimersByTimeAsync(3_342)
+    await admission
+    expect(writes).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(delay - (Date.now() - writeTimes[0]) - 1)
+    expect(writes).not.toContain('\r')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(writes.filter((text) => text === '\r')).toHaveLength(1)
+    await expect(wait('ingest')).resolves.toMatchObject({
+      ok: true,
+      result: { submission: { status: 'submitted' } }
+    })
   })
 
   it('acknowledges admission immediately and long-polls a paste exceeding the RPC budget', async () => {
