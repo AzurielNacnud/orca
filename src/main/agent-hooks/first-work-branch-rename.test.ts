@@ -476,6 +476,10 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
     )
 
     expect(gitExecFileAsyncMock).toHaveBeenCalledTimes(1)
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      expect.objectContaining({ cwd: '/repo/wt-0' })
+    )
   })
 
   it('retries on a later event after a transient failure (does not poison the worktree)', async () => {
@@ -557,8 +561,12 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       error: 'Generation canceled.',
       canceled: true
     })
-    const { deps, setRenameError } = makeDeps()
+    const { deps, setRenameError, setDisplayName, onRenamed } = makeDeps()
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
+    expect(generateBranchNameMock).toHaveBeenCalledTimes(1)
+    expect(setDisplayName).not.toHaveBeenCalled()
+    expect(onRenamed).not.toHaveBeenCalled()
+    expect(gitExecFileAsyncMock.mock.calls.some(([args]) => args[0] === 'branch')).toBe(false)
     expect(setRenameError).not.toHaveBeenCalledWith(WORKTREE_ID, 'Generation canceled.')
   })
 
@@ -657,6 +665,8 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       ['branch', '-m', 'you/fix-auth'],
       expect.anything()
     )
+    expect(generateBranchNameMock).toHaveBeenCalledTimes(1)
+    expect(branchReadCount).toBe(2)
     expect(onRenamed).not.toHaveBeenCalled()
   })
 
@@ -687,21 +697,26 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       ['branch', '-m', 'you/fix-auth'],
       expect.anything()
     )
+    expect(generateBranchNameMock).toHaveBeenCalledTimes(1)
+    expect(upstreamReadCount).toBe(2)
     expect(onRenamed).not.toHaveBeenCalled()
   })
 
   it.each<[string, Repo]>([
     ['connectionId', { ...REMOTE_REPO_BASE, connectionId: 'ssh-1' }],
     ['executionHostId', { ...REMOTE_REPO_BASE, executionHostId: 'ssh:ssh-1' }]
-  ])('retries without local git for a row naming its SSH owner by %s', async (_spelling, repo) => {
-    const { deps, onRenamed } = makeDeps({ getRepo: () => repo })
+  ])(
+    'skips local generation and git for a row naming its SSH owner by %s',
+    async (_spelling, repo) => {
+      const { deps, onRenamed } = makeDeps({ getRepo: () => repo })
 
-    await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
+      await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
 
-    expect(gitExecFileAsyncMock).not.toHaveBeenCalled()
-    expect(generateBranchNameMock).not.toHaveBeenCalled()
-    expect(onRenamed).not.toHaveBeenCalled()
-  })
+      expect(gitExecFileAsyncMock).not.toHaveBeenCalled()
+      expect(generateBranchNameMock).not.toHaveBeenCalled()
+      expect(onRenamed).not.toHaveBeenCalled()
+    }
+  )
 
   it("never dials a paired server's nested SSH target from this client", async () => {
     const repo: Repo = {

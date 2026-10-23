@@ -300,23 +300,35 @@ describe('reattaching a Grok chat the journal holds', () => {
     const before = await rig.rig.rows()
     // The host's order: a fresh sink per start, bound to the journal once the start succeeded.
     const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging(SESSION))
-    await rig.adapter.acquire({
-      identity: {
+    try {
+      const acquired = await rig.adapter.acquire({
+        identity: {
+          sessionId: SESSION,
+          workspaceId: 'workspace-1',
+          hostId: 'local',
+          agent: 'grok',
+          providerHandle: null
+        },
+        fence: 2,
+        spawnToken: 'spawn-2',
+        events: deferred.sink
+      })
+      await rig.adapter.open({
         sessionId: SESSION,
-        workspaceId: 'workspace-1',
-        hostId: 'local',
-        agent: 'grok',
-        providerHandle: null
-      },
-      fence: 2,
-      spawnToken: 'spawn-2',
-      events: deferred.sink
-    })
-    deferred.bind({ journal: rig.rig.journal, fence: 2, publish: () => {} })
-    expect(await deferred.drained()).toMatchObject({ ok: true })
-    expect((await rig.rig.rows()).map((row) => row.itemId)).toEqual(before.map((row) => row.itemId))
-    await rig.adapter.closeSession(SESSION)
-    deferred.close()
+        fence: 2,
+        acquisitionGeneration: acquired.acquisitionGeneration,
+        signal: new AbortController().signal
+      })
+      expect(rig.sent('session/load')).toHaveLength(1)
+      deferred.bind({ journal: rig.rig.journal, fence: 2, publish: () => {} })
+      expect(await deferred.drained()).toMatchObject({ ok: true })
+      expect((await rig.rig.rows()).map((row) => row.itemId)).toEqual(
+        before.map((row) => row.itemId)
+      )
+      await rig.adapter.closeSession(SESSION)
+    } finally {
+      deferred.close()
+    }
   })
 
   it('starts a new session in place of a created one that session/load reports missing', async () => {

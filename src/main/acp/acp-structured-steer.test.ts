@@ -2,7 +2,7 @@
 // stays) and the message goes as the next prompt. The adapter holds a steer only while that cancel
 // lands; the host's queue holds everything else.
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import { DISPATCH_REJECTED_CANCELLED } from '../../shared/structured-agent-session-dispatch-rejection'
 import {
@@ -162,21 +162,28 @@ describe('a send while a Grok prompt runs', () => {
     await rig.frame('session/prompt')
     rig.child().agent.notify('session/update', replyChunk('prompt:first', 'working'))
     await rig.settle()
-    await sendHello(rig, 'steer')
-    await new Promise((resolve) => setTimeout(resolve, 120))
-    await rig.settle()
-    expect(rig.sent('session/cancel')).toHaveLength(1)
-    expect(rig.ended).toEqual([])
-    expect(rig.child().closes).toBe(0)
-    expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['first'])
-    // A Stop sends its own cancel; the host's grace, not the cancel, ends Grok.
-    await rig.adapter.cancelTurn({ sessionId: ADAPTER_SESSION, fence: 1 })
-    expect(rig.sent('session/cancel')).toHaveLength(2)
-    expect(rig.settled).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ clientMessageId: 'steer', state: 'rejected' })
-      ])
-    )
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      await sendHello(rig, 'steer')
+      await rig.settle()
+      await vi.advanceTimersByTimeAsync(60_000)
+      await rig.settle()
+      expect(rig.sent('session/cancel')).toHaveLength(1)
+      expect(rig.ended).toEqual([])
+      expect(rig.child().closes).toBe(0)
+      expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['first'])
+      // A Stop sends its own cancel; the host's grace, not the cancel, ends Grok.
+      await rig.adapter.cancelTurn({ sessionId: ADAPTER_SESSION, fence: 1 })
+      await rig.settle()
+      expect(rig.sent('session/cancel')).toHaveLength(2)
+      expect(rig.settled).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ clientMessageId: 'steer', state: 'rejected' })
+        ])
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
@@ -217,25 +224,33 @@ describe('a send while a turn Grok began itself runs', () => {
       endsGrokTurn(agent)
       agent.notify('session/update', replyChunk(promptIdOf(a), 'working on a'))
     })
-    await sendHello(rig, 'b')
-    await rig.settle()
-    expect(rig.sent('session/cancel')).toHaveLength(1)
-    // `a` runs a whole turn: a steer's cancel never ends Grok.
-    await new Promise((resolve) => setTimeout(resolve, 120))
-    await rig.settle()
-    expect(rig.ended).toEqual([])
-    expect(rig.child().closes).toBe(0)
-    agent.reply(a, { stopReason: 'end_turn' })
-    const b = await rig.frame('session/prompt', 1)
-    expect(promptIdOf(b)).toBe('prompt:b')
-    agent.notify('session/update', replyChunk('prompt:b', 'on b'))
-    agent.reply(b, { stopReason: 'end_turn' })
-    await waitFor(async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      await sendHello(rig, 'b')
+      await rig.settle()
+      expect(rig.sent('session/cancel')).toHaveLength(1)
+      // `a` runs a whole turn: a steer's cancel never ends Grok.
+      await vi.advanceTimersByTimeAsync(60_000)
+      await rig.settle()
+      expect(rig.ended).toEqual([])
+      expect(rig.child().closes).toBe(0)
+      agent.reply(a, { stopReason: 'end_turn' })
+      await rig.settle()
+      const b = rig.sent('session/prompt')[1]
+      if (!b) {
+        throw new Error('Missing prompt for b after a completed')
+      }
+      expect(promptIdOf(b)).toBe('prompt:b')
+      agent.notify('session/update', replyChunk('prompt:b', 'on b'))
+      agent.reply(b, { stopReason: 'end_turn' })
+      await rig.settle()
       const turns = (await rig.rig.rows()).flatMap((row) => readAgentJournalTurn(row.body) ?? [])
       expect(turns.map((turn) => turn.state)).toEqual(['interrupted', 'completed', 'completed'])
-    })
-    expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['a', 'b'])
-    expect(rig.child().closes).toBe(0)
+      expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['a', 'b'])
+      expect(rig.child().closes).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

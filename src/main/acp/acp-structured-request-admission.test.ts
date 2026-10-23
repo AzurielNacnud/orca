@@ -52,14 +52,22 @@ describe('Grok requests and the turn they belong to', () => {
     expect(await cards()).toHaveLength(1)
     await rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 })
     expect(await asked).toMatchObject({ result: { outcome: 'cancelled' } })
+    await rig.settle()
+    expect((await cards()).map((row) => row.body)).toMatchObject([
+      { kind: 'question', resolution: { state: 'cancelled' } }
+    ])
   })
 
   it('withdraws an open question when a steer cancels its turn', async () => {
-    const { rig, agent } = await runningPrompt()
+    const { rig, agent, cards } = await runningPrompt()
     const asked = agent.request(6, 'x.ai/ask_user_question', question('call-6'))
     await rig.settle()
     await sendHello(rig, 'steer')
     expect(await asked).toMatchObject({ result: { outcome: 'cancelled' } })
+    await rig.settle()
+    expect((await cards()).map((row) => row.body)).toMatchObject([
+      { kind: 'question', resolution: { state: 'cancelled' } }
+    ])
     expect(rig.sent('session/cancel')).toHaveLength(1)
   })
 

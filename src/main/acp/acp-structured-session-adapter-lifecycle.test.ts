@@ -18,6 +18,7 @@ import {
 } from './acp-structured-adapter.test-support'
 
 afterEach(async () => {
+  vi.useRealTimers()
   await closeProviderTimelineRigs()
 })
 
@@ -152,10 +153,20 @@ describe('ACP Stop of a turn Grok began itself', () => {
     await rig.acquire()
     rig.child().agent.notify('session/update', replyChunk('task-completed-background-1', 'Busy'))
     await rig.settle()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     await expect(rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 })).resolves.toEqual({
       cancelled: true
     })
-    await rig.adapter.awaitStoppedRequestEnd(SESSION, Date.now())
+    let resolved = false
+    const stopped = rig.adapter.awaitStoppedRequestEnd(SESSION, Date.now()).then(() => {
+      resolved = true
+    })
+    await vi.advanceTimersByTimeAsync(19)
+    expect(resolved).toBe(false)
+    expect(rig.child().closes).toBe(0)
+    await vi.advanceTimersByTimeAsync(1)
+    await stopped
+    expect(resolved).toBe(true)
     expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'running' })
     expect(rig.child().closes).toBe(0)
   })

@@ -73,6 +73,7 @@ beforeEach(() => {
   )
 })
 afterEach(() => {
+  vi.restoreAllMocks()
   resetWslMoveFenceForTests()
   rmSync(userDataPath, { recursive: true, force: true })
 })
@@ -200,7 +201,7 @@ describe('first-work rename while a WSL move takes the project', () => {
 
   it('leaves the same repo id on another host to its own host', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-    const { deps } = makeDeps({
+    const { deps, setDisplayName } = makeDeps({
       getRepo: () => ({ ...LOCAL_REPO, executionHostId: 'runtime:env-1' })
     })
 
@@ -208,15 +209,19 @@ describe('first-work rename while a WSL move takes the project', () => {
 
     expect(info).toHaveBeenCalledWith(expect.stringContaining('branch is owned by runtime:env-1'))
     expect(info).not.toHaveBeenCalledWith(expect.stringContaining('WSL move'))
+    expect(gitExecFileAsyncMock).not.toHaveBeenCalled()
+    expect(generateBranchNameMock).not.toHaveBeenCalled()
+    expect(setDisplayName).not.toHaveBeenCalled()
     info.mockRestore()
   })
 
   it('keeps a moving folder workspace title pending', async () => {
+    let moving = true
     const { deps, setDisplayName, setRenameError } = makeDeps({
       resolveWorktreeIdForTab: () => FOLDER_WORKTREE_ID,
       getFolderWorkspacePath: () => '/workspace/platform',
       isPendingFirstAgentMessageRename: () => true,
-      isFolderWorkspaceWslMoveBlocked: () => true
+      isFolderWorkspaceWslMoveBlocked: () => moving
     })
 
     await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
@@ -224,5 +229,9 @@ describe('first-work rename while a WSL move takes the project', () => {
     expect(generateBranchNameMock).not.toHaveBeenCalled()
     expect(setDisplayName).not.toHaveBeenCalled()
     expect(setRenameError).not.toHaveBeenCalled()
+    moving = false
+    await maybeAutoRenameBranchOnFirstWork(workingEvent(), deps)
+    expect(generateBranchNameMock).toHaveBeenCalledTimes(1)
+    expect(setDisplayName).toHaveBeenCalled()
   })
 })
