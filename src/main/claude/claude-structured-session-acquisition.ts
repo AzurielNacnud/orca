@@ -11,7 +11,7 @@ import { settleClaudeTurnEndWaiters } from './claude-request-end-wait'
 import {
   createClaudeInitProof,
   readClaudeCapabilities,
-  readClaudeReportedPermissionMode,
+  observeClaudeReportedPermissionMode,
   readClaudeFrameString,
   readClaudeInit
 } from './claude-structured-init-proof'
@@ -83,7 +83,7 @@ export async function acquireClaudeSession({
         ? liveSession.backgroundTasks.goalBackgroundWork
         : 'unverifiable'
   )
-  let observedPermissionMode: string | null | undefined
+  const observedOptions: ClaudeSession['reportedOptions'] = {}
   const onMessage = (message: Record<string, unknown>): void => {
     const init = readClaudeInit(message)
     if (readClaudeFrameString(message, 'session_id') !== expectedProviderSessionId) {
@@ -94,14 +94,12 @@ export async function acquireClaudeSession({
       }
       return
     }
-    const permission = init ? readClaudeReportedPermissionMode(init.message) : undefined
-    observedPermissionMode = permission === undefined ? observedPermissionMode : permission
+    const permissionChanged = observeClaudeReportedPermissionMode(observedOptions, message)
     const modelChanged =
       liveSession && init?.model ? observeClaudeExecutionModel(liveSession, init.model) : false
     if (init) {
       initProof.resolve(init)
       if (liveSession) {
-        liveSession.reportedOptions.reportedPermissionMode = observedPermissionMode
         liveSession.capabilities = readClaudeCapabilities(liveSession.capabilities, init.message)
       }
     }
@@ -142,13 +140,16 @@ export async function acquireClaudeSession({
     }
     try {
       callbacks.deliver(attempt, sessionId, () => {
-        if (modelChanged && liveSession && init?.model) {
+        if (liveSession && (modelChanged || permissionChanged)) {
           callbacks.emit(liveSession, input.events, {
             type: 'options-reported',
             sessionId,
             fence: liveSession.fence,
             acquisitionGeneration: liveSession.acquisitionGeneration,
-            reportedOptions: { model: init.model }
+            reportedOptions: {
+              ...(modelChanged && init?.model ? { model: init.model } : {}),
+              reportedPermissionMode: observedOptions.reportedPermissionMode
+            }
           })
         }
         callbacks.emit(liveSession, input.events, {
@@ -285,7 +286,7 @@ export async function acquireClaudeSession({
       observedAt: deps.now?.() ?? Date.now()
     })
     const session = publication.session
-    session.reportedOptions.reportedPermissionMode = observedPermissionMode
+    session.reportedOptions = observedOptions
     liveSession = session
     adoptClaudeStructuredSpawnOptions(session, launch.savedOptions)
     acquisitions.deleteIfCurrent(sessionId, attempt)

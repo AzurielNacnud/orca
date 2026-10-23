@@ -94,6 +94,30 @@ describe('the permission verdict on a paired host', () => {
     })
   })
 
+  it('keeps the old Chat fallback for own without relaxing explicit or unknown requests', async () => {
+    mocks.settings.agentPermissionDefault = 'own'
+    mocks.callRuntimeRpc.mockResolvedValue({ settings: { agentDefaultArgs: {} } })
+    mocks.settings.nativeChatPermissionMode = 'full-access'
+    await expect(readStructuredChatHostPermissionVerdict(PAIRED, 'codex')).resolves.toEqual({
+      kind: 'allowed'
+    })
+    await expect(readStructuredChatHostPermissionVerdict(PAIRED, 'codex', 'own')).resolves.toEqual({
+      kind: 'allowed'
+    })
+    await expect(
+      readStructuredChatHostPermissionVerdict(PAIRED, 'codex', 'future-mode')
+    ).resolves.toEqual({ kind: 'refused', hostMode: 'full-access' })
+    mocks.settings.nativeChatPermissionMode = 'ask'
+    await expect(readStructuredChatHostPermissionVerdict(PAIRED, 'codex')).resolves.toEqual({
+      kind: 'refused',
+      hostMode: 'full-access'
+    })
+    mocks.callRuntimeRpc.mockResolvedValue({ settings: { agentDefaultArgs: { codex: '' } } })
+    await expect(readStructuredChatHostPermissionVerdict(PAIRED, 'codex')).resolves.toEqual({
+      kind: 'allowed'
+    })
+  })
+
   it('lets Full access run on that older host: it runs no more than asked for', async () => {
     mocks.callRuntimeRpc.mockResolvedValue({ settings: { agentDefaultArgs: {} } })
 

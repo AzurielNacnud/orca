@@ -1,6 +1,6 @@
 import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import { CLAUDE_DEFAULT_SETTING_SOURCES } from './claude-structured-launch-resolution'
-import type { ClaudeAuthDiagnostic } from './claude-structured-session-state'
+import type { ClaudeAuthDiagnostic, ClaudeSession } from './claude-structured-session-state'
 import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 
 export type ClaudeInitObservation = {
@@ -41,11 +41,15 @@ export function readClaudeInit(message: Record<string, unknown>): ClaudeInitObse
     : null
 }
 
-/** Only system/init reports a permission mode; SessionStart hooks do not. */
+/** Init and status frames describe the running mode; absent fields preserve the last report. */
 export function readClaudeReportedPermissionMode(
   message: Record<string, unknown>
 ): string | null | undefined {
-  if (message.type !== 'system' || message.subtype !== 'init') {
+  if (
+    message.type !== 'system' ||
+    (message.subtype !== 'init' && message.subtype !== 'status') ||
+    message.permissionMode === undefined
+  ) {
     return undefined
   }
   switch (message.permissionMode) {
@@ -60,6 +64,18 @@ export function readClaudeReportedPermissionMode(
     default:
       return null
   }
+}
+
+export function observeClaudeReportedPermissionMode(
+  reports: ClaudeSession['reportedOptions'],
+  message: Record<string, unknown>
+): boolean {
+  const mode = readClaudeReportedPermissionMode(message)
+  if (mode === undefined || mode === reports.reportedPermissionMode) {
+    return false
+  }
+  reports.reportedPermissionMode = mode
+  return true
 }
 
 export function readClaudeModels(initialization: unknown): unknown[] {

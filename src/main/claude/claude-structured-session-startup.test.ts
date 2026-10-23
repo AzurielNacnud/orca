@@ -22,19 +22,42 @@ describe('Claude host-awaited open', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('shows Claude’s init permission report rather than the permission Orca requested', async () => {
+  it('refreshes only present owned permission reports through the existing options signal', async () => {
     const claude = fakeClaude()
-    const { adapter } = adapterFor(claude)
-    await adapter.acquire(ACQUIRE)
+    const { adapter, events } = adapterFor(claude)
+    await adapter.acquire({ ...ACQUIRE, options: { permissionMode: 'own' } })
     await claudeOpened(adapter, 'session-1')
-    claudeFrame(claude.connections[0], {
-      type: 'system',
-      subtype: 'init',
-      permissionMode: 'acceptEdits',
-      model: 'claude-haiku-4-5'
-    })
-    const options = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
-    expect(options.current.reportedPermissionMode).toBe('accept-edits')
+    const connection = claude.connections[0]
+    if (!connection) {
+      throw new Error('missing test connection')
+    }
+    for (const [frame, expected, changed] of [
+      [
+        { subtype: 'init', permissionMode: 'acceptEdits', model: 'claude-haiku-4-5' },
+        'accept-edits',
+        true
+      ],
+      [{ subtype: 'status', status: null, permissionMode: 'default' }, 'ask', true],
+      [{ subtype: 'status', status: 'compacting' }, 'ask', false],
+      [{ subtype: 'init', model: 'claude-haiku-4-5' }, 'ask', false],
+      [{ subtype: 'status', status: null, permissionMode: 'plan' }, null, true],
+      [
+        { subtype: 'status', permissionMode: 'bypassPermissions', session_id: 'foreign' },
+        null,
+        false
+      ]
+    ] as const) {
+      const before = events.filter((event) => event.type === 'options-reported').length
+      claudeFrame(connection, { type: 'system', ...frame })
+      expect(
+        (await adapter.readOptions({ sessionId: 'session-1', fence: 7 })).current
+          .reportedPermissionMode
+      ).toBe(expected)
+      expect(events.filter((event) => event.type === 'options-reported').length - before).toBe(
+        changed ? 1 : 0
+      )
+    }
+    expect(connection.calls.some((call) => call.subtype === 'set_permission_mode')).toBe(false)
     await adapter.closeAll()
   })
 

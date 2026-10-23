@@ -34,7 +34,13 @@ export function agentPermissionChoiceLabel(
     : translate('settings.agents.permissionOwnAll', "Agents' own settings")
 }
 
-function ownDescription(): string {
+function ownDescription(chatOwnSupported: boolean): string {
+  if (!chatOwnSupported) {
+    return translate(
+      'settings.agents.permissionOwnLegacyDescription',
+      'Orca adds no permission flag in terminals; chats use Settings → Chat.'
+    )
+  }
   return translate(
     'settings.agents.permissionOwnDescription',
     'Terminals and chats follow the agent’s own permission settings.'
@@ -42,12 +48,14 @@ function ownDescription(): string {
 }
 
 export function AllAgentsPermissionSetting({
+  chatOwnSupported = false,
   choice,
   withoutAutoChoice,
   ownChoiceCount,
   onChange,
   onChangeWithoutAuto
 }: {
+  chatOwnSupported?: boolean
   choice: AgentPermissionChoice
   /** What the agents without Approve for me share; null when they differ. */
   withoutAutoChoice: AgentPermissionChoice | null
@@ -66,7 +74,7 @@ export function AllAgentsPermissionSetting({
         <h3 className="text-sm font-semibold">{title}</h3>
         <p className="text-xs text-muted-foreground">
           {choice === 'own'
-            ? ownDescription()
+            ? ownDescription(chatOwnSupported)
             : translate(
                 'settings.agents.permissionChoiceDescription',
                 'Applies where each agent supports this mode. Change one agent below.'
@@ -128,6 +136,7 @@ export function AllAgentsPermissionSetting({
 }
 
 export type AgentPermissionChoiceRow = {
+  chatOwnSupported?: boolean
   choices: readonly AgentPermissionChoice[]
   choice: AgentPermissionChoice
   source: 'agent' | 'all'
@@ -197,7 +206,7 @@ export function AgentPermissionMenu({
                   </div>
                   <div className="text-xs font-normal text-muted-foreground">
                     {choice === 'own'
-                      ? ownDescription()
+                      ? ownDescription(permission.chatOwnSupported === true)
                       : nativeChatPermissionModeDescription(choice, agentId)}
                   </div>
                 </div>

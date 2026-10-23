@@ -460,6 +460,7 @@
       "permissionFromArgsTerminals": "{{agent}} set to {{mode}} in terminals.",
       "permissionOwnAgent": "Use {{agent}}'s own settings",
       "permissionOwnAll": "Agents' own settings",
+      "permissionOwnLegacyDescription": "Orca adds no permission flag in terminals; chats use Settings → Chat.",
       "permissionOwnDescription": "Terminals and chats follow the agent’s own permission settings.",
       "permissionChoiceDescription": "Applies where each agent supports this mode. Change one agent below.",
       "permissionOwnShort": "Own settings",

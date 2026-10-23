@@ -292,19 +292,19 @@ export async function runtimeEnvironmentSupportsCapability(
   // Why: callRuntimeRpc re-probes after failed status checks by default. Capability
   // lookups must not pin to a rejected cache promise or they block recovery for
   // the full failure TTL even though the next RPC would re-probe successfully.
-  if (cached && cached.failedAt === null) {
+  if (
+    cached &&
+    cached.failedAt === null &&
+    (cached.status === null ||
+      (cached.statusCheckedAt !== null &&
+        Date.now() - cached.statusCheckedAt < RUNTIME_CAPABILITY_STATUS_TTL_MS))
+  ) {
     try {
       await cached.check
-      if (
-        runtimeCompatibilityChecks.get(trimmed) === cached &&
-        cached.status &&
-        cached.statusCheckedAt !== null &&
-        Date.now() - cached.statusCheckedAt < RUNTIME_CAPABILITY_STATUS_TTL_MS
-      ) {
+      if (runtimeCompatibilityChecks.get(trimmed) === cached && cached.status) {
         const supported = cached.status.capabilities?.includes(capability) === true
         if (!supported) {
-          // Why: retain protocol proof for this legacy dispatch, but force the
-          // next capability decision to observe an in-place host upgrade.
+          // Readers already sharing this observation keep it; the next independent retry re-probes.
           cached.statusCheckedAt = null
         }
         return supported

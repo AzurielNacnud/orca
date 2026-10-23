@@ -1,5 +1,4 @@
-import { useStructuredAgentSessionHostCapabilityState } from '@/runtime/structured-agent-session-host-capability'
-import { AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY } from '../../../../shared/agent-session-permission-modes-capability'
+import { useChatPermissionSettings } from './use-chat-permission-settings'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import {
   AGENT_CHAT_PERMISSION_MODES,
@@ -27,10 +26,7 @@ export function ChatPermissionSetting({
   updateSettings: (updates: Partial<GlobalSettings>) => void
   forceVisible: boolean
 }): React.JSX.Element | null {
-  const capability = useStructuredAgentSessionHostCapabilityState(
-    { kind: 'local' },
-    AGENT_SESSION_PERMISSION_OWN_RUNTIME_CAPABILITY
-  )
+  const { capability, settings: permissionSettings } = useChatPermissionSettings(settings)
   const supported = capability === 'supported'
   const modern = capability !== 'unsupported'
   const openSettingsTarget = useAppStore((state) => state.openSettingsTarget)
@@ -74,7 +70,7 @@ export function ChatPermissionSetting({
       {modern
         ? PERMISSION_CHOICE_AGENTS.filter((agent) => agentChatPermissionModes(agent)).map(
             (agent) => {
-              const mode = newChatPermissionModeForSettings(agent, settings)
+              const mode = newChatPermissionModeForSettings(agent, permissionSettings)
               const label =
                 mode === 'own'
                   ? translate('settings.agents.permissionOwnShort', 'Own settings')
@@ -86,7 +82,9 @@ export function ChatPermissionSetting({
                   key={agent}
                   label={TUI_AGENT_DISPLAY_NAMES[agent]}
                   control={
-                    <span className="text-xs text-muted-foreground">{supported ? label : '—'}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {supported && permissionSettings ? label : '—'}
+                    </span>
                   }
                 />
               )
