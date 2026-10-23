@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   agentChatPermissionModes,
-  newChatPermissionMode,
   newChatPermissionModeForSettings
 } from '../../../shared/agent-chat-permission-mode'
 import {
@@ -62,10 +61,7 @@ export async function readStructuredChatHostPermissionVerdict(
     agent,
     hostAppliesModes: hostSettingsApplyChatPermissionModes(settings),
     legacyMode: legacyHostChatPermissionMode(agent, settings),
-    requested:
-      requested === 'own'
-        ? newChatPermissionMode(agent, useAppStore.getState().settings.nativeChatPermissionMode)
-        : requested
+    requested
   })
 }
 
@@ -77,12 +73,7 @@ export function useStructuredChatHostPermissionVerdict(
 ): (StructuredChatHostPermissionVerdict | { kind: 'checking' }) & { checkAgain: () => void } {
   const gated = target.kind === 'environment' && agentChatPermissionModes(agent) !== null
   const environmentId = target.kind === 'environment' ? target.environmentId : null
-  const requested = useAppStore((state) => {
-    const mode = newChatPermissionModeForSettings(agent, state.settings)
-    return mode === 'own'
-      ? newChatPermissionMode(agent, state.settings.nativeChatPermissionMode)
-      : mode
-  })
+  const requested = useAppStore((state) => newChatPermissionModeForSettings(agent, state.settings))
   const [contact, setContact] = useState(0)
   // Contact is part of the key: a host back from a restart may be an older build, so a verdict from
   // before it never stands in for the fresh one.

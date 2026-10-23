@@ -1,6 +1,15 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import { getDefaultPersistedState } from '../../../shared/constants'
+import type { PersistedState } from '../../../shared/persisted-state-types'
+import { normalizeLoadedGlobalSettings } from '../../../main/persistence/loading-store/normalize-loaded-global-settings'
+import { prepareLoadedTerminalSettings } from '../../../main/persistence/loading-store/prepare-loaded-terminal-settings'
+import { prepareLoadedProfileSettings } from '../../../main/persistence/loading-store/prepare-loaded-profile-settings'
+import { useNativeChatHostPermissionGate } from '@/components/native-chat/use-native-chat-host-permission-gate'
+import * as runtimeRpc from '@/runtime/runtime-rpc-client'
+import type * as HostPermission from '@/runtime/structured-chat-host-permission'
 import type { Worktree } from '../../../shared/worktree/types'
 
 const mocks = vi.hoisted(() => ({
@@ -25,7 +34,8 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
   })
 }))
 
-vi.mock('@/runtime/structured-chat-host-permission', () => ({
+vi.mock('@/runtime/structured-chat-host-permission', async (importOriginal) => ({
+  ...(await importOriginal<typeof HostPermission>()),
   readStructuredChatHostPermissionVerdict: mocks.hostPermission
 }))
 // Switch-on, main opens this machine's chats and its frames draw them.
@@ -127,7 +137,10 @@ beforeEach(async () => {
   main = await drawTabsFromMain(useAppStore)
 })
 
-afterEach(() => main.close())
+afterEach(() => {
+  main.close()
+  vi.restoreAllMocks()
+})
 
 describe('a structured chat launch on a paired server', () => {
   beforeEach(seedPairedServerWorkspace)
@@ -274,6 +287,101 @@ describe('a structured chat launch on a paired server', () => {
       })
       expect(mocks.launchAgentInNewTab).not.toHaveBeenCalled()
       expectNoChatCommitted()
+    }
+  )
+
+  it.each(['own', 'ask'] as const)(
+    'loads and reloads saved %s through old-host launch and mounted Send admission',
+    async (choice) => {
+      const defaults = getDefaultPersistedState('/fixture/c3-old-host')
+      let parsed: PersistedState = {
+        ...defaults,
+        settings: {
+          ...defaults.settings,
+          agentPermissionDefault: choice,
+          agentPermissionOverrides: {},
+          agentYoloDefaultsMigrated: true,
+          agentDefaultArgs: { claude: '', codex: '' },
+          nativeChatPermissionMode: 'full-access'
+        }
+      }
+      for (let load = 0; load < 2; load++) {
+        const noop = (): void => {}
+        const settings = normalizeLoadedGlobalSettings(
+          parsed,
+          prepareLoadedTerminalSettings(parsed, noop),
+          prepareLoadedProfileSettings(parsed, defaults, noop)
+        )
+        expect(settings.agentPermissionDefault).toBe(choice)
+        expect(settings.nativeChatPermissionMode).toBe('ask')
+        useAppStore.setState({ settings })
+        parsed = { ...parsed, settings: JSON.parse(JSON.stringify(settings)) }
+      }
+      const actual = await vi.importActual<typeof HostPermission>(
+        '@/runtime/structured-chat-host-permission'
+      )
+      mocks.hostPermission.mockImplementation(actual.readStructuredChatHostPermissionVerdict)
+      let answerCapability: (supported: boolean) => void = () => {}
+      const capability = new Promise<boolean>((resolve) => {
+        answerCapability = resolve
+      })
+      const capabilityRead = vi
+        .spyOn(runtimeRpc, 'runtimeEnvironmentSupportsCapability')
+        .mockReturnValue(capability)
+      let answerSettings: (value: {
+        settings: { agentDefaultArgs: Record<string, string> }
+      }) => void = () => {}
+      const hostSettings = new Promise<{ settings: { agentDefaultArgs: Record<string, string> } }>(
+        (resolve) => {
+          answerSettings = resolve
+        }
+      )
+      const settingsRead = vi.spyOn(runtimeRpc, 'callRuntimeRpc').mockReturnValue(hostSettings)
+      mocks.createSupport.mockResolvedValue({ supported: true })
+      const mounted = renderHook(() =>
+        useNativeChatHostPermissionGate(
+          { kind: 'environment', environmentId: 'server-1' },
+          'claude',
+          'Claude'
+        )
+      )
+      const launch = beginStructuredAgentSessionProvisionalLaunch({
+        plan: pairedPlan(),
+        hooks: {},
+        onHostDeclined: vi.fn()
+      })
+      await vi.waitFor(() => expect(capabilityRead).toHaveBeenCalledTimes(2))
+      expect(settingsRead).not.toHaveBeenCalled()
+      expect(mounted.result.current.sendBlockedReason).not.toBeNull()
+      expect(useAppStore.getState().unifiedTabsByWorktree[WORKTREE] ?? []).toEqual([])
+      await act(async () => answerCapability(false))
+      await vi.waitFor(() => expect(settingsRead).toHaveBeenCalledTimes(2))
+      for (const call of settingsRead.mock.calls) {
+        expect(call).toEqual([
+          { kind: 'environment', environmentId: 'server-1' },
+          'settings.get',
+          undefined,
+          { timeoutMs: 15_000 }
+        ])
+      }
+      expect(mounted.result.current.sendBlockedReason).not.toBeNull()
+      expect(useAppStore.getState().unifiedTabsByWorktree[WORKTREE] ?? []).toEqual([])
+      await act(async () => answerSettings({ settings: { agentDefaultArgs: {} } }))
+      if (choice === 'own') {
+        await vi.waitFor(() => expect(mounted.result.current.sendBlockedReason).toBeNull())
+        await vi.waitFor(() =>
+          expect(useAppStore.getState().unifiedTabsByWorktree[WORKTREE]).toHaveLength(1)
+        )
+        expect(mocks.toastError).not.toHaveBeenCalled()
+      } else {
+        await expect(launch?.settlement).resolves.toMatchObject({ kind: 'failed', notified: true })
+        await vi.waitFor(() =>
+          expect(mounted.result.current.notice?.key).toBe('host-permission:refused')
+        )
+        expectNoChatCommitted()
+      }
+      mounted.unmount()
+      launch?.cancel()
     }
   )
 
