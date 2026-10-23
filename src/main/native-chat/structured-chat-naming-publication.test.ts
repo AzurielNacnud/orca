@@ -1,19 +1,3 @@
-// @vitest-environment happy-dom
-import type { AiVaultListArgs } from '../../shared/ai-vault-types'
-import type { AgentSessionStatusEvent } from '../../shared/agent-session-wire'
-import { act, createElement } from 'react'
-import { createRoot } from 'react-dom/client'
-import {
-  useAiVaultSessionRefresh,
-  resetAiVaultForcedRescanThrottleForTest
-} from '@/components/right-sidebar/ai-vault-session-refresh'
-import { readCachedAiVaultSessionList } from '@/components/right-sidebar/ai-vault-session-list-request'
-import { useAppStore } from '@/store'
-import { subscribeStructuredAgentSessionStatus } from '@/runtime/structured-agent-session-client'
-import {
-  getStructuredAgentSessionStatusFeed,
-  resetStructuredAgentSessionStatusFeedsForTests
-} from '@/runtime/structured-agent-session-status-feed'
 import '../runtime/rpc/unused-default-rpc-methods.test-fixture'
 import { expect, it, vi } from 'vitest'
 import { getDefaultSettings, getDefaultWorkspaceSession } from '../../shared/constants'
@@ -39,14 +23,6 @@ import {
   HOST_TEST_SESSION,
   HOST_TEST_THREAD
 } from './agent-session-wire/structured-agent-session-host-test-data'
-
-vi.mock('@/runtime/runtime-rpc-client', async (actual) => ({
-  ...(await actual()),
-  runtimeEnvironmentSupportsCapability: vi.fn(async () => true)
-}))
-vi.mock('@/runtime/structured-agent-session-client', () => ({
-  subscribeStructuredAgentSessionStatus: vi.fn()
-}))
 
 it.each(['J', 'R', 'P', 'L', 'T', 'U', 'C'] as const)(
   'counts actual naming, ownership, tab and transport work as %s varies independently',
@@ -161,62 +137,6 @@ it.each(['J', 'R', 'P', 'L', 'T', 'U', 'C'] as const)(
           },
           client
         )
-      const serving = AI_VAULT_METHODS.find((method) => method.name === 'aiVault.listSessions')!
-      const served = () => serving.handler({}, { runtime, ...client })
-      const request = {
-        scopePaths: [],
-        executionHostScope: 'local' as const,
-        sessionLimit: 500 as const
-      }
-      const container = document.createElement('div')
-      let root = createRoot(container)
-      let held = Promise.withResolvers<void>()
-      held.resolve()
-      const transport = vi.fn(async (_args: AiVaultListArgs) => {
-        const response = await served()
-        await held.promise
-        return response
-      })
-      Object.defineProperty(window, 'api', {
-        configurable: true,
-        value: {
-          aiVault: {
-            listSessions: transport,
-            cancelListSessions: async () => {},
-            onWindowFocused: () => () => {}
-          }
-        }
-      })
-      const stops: ReturnType<typeof vi.fn>[] = []
-      let unrelatedEmit: ((event: AgentSessionStatusEvent) => void) | undefined
-      vi.mocked(subscribeStructuredAgentSessionStatus).mockImplementation(async (target, emit) => {
-        if (target.kind === 'environment') {
-          unrelatedEmit = emit
-          return { unsubscribe: () => {} }
-        }
-        const stop = vi.fn(host.subscribeStatus({ id: 'renderer', emit }))
-        stops.push(stop)
-        return { unsubscribe: stop }
-      })
-      const feed = getStructuredAgentSessionStatusFeed({ kind: 'local' })
-      const subscribe = feed.subscribe
-      vi.spyOn(feed, 'subscribe').mockImplementation((listener) => {
-        const remove = vi.fn(subscribe(listener))
-        stops.push(remove)
-        return remove
-      })
-      let refresh: ReturnType<typeof useAiVaultSessionRefresh>['refresh'] = async () => {}
-
-      function History() {
-        const view = useAiVaultSessionRefresh([], 'local', 500)
-        refresh = view.refresh
-        const row = view.sessions.at(-1)
-        return createElement(
-          'span',
-          null,
-          `${row?.title}:${row?.structuredSession?.sessionId ?? ''}`
-        )
-      }
       const deliveries: string[] = []
       const subscriptions = Array.from({ length: sizes.C }, (_, index) =>
         host.subscribeStatus({
@@ -271,68 +191,6 @@ it.each(['J', 'R', 'P', 'L', 'T', 'U', 'C'] as const)(
             Math.min(sizes.U, Math.max(sizes.U - sizes.T, 0) + index + 1)
           ).reduce((a, b) => a + b, 0)
         expect(labelVisits).toBe(comparisons)
-        // Reuse the serving rig with distinct real owners for the renderer's row boundary.
-        const represented = [...records.slice(1), get(HOST_TEST_SESSION)!]
-        list.mockImplementation(() => represented.map((record) => lookup(record.sessionId)!))
-        scan.mockResolvedValue({
-          ...listResult(),
-          sessions: represented.map((record) => ({
-            ...row,
-            id: record.sessionId,
-            sessionId: providerId(record.sessionId)
-          }))
-        })
-        resetAiVaultSessionListCacheForTests()
-        await act(async () => root.render(createElement(History)))
-        expect(container.textContent).toContain(HOST_TEST_SESSION)
-        const previous = vi.spyOn(feed.getNamingSnapshot(), 'get')
-        await act(async () => {
-          for (let i = 0; i < 10; i++) {
-            host.publishConversationName(HOST_TEST_SESSION)
-          }
-        })
-        // The fold reads one target per event; the unchanged map adds no owner-row lookups.
-        expect(previous.mock.calls.filter(([id]) => id.startsWith('population-'))).toHaveLength(0)
-        previous.mockClear()
-        await act(async () => {
-          byId.get('population-1')!.conversationName = 'Different'
-          host.publishConversationName('population-1')
-        })
-        expect(
-          previous.mock.calls.filter(([id]) =>
-            represented.some((record) => record.sessionId === id)
-          )
-        ).toHaveLength(sizes.R + 1)
-        previous.mockRestore()
-        const rendererCalls = transport.mock.calls.length
-        const stopUnrelated = getStructuredAgentSessionStatusFeed({
-          kind: 'environment',
-          environmentId: 'unrelated'
-        }).activate()
-        await act(async () => {
-          await Promise.resolve()
-        })
-        await act(async () => {
-          for (const conversationName of ['Remote', null]) {
-            unrelatedEmit?.({
-              type: 'snapshot',
-              sessions: [],
-              conversationNames: [{ sessionId: HOST_TEST_SESSION, conversationName }]
-            })
-          }
-        })
-        expect(transport).toHaveBeenCalledTimes(rendererCalls)
-        stopUnrelated()
-        held = Promise.withResolvers<void>()
-        await act(async () => {
-          for (let index = 0; index < n; index++) {
-            await store.setConversationName(HOST_TEST_SESSION, `Transition ${index}`)
-            host.publishConversationName(HOST_TEST_SESSION)
-            await store.setConversationName(HOST_TEST_SESSION, null)
-            host.publishConversationName(HOST_TEST_SESSION)
-          }
-        })
-        expect(transport).toHaveBeenCalledTimes(rendererCalls + 1)
         const command = {
           envelope: envelope('agentSession.conversationCommand', { command: 'clear' }),
           command: 'clear' as const
@@ -344,25 +202,6 @@ it.each(['J', 'R', 'P', 'L', 'T', 'U', 'C'] as const)(
         expect(retired).toMatchObject({ ok: true })
         expect(JSON.stringify(retired)).not.toContain(`"sessionId":"${HOST_TEST_SESSION}"`)
         expect(tabs.at(-1)).toContain('Codex Chat')
-        await act(async () => held.resolve())
-        await vi.waitFor(() => expect(transport).toHaveBeenCalledTimes(rendererCalls + 2))
-        expect(container.textContent).toBe(`${row.title}:`)
-        expect(
-          readCachedAiVaultSessionList(request)?.sessions.at(-1)?.structuredSession
-        ).toBeUndefined()
-        await act(async () => {
-          for (let i = 0; i < 10; i++) {
-            host.publishConversationName(HOST_TEST_SESSION)
-          }
-        })
-        expect(transport).toHaveBeenCalledTimes(rendererCalls + 2)
-        act(() => root.unmount())
-        expect(stops.every((stop) => stop.mock.calls.length === 1)).toBe(true)
-        root = createRoot(container)
-        await act(async () => root.render(createElement(History)))
-        expect(container.textContent).toBe(`${row.title}:`)
-        expect(transport).toHaveBeenCalledTimes(rendererCalls + 2)
-        expect(transport.mock.calls.every(([args]) => !args.force)).toBe(true)
         await store.setConversationName(HOST_TEST_SESSION, 'Newer name')
         expect(await host.conversationCommand(CALLER, command)).toMatchObject({ ok: true })
         expect(publication).toHaveBeenCalledTimes(2)
@@ -379,25 +218,7 @@ it.each(['J', 'R', 'P', 'L', 'T', 'U', 'C'] as const)(
           })
         ).toMatchObject({ ok: false })
         expect(publication).toHaveBeenCalledTimes(2)
-        byId.get('population-1')!.conversationName = 'Late title'
-        const cached = readCachedAiVaultSessionList(request)
-        held = Promise.withResolvers<void>()
-        await act(async () => {
-          void refresh({ background: true, reconcileOwnership: true })
-        })
-        const beforeUnmount = transport.mock.calls.length
-        act(() => root.unmount())
-        await act(async () => held.resolve())
-        host.publishConversationName(HOST_TEST_SESSION)
-        expect(transport).toHaveBeenCalledTimes(beforeUnmount)
-        expect(readCachedAiVaultSessionList(request)).toEqual(cached)
-        expect(container.textContent).toBe('')
       } finally {
-        held.resolve()
-        act(() => root.unmount())
-        resetStructuredAgentSessionStatusFeedsForTests()
-        resetAiVaultForcedRescanThrottleForTest()
-        useAppStore.setState(useAppStore.getInitialState(), true)
         subscriptions.forEach((stop) => stop())
         source.resolve('')
         await vi.waitFor(() => expect(naming.activeSessionIds()).toEqual([]))

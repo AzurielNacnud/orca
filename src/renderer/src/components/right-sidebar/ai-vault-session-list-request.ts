@@ -46,7 +46,7 @@ export function readCachedAiVaultSessionList(
 export function cacheAiVaultSessionList(
   request: AiVaultSessionListRequest,
   result: AiVaultListResult,
-  options: { force?: boolean; reconcileOwnership?: boolean }
+  options: { replaceHostEntries: boolean }
 ): void {
   cacheAiVaultSessionResult({
     key: aiVaultSessionResultCacheKey(request.executionHostScope, request.scopePaths),
@@ -54,7 +54,7 @@ export function cacheAiVaultSessionList(
     limit: request.sessionLimit,
     scopePaths: request.scopePaths,
     result,
-    replaceHostEntries: options.force === true || options.reconcileOwnership === true
+    replaceHostEntries: options.replaceHostEntries
   })
 }
 

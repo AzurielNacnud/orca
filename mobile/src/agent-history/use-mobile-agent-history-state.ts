@@ -188,26 +188,6 @@ export function useMobileAgentHistoryState(params: MobileAgentHistoryStateParams
     noNames
   )
 
-  const previousNames = useRef({ feed, names })
-  useEffect(() => {
-    const previous = previousNames.current
-    previousNames.current = { feed, names }
-    if (
-      previous.feed === feed &&
-      screenState.kind === 'ready' &&
-      screenState.hostId === hostId &&
-      screenState.client === client &&
-      screenState.sessions.some((session) => {
-        const id = session.structuredSession?.sessionId
-        return (
-          id && previous.names.get(id)?.conversationName && names.get(id)?.conversationName === null
-        )
-      })
-    ) {
-      void loadSessions({ scope, force: false })
-    }
-  }, [client, feed, hostId, loadSessions, names, scope, screenState])
-
   // Initial + reconnect load. Why: scope switches reuse the host's 15s cache
   // (force:false) so a tab tap is cheap; only an explicit refresh bypasses it.
   useEffect(() => {
