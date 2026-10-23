@@ -21,6 +21,11 @@ import {
 } from './doc-preview-grants'
 import type { BrowserOpenOutcome } from './browser-link-destination'
 import { openResolvedHtmlFileInBrowser } from '@/components/terminal-pane/terminal-file-link-browser-open'
+import {
+  detectedListingFixture,
+  terminalTabFixture
+} from '@/components/native-chat/native-chat-workspace-test-fixtures'
+import { openPlannedFileBrowserLink } from './file-preview-link-open'
 
 const mocks = vi.hoisted(() => ({ getState: vi.fn(), mint: vi.fn(), revoke: vi.fn() }))
 vi.mock('@/store', () => ({ useAppStore: { getState: () => mocks.getState() } }))
@@ -51,6 +56,114 @@ afterEach(() => {
   for (const id of grants.splice(0)) {
     releaseDocPreviewGrant(id)
   }
+})
+
+it.each([
+  ['local', false],
+  ['ssh:detected-owner', false],
+  ['ssh:detected-owner', true]
+] as const)(
+  'opens a detected-only workspace preview beside its retained source on %s (selected twin: %s)',
+  async (host, selectedTwin) => {
+    store.setState((state) => ({
+      repos: state.repos.map((repo) => ({
+        ...repo,
+        connectionId: host === 'local' ? null : 'detected-owner',
+        executionHostId: host
+      })),
+      worktreesByRepo: {},
+      detectedWorktreesByRepo: {
+        repo1: detectedListingFixture([
+          makeWorktree({ id: WORKSPACE, repoId: 'repo1', path: '/repo', hostId: host }),
+          ...(selectedTwin
+            ? [makeWorktree({ id: WORKSPACE, repoId: 'repo1', path: '/repo', hostId: 'local' })]
+            : [])
+        ])
+      },
+      activeWorktreeId: selectedTwin ? WORKSPACE : null,
+      activeWorkspaceExecutionHostId: selectedTwin ? host : null,
+      tabsByWorktree: {
+        [WORKSPACE]: state.unifiedTabsByWorktree[WORKSPACE]!.map((tab) =>
+          terminalTabFixture(tab.entityId, WORKSPACE)
+        )
+      },
+      unifiedTabsByWorktree: {
+        [WORKSPACE]: state.unifiedTabsByWorktree[WORKSPACE]!.map((tab) => ({
+          ...tab,
+          executionHostId: host
+        }))
+      }
+    }))
+    const outcome = await new Promise<BrowserOpenOutcome>((resolve) =>
+      openFileInBrowserTab({
+        filePath: '/repo/report.html',
+        worktreeId: WORKSPACE,
+        fileExecutionHostId: host,
+        linkContext: { linkIntent: captureLinkOpenIntent(store.getState(), WORKSPACE, 'source') },
+        onLinkOutcome: resolve
+      })
+    )
+    expect(outcome).toMatchObject({
+      status: 'opened',
+      result: { worktreeId: WORKSPACE, executionHostId: host, groupId: 'b' }
+    })
+    if (outcome.status !== 'opened') {
+      throw new Error('Expected a detected-only workspace preview')
+    }
+    const page = store
+      .getState()
+      .browserPagesByWorkspace[outcome.result.browserWorkspaceId]?.find(
+        (candidate) => candidate.id === outcome.result.browserPageId
+      )
+    expect(page).toMatchObject(
+      host === 'local'
+        ? { url: 'file:///repo/report.html' }
+        : {
+            docLocation: {
+              kind: 'workspace-doc',
+              worktreeId: WORKSPACE,
+              filePath: '/repo/report.html'
+            }
+          }
+    )
+    expect(store.getState().activeGroupIdByWorktree[WORKSPACE]).toBe('b')
+    expect(
+      store.getState().groupsByWorktree[WORKSPACE]?.find((group) => group.id === 'a')?.activeTabId
+    ).toBe('source')
+  }
+)
+
+it('refuses a detected preview whose owner changed despite a retained active host selection', async () => {
+  store.setState((state) => ({
+    worktreesByRepo: {},
+    detectedWorktreesByRepo: {
+      repo1: detectedListingFixture(state.worktreesByRepo.repo1!)
+    }
+  }))
+  const initial = store.getState()
+  const linkIntent = captureLinkOpenIntent(initial, WORKSPACE, 'source')
+  store.setState({
+    detectedWorktreesByRepo: {
+      repo1: detectedListingFixture([
+        makeWorktree({
+          id: WORKSPACE,
+          repoId: 'repo1',
+          path: '/repo',
+          hostId: 'ssh:changed-owner'
+        })
+      ])
+    }
+  })
+  const outcome = await openPlannedFileBrowserLink(
+    initial,
+    { worktreeId: WORKSPACE, filePath: '/repo/report.html', fileExecutionHostId: 'local' },
+    { status: 'browser-tab', url: 'file:///repo/report.html', title: 'report.html' },
+    { linkIntent },
+    () => true
+  )
+  expect(outcome).toEqual({ status: 'refused' })
+  expect(store.getState().browserPagesByWorkspace).toEqual({})
+  expect(store.getState().activeGroupIdByWorktree[WORKSPACE]).toBe('c')
 })
 
 it('SSH documents duplicate only the source page and retain independent grants without a website-browser capability', async () => {
@@ -86,15 +199,19 @@ it('SSH documents duplicate only the source page and retain independent grants w
     activate: false
   })
   let outcome: BrowserOpenOutcome | undefined
-  const plan = openFileInBrowserTab({
-    filePath: docLocation.filePath,
-    worktreeId: WORKSPACE,
-    linkContext: { linkIntent: captureLinkOpenIntent(store.getState(), WORKSPACE, 'source') },
-    onLinkOutcome: (value) => {
-      outcome = value
-    }
+  let plan: ReturnType<typeof openFileInBrowserTab> | undefined
+  await new Promise<void>((resolve) => {
+    plan = openFileInBrowserTab({
+      filePath: docLocation.filePath,
+      worktreeId: WORKSPACE,
+      linkContext: { linkIntent: captureLinkOpenIntent(store.getState(), WORKSPACE, 'source') },
+      onLinkOutcome: (value) => {
+        outcome = value
+        resolve()
+      }
+    })
   })
-  expect(plan.status).toBe('doc-preview')
+  expect(plan?.status).toBe('doc-preview')
   expect(outcome).toMatchObject({
     status: 'opened',
     result: { groupId: 'b', executionHostId: host }
@@ -120,7 +237,7 @@ it('SSH documents duplicate only the source page and retain independent grants w
   expect(mocks.mint).toHaveBeenCalledTimes(2)
 })
 
-it('a folder workspace uses its own layout and activates its browser without Git metadata', () => {
+it('a folder workspace uses its own layout and activates its browser without Git metadata', async () => {
   const folder = 'folder:folder-1'
   store.setState({
     folderWorkspaces: [
@@ -180,12 +297,17 @@ it('a folder workspace uses its own layout and activates its browser without Git
     worktreesByRepo: {}
   })
   const outcome = vi.fn()
-  openFileInBrowserTab({
-    filePath: '/folder/report.html',
-    worktreeId: folder,
-    linkContext: { linkIntent: captureLinkOpenIntent(store.getState(), folder, 'chat') },
-    onLinkOutcome: outcome
-  })
+  await new Promise((resolve) =>
+    openFileInBrowserTab({
+      filePath: '/folder/report.html',
+      worktreeId: folder,
+      linkContext: { linkIntent: captureLinkOpenIntent(store.getState(), folder, 'chat') },
+      onLinkOutcome: (result) => {
+        outcome(result)
+        resolve(result)
+      }
+    })
+  )
   expect(outcome).toHaveBeenCalledWith(
     expect.objectContaining({
       status: 'opened',
@@ -197,7 +319,7 @@ it('a folder workspace uses its own layout and activates its browser without Git
 
 it.each([false, true])(
   'refuses a replaced file owner for a captured preview (explicit: %s)',
-  (explicit) => {
+  async (explicit) => {
     const linkIntent = captureLinkOpenIntent(store.getState(), WORKSPACE, 'source', {
       explicitSourceGroup: explicit
     })
@@ -214,12 +336,17 @@ it.each([false, true])(
       activeWorkspaceExecutionHostId: host
     }))
     const outcome = vi.fn()
-    openFileInBrowserTab({
-      filePath: '/repo/index.html',
-      worktreeId: WORKSPACE,
-      linkContext: { linkIntent },
-      onLinkOutcome: outcome
-    })
+    await new Promise((resolve) =>
+      openFileInBrowserTab({
+        filePath: '/repo/index.html',
+        worktreeId: WORKSPACE,
+        linkContext: { linkIntent },
+        onLinkOutcome: (result) => {
+          outcome(result)
+          resolve(result)
+        }
+      })
+    )
     expect(outcome).toHaveBeenCalledExactlyOnceWith({ status: 'refused' })
     expect(store.getState().browserPagesByWorkspace).toEqual({})
     expect(store.getState().activeGroupIdByWorktree[WORKSPACE]).toBe('c')
@@ -228,7 +355,7 @@ it.each([false, true])(
 
 it.each([true, false])(
   'validates the resolved file owner independently of a different source workspace (owner matches: %s)',
-  (ownerMatches) => {
+  async (ownerMatches) => {
     const destination = 'repo2::/other'
     const host = 'ssh:file-owner'
     const linkIntent = captureLinkOpenIntent(store.getState(), WORKSPACE, 'source')
@@ -243,13 +370,18 @@ it.each([true, false])(
       }
     }))
     const outcome = vi.fn()
-    openFileInBrowserTab({
-      filePath: '/other/report.html',
-      worktreeId: destination,
-      fileExecutionHostId: ownerMatches ? host : 'local',
-      linkContext: { linkIntent },
-      onLinkOutcome: outcome
-    })
+    await new Promise((resolve) =>
+      openFileInBrowserTab({
+        filePath: '/other/report.html',
+        worktreeId: destination,
+        fileExecutionHostId: ownerMatches ? host : 'local',
+        linkContext: { linkIntent },
+        onLinkOutcome: (result) => {
+          outcome(result)
+          resolve(result)
+        }
+      })
+    )
     if (!ownerMatches) {
       expect(outcome).toHaveBeenCalledExactlyOnceWith({ status: 'refused' })
       expect(store.getState().browserPagesByWorkspace).toEqual({})
@@ -265,7 +397,7 @@ it.each([true, false])(
   }
 )
 
-it('keeps deliberate client-local HTML discovery from a remote source available', () => {
+it('keeps deliberate client-local HTML discovery from a remote source available', async () => {
   const host = 'ssh:remote-source'
   store.setState((state) => ({
     repos: state.repos.map((repo) => ({
@@ -284,7 +416,7 @@ it('keeps deliberate client-local HTML discovery from a remote source available'
       }))
     }
   }))
-  const outcome = openResolvedHtmlFileInBrowser({
+  const outcome = await openResolvedHtmlFileInBrowser({
     filePath: '/tmp/client-report.html',
     worktreeId: WORKSPACE,
     clientLocal: true,

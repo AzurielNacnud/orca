@@ -14,6 +14,7 @@ import {
   type BrowserOpenOutcome
 } from './browser-link-destination'
 import { isLiveLinkOpenGroup } from './link-open-intent'
+import { afterPendingEntityTabs, hasPendingEntityTab } from '@/runtime/layout-owner-pending-tabs'
 
 export class BrowserLinkPlacementRefused extends Error {}
 
@@ -51,15 +52,15 @@ export function browserLinkCommitIsValid(
   )
 }
 
-/** Selection and local mutation run together, after route resolution has finished. */
-export function openLocalBrowserLink(params: {
+/** Selection and creation run together; activation waits for main to draw the tab. */
+export async function openLocalBrowserLink(params: {
   destination: BrowserLinkDestination
   context: BrowserLinkOpenContext
   url: string
   options?: CreateBrowserTabOptions
   ownsRoute: (state: AppState) => boolean
   reveal?: () => void
-}): BrowserOpenOutcome {
+}): Promise<BrowserOpenOutcome> {
   const { destination, context } = params
   if (context.isCurrentRequest?.() === false) {
     return { status: 'superseded' }
@@ -102,6 +103,12 @@ export function openLocalBrowserLink(params: {
         focusAddressBar: false,
         validateLinkPlacement: validate
       })
+      if (hasPendingEntityTab(destination.worktreeId, created.id)) {
+        await new Promise<void>((resolve) =>
+          afterPendingEntityTabs(destination.worktreeId, created.id, resolve)
+        )
+      }
+      validate(useAppStore.getState())
       const pageId = created.activePageId
       result = pageId
         ? browserOpenResultForPage(useAppStore.getState(), destination, created.id, pageId)

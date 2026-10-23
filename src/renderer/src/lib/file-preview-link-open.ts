@@ -8,6 +8,8 @@ import type { BrowserLinkOpenContext, BrowserOpenOutcome } from './browser-link-
 import { openLocalBrowserLink } from './browser-link-open'
 import { getResolvedExecutionHostIdForWorktree } from './resolved-worktree-execution-host'
 import { createBrowserLinkHostMatcher } from './browser-link-owner'
+import { resolveWorktreeOperationRoute } from './worktree-operation-route'
+import { hasIndexedDetectedWorktree } from './worktree-runtime-owner-index'
 
 export type FileBrowserLinkTarget = {
   filePath: string
@@ -15,14 +17,29 @@ export type FileBrowserLinkTarget = {
   fileExecutionHostId?: ExecutionHostId
 }
 
-export function openPlannedFileBrowserLink(
+function resolveFileBrowserLinkExecutionHostId(
+  state: AppState,
+  worktreeId: string
+): ExecutionHostId | null {
+  const executionHostId = getResolvedExecutionHostIdForWorktree(state, worktreeId)
+  if (executionHostId || !hasIndexedDetectedWorktree(state.detectedWorktreesByRepo, worktreeId)) {
+    return executionHostId
+  }
+  const route = resolveWorktreeOperationRoute(state, worktreeId)
+  // A retained active host selection alone cannot prove a detected file's current owner.
+  return route?.executionHostId && state.getKnownWorktreeById(worktreeId, route.executionHostId)
+    ? route.executionHostId
+    : null
+}
+
+export async function openPlannedFileBrowserLink(
   state: AppState,
   params: FileBrowserLinkTarget,
   plan: Exclude<WorkspaceFilePreviewPlan, { status: 'unsupported' }>,
   context: BrowserLinkOpenContext,
   ownsPreviewRoute: (state: AppState) => boolean
-): BrowserOpenOutcome {
-  const executionHostId = getResolvedExecutionHostIdForWorktree(state, params.worktreeId)
+): Promise<BrowserOpenOutcome> {
+  const executionHostId = resolveFileBrowserLinkExecutionHostId(state, params.worktreeId)
   if (
     !executionHostId ||
     (params.fileExecutionHostId &&
@@ -61,7 +78,7 @@ export function openPlannedFileBrowserLink(
       })
     },
     ownsRoute: (current) =>
-      getResolvedExecutionHostIdForWorktree(current, params.worktreeId) === executionHostId &&
+      resolveFileBrowserLinkExecutionHostId(current, params.worktreeId) === executionHostId &&
       ownsPreviewRoute(current)
   })
 }

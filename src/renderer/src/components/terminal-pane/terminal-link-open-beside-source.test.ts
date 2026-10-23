@@ -124,6 +124,26 @@ describe('terminal file links carry their source tab', () => {
     expect(toastErrorMock).toHaveBeenCalledTimes(1)
   })
 
+  it('reports a refused HTML placement for the internal Open in this group action', async () => {
+    seedSourceTab()
+    const stat = createDeferred<{ isDirectory: boolean }>()
+    statMock.mockImplementationOnce(() => stat.promise)
+
+    openDetectedFilePath('/tmp/report.html', null, null, {
+      ...sourceDeps,
+      openInSourceGroupSurface: 'internal'
+    })
+    storeState.groupsByWorktree = {}
+    stat.resolve({ isDirectory: false })
+    await flushAsyncWork()
+
+    expect(createBrowserTabMock).not.toHaveBeenCalled()
+    expect(openFileForLinkMock).not.toHaveBeenCalled()
+    expect(toastErrorMock).toHaveBeenCalledExactlyOnceWith(
+      "Couldn't open /tmp/report.html in this group"
+    )
+  })
+
   it('refuses a closed explicit group before activating its workspace', async () => {
     setPlatform('Macintosh')
     seedSourceTab()

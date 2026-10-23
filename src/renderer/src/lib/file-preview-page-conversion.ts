@@ -12,7 +12,7 @@ import { browserPageDocLocationsEqual } from '../../../shared/browser-page-doc-l
 
 /** The tab a document is already open in, found by every PAGE's docLocation and not just the
  *  workspace mirror — a mixed workspace whose doc page is inactive mirrors null. */
-function findWorkspaceShowingDoc(
+export function findWorkspaceShowingDoc(
   state: AppState,
   docLocation: BrowserPageDocLocation
 ): { workspaceId: string; pageId: string } | null {

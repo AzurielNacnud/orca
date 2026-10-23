@@ -65,16 +65,14 @@ function open(surface: 'http' | 'html'): Promise<BrowserOpenOutcome> {
       linkContext
     })
   }
-  let outcome: BrowserOpenOutcome = { status: 'failed' }
-  openFileInBrowserTab({
-    filePath: '/repo/report.html',
-    worktreeId: WORKSPACE,
-    linkContext,
-    onLinkOutcome: (value) => {
-      outcome = value
-    }
-  })
-  return Promise.resolve(outcome)
+  return new Promise((resolve) =>
+    openFileInBrowserTab({
+      filePath: '/repo/report.html',
+      worktreeId: WORKSPACE,
+      linkContext,
+      onLinkOutcome: resolve
+    })
+  )
 }
 
 describe.each(['repo', 'worktree'] as const)('%s browser profile isolation', (scope) => {

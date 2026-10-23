@@ -55,11 +55,11 @@ export function workspaceBrowserLinkDestination(
   }
 }
 
-export function openClientWorkspaceBrowserLink(
+export async function openClientWorkspaceBrowserLink(
   request: OpenWorkspaceBrowserTabRequest,
   destination: BrowserLinkDestination,
   title: string
-): BrowserOpenOutcome {
+): Promise<BrowserOpenOutcome> {
   if (!request.linkContext) {
     return { status: 'failed' }
   }

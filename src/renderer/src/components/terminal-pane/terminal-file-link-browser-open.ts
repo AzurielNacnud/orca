@@ -9,12 +9,12 @@ import type { BrowserLinkOpenContext, BrowserOpenOutcome } from '@/lib/browser-l
 import { activateAndRevealWorkspace } from '@/lib/worktree-activation'
 import { getWorkspaceFilePreviewPlan, openFileInBrowserTab } from '@/lib/file-preview'
 
-export function openResolvedHtmlFileInBrowser(
+export async function openResolvedHtmlFileInBrowser(
   params: FileBrowserLinkTarget & {
     clientLocal: boolean
     linkContext?: BrowserLinkOpenContext
   }
-): BrowserOpenOutcome | null {
+): Promise<BrowserOpenOutcome | null> {
   const state = useAppStore.getState()
   const url = absolutePathToFileUri(params.filePath)
   const title = params.filePath.split(/[/\\]/).pop() ?? params.filePath
@@ -57,10 +57,11 @@ type TerminalHtmlFileBrowserTarget = FileBrowserLinkTarget & {
 /** Returns true when the HTML link was opened or deliberately refused. */
 export function openTerminalHtmlFileInBrowser(params: TerminalHtmlFileBrowserTarget): boolean {
   if (params.canOpenWithSystemDefault) {
-    const outcome = openResolvedHtmlFileInBrowser(params)
-    if (outcome?.status === 'refused' || outcome?.status === 'unsupported') {
-      params.refuseOpenInSourceGroup?.()
-    }
+    void openResolvedHtmlFileInBrowser(params).then((outcome) => {
+      if (outcome?.status === 'refused' || outcome?.status === 'unsupported') {
+        params.refuseOpenInSourceGroup?.()
+      }
+    })
     return true
   }
 
