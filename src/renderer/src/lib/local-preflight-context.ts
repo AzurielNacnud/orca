@@ -1,3 +1,7 @@
+import {
+  getProjectHostSetupProjectionFromState,
+  type ProjectCatalogReadState
+} from '@/store/project-host-setup-selector'
 import type { AppState } from '@/store/types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { parseWslUncPath } from '../../../shared/wsl-paths'
@@ -43,9 +47,10 @@ export {
 
 type LocalProjectRuntimeState = Pick<
   AppState,
-  'activeRepoId' | 'activeWorktreeId' | 'projects' | 'repos' | 'settings' | 'worktreesByRepo'
+  'activeRepoId' | 'activeWorktreeId' | 'repos' | 'settings' | 'worktreesByRepo'
 > &
-  Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups' | 'projectHostSetups'>>
+  Partial<Pick<AppState, 'folderWorkspaces' | 'projectGroups'>> &
+  ProjectCatalogReadState
 
 // Why: the shared indexes are WeakMap-keyed on slice identity, so a fresh `{}`
 // or `[]` fallback would miss the cache on every read.
@@ -321,8 +326,9 @@ function getLocalRuntimeProject(
   projectId: string,
   repoId: string
 ) {
+  const { projects } = getProjectHostSetupProjectionFromState(state)
   return (
-    state.projects?.find((entry) => entry.id === projectId) ??
-    state.projects?.find((entry) => projectMatchesRepo(entry, repoId))
+    projects.find((entry) => entry.id === projectId) ??
+    projects.find((entry) => projectMatchesRepo(entry, repoId))
   )
 }

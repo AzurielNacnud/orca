@@ -23,7 +23,8 @@ type AiVaultResumeCommandState = Pick<
   | 'activeWorktreeId'
   | 'folderWorkspaces'
   | 'projectGroups'
-  | 'projects'
+  | 'endpointProjects'
+  | 'endpointProjectHostSetups'
   | 'repos'
   | 'settings'
   | 'worktreesByRepo'
@@ -40,7 +41,21 @@ function makeState(args: {
     folderWorkspaces: [],
     projectGroups: [],
     repos: [{ id: 'repo-1', path: 'C:\\Users\\alice\\repo' }],
-    projects: [
+    endpointProjectHostSetups: [
+      {
+        id: 'repo-1',
+        projectId: 'repo-1',
+        repoId: 'repo-1',
+        hostId: 'local',
+        path: 'C:/Users/alice/repo',
+        displayName: 'repo',
+        setupMethod: 'legacy-repo',
+        setupState: 'ready',
+        createdAt: 0,
+        updatedAt: 0
+      }
+    ],
+    endpointProjects: [
       {
         id: 'repo-1',
         sourceRepoIds: ['repo-1'],

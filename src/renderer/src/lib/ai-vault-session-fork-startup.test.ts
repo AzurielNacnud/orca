@@ -12,7 +12,7 @@ type ForkState = Pick<
   | 'activeWorktreeId'
   | 'folderWorkspaces'
   | 'projectGroups'
-  | 'projects'
+  | 'endpointProjects'
   | 'repos'
   | 'settings'
   | 'worktreesByRepo'

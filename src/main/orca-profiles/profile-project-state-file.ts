@@ -1,3 +1,4 @@
+import { isRepoBackedProjectHostSetup } from '../persistence/tracking-repos/project-host-compatibility'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { getDefaultPersistedState, getDefaultWorkspaceSession } from '../../shared/constants'
@@ -224,13 +225,6 @@ export function writeSerializedProfileState(
   } finally {
     opened.db.close()
   }
-}
-
-function isRepoBackedProjectHostSetup(
-  setup: ProjectHostSetup,
-  currentRepoIds: ReadonlySet<string>
-): boolean {
-  return Boolean(setup.repoId && currentRepoIds.has(setup.repoId))
 }
 
 export function rebuildRepoBackedProjectState(state: TransferProfileState): TransferProfileState {

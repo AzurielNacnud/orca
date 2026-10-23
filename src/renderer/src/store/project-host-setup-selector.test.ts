@@ -85,8 +85,8 @@ describe('project host setup selector', () => {
     const countedSetups = countCollectionReads(setups)
     const state = {
       repos: countedRepos.value,
-      projects: countedProjects.value,
-      projectHostSetups: countedSetups.value
+      endpointProjects: countedProjects.value,
+      endpointProjectHostSetups: countedSetups.value
     }
 
     const first = getProjectHostSetupProjectionFromState(state)
@@ -123,15 +123,15 @@ describe('project host setup selector', () => {
     const setups = [makeSetup(repo.id, 'repo:repo-1')]
     const first = getProjectHostSetupProjectionFromState({
       repos,
-      projects,
-      projectHostSetups: setups
+      endpointProjects: projects,
+      endpointProjectHostSetups: setups
     })
     const replacementSetups = [...setups]
 
     const next = getProjectHostSetupProjectionFromState({
       repos,
-      projects,
-      projectHostSetups: replacementSetups
+      endpointProjects: projects,
+      endpointProjectHostSetups: replacementSetups
     })
 
     expect(next).not.toBe(first)
@@ -144,13 +144,17 @@ describe('project host setup selector', () => {
     const repos = [repo]
     const projects = [makeProject('repo:repo-1', repo.id)]
     const setups = [makeSetup(repo.id, 'repo:repo-1')]
-    getProjectHostSetupProjectionFromState({ repos, projects, projectHostSetups: setups })
+    getProjectHostSetupProjectionFromState({
+      repos,
+      endpointProjects: projects,
+      endpointProjectHostSetups: setups
+    })
 
     const replacementRepos = [makeRepo('repo-2')]
     const next = getProjectHostSetupProjectionFromState({
       repos: replacementRepos,
-      projects,
-      projectHostSetups: setups
+      endpointProjects: projects,
+      endpointProjectHostSetups: setups
     })
 
     expect(next.projects.map((project) => project.id)).toContain('repo:repo-2')

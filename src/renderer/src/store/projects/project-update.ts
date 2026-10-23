@@ -22,7 +22,7 @@ export function createProjectUpdateActions(
           (setup) => setup.projectId === projectId && setup.hostId === hostId
         )
         const endpointProjectId =
-          state.projectHostSetups.find(
+          state.endpointProjectHostSetups.find(
             (setup) => owner && setup.id === owner.id && setup.hostId === owner.hostId
           )?.projectId ?? projectId
         const target = getProjectSetupRuntimeTarget(hostId)
@@ -44,7 +44,7 @@ export function createProjectUpdateActions(
         const normalizedProject = normalizeProjectRow(updatedProject)
         const runtimePreferenceChanged = 'localWindowsRuntimePreference' in updates
         set((state) => ({
-          projects: state.projects.map((project) =>
+          endpointProjects: state.endpointProjects.map((project) =>
             project.id === endpointProjectId
               ? mergeUpdatedProjectCompatibilityProject(project, normalizedProject, updates)
               : project

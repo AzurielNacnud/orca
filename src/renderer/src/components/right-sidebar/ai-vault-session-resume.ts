@@ -26,7 +26,16 @@ export type AiVaultSessionResumeTargetState = Pick<
   AppState,
   'folderWorkspaces' | 'projectGroups' | 'repos' | 'worktreesByRepo'
 > &
-  Partial<Pick<AppState, 'activeRepoId' | 'activeWorktreeId' | 'projects' | 'settings'>>
+  Partial<
+    Pick<
+      AppState,
+      | 'activeRepoId'
+      | 'activeWorktreeId'
+      | 'endpointProjects'
+      | 'endpointProjectHostSetups'
+      | 'settings'
+    >
+  >
 
 export type AiVaultSessionResumeState = {
   blocked: boolean

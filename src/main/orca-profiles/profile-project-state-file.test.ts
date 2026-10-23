@@ -138,9 +138,9 @@ it('reconciles and reloads split and ordinary handoff choices consistently with 
     projectHostSetups: [
       ...projection.setups.map((setup) => ({ ...setup, projectId })),
       makeSetup({
-        id: 'pending',
-        projectId,
-        hostId: 'ssh:pending',
+        id: 'pending-b',
+        projectId: 'repo:b',
+        hostId: 'ssh:extra',
         path: '',
         setupState: 'not-set-up',
         setupMethod: 'provisioned'
@@ -155,6 +155,9 @@ it('reconciles and reloads split and ordinary handoff choices consistently with 
   for (const preference of [undefined, { kind: 'windows-host' as const }]) {
     const saved = {
       ...split,
+      projectHostSetups: split.projectHostSetups.map((setup) =>
+        setup.id === 'pending-b' ? { ...setup, projectId: 'repo:b' } : setup
+      ),
       projects: split.projects.map((project) =>
         project.id === 'repo:b'
           ? { ...project, localWindowsRuntimePreference: preference }
@@ -167,7 +170,18 @@ it('reconciles and reloads split and ordinary handoff choices consistently with 
     expect(
       handedOff.projects.find((project) => project.id === projectId)?.localWindowsRuntimePreference
     ).toEqual(preference)
-    expect(handedOff.projectHostSetups?.filter((setup) => setup.id === 'pending')).toHaveLength(1)
+    expect(handedOff.projectHostSetups?.filter((setup) => setup.id === 'pending-b')).toEqual([
+      expect.objectContaining({
+        projectId,
+        hostId: 'ssh:extra',
+        repoId: '',
+        setupState: 'not-set-up',
+        setupMethod: 'provisioned'
+      })
+    ])
+    expect(
+      rebuildRepoBackedProjectState({ ...reloaded, repos: remaining }).projectHostSetups
+    ).toEqual(handedOff.projectHostSetups)
     expect(rebuildRepoBackedProjectState({ ...reloaded, repos: remaining }).projects).toEqual(
       handedOff.projects
     )

@@ -135,7 +135,7 @@ it('continues a bounded walk after fully filtered native pages and preserves no-
 })
 
 it('bounds catalog reads when a real scoped search grows from N to 10N owners and hits', async () => {
-  const reads = []
+  const reads: number[] = []
   for (const size of [10, 100]) {
     let pathReads = 0
     const projection = projectHostSetupProjectionFromRepos(
@@ -205,3 +205,45 @@ it('keeps one native project query on a correctly advertised endpoint at N and 1
     expect(search).toHaveBeenCalledTimes(1)
   }
 })
+
+it.each(['relevance', 'newest'] as const)(
+  'retains unknown %s frontiers across a finite filtered walk and restarts native staleness',
+  async (sort) => {
+    const search = vi.fn(async (native: AiVaultSearchRequest) => {
+      const key = native.within?.kind === 'project' ? native.within.projectKey : ''
+      if (key === 'repo:provisioned') {
+        return page([hit('low', '/provisioned', 1)], null)
+      }
+      const offset = Number(native.cursor ?? 0)
+      return offset < 4
+        ? page([hit('excluded', '/a/nested-b', 101)], String(offset + 1))
+        : page([hit('high', '/a/high', 100)], null)
+    })
+    const query = { ...request, filters: { sort } }
+    const first = await searchCanonicalProject(query, 'runtime:old', catalog, search)
+    expect(first).toMatchObject({ kind: 'results', hits: [], page: { hasMore: true } })
+    if (first.kind !== 'results') {
+      return
+    }
+    const next = await searchCanonicalProject(
+      { ...query, cursor: first.page.cursor! },
+      'runtime:old',
+      catalog,
+      search
+    )
+    expect(next).toMatchObject({
+      kind: 'results',
+      hits: [{ sessionId: 'high' }, { sessionId: 'low' }],
+      page: { hasMore: false }
+    })
+    search.mockImplementation(async () => ({ kind: 'stale-cursor', generation: 8 }))
+    expect(
+      await searchCanonicalProject(
+        { ...query, cursor: first.page.cursor! },
+        'runtime:old',
+        catalog,
+        search
+      )
+    ).toEqual({ kind: 'stale-cursor', generation: 0 })
+  }
+)

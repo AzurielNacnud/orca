@@ -3,10 +3,24 @@ import type { ProjectHostSetup } from './project-types'
 import { parseWslUncPath } from './wsl-paths'
 import { isWindowsAbsolutePathLike, normalizeRuntimePathForComparison } from './cross-platform-path'
 
-export function getOutclaimedProjectSetups(
-  setups: readonly ProjectHostSetup[]
-): ReadonlySet<ProjectHostSetup> {
-  const claimantBySurface = new Map<string, ProjectHostSetup>()
+export type ProjectCheckoutClaim = Pick<
+  ProjectHostSetup,
+  | 'id'
+  | 'projectId'
+  | 'hostId'
+  | 'repoId'
+  | 'path'
+  | 'kind'
+  | 'setupMethod'
+  | 'createdAt'
+  | 'connectionId'
+  | 'executionHostId'
+>
+
+export function getOutclaimedProjectSetups<T extends ProjectCheckoutClaim>(
+  setups: readonly T[]
+): ReadonlySet<T> {
+  const claimantBySurface = new Map<string, T>()
   for (const setup of setups) {
     if (!isDistinctUserCheckout(setup)) {
       continue
@@ -29,16 +43,16 @@ export function getOutclaimedProjectSetups(
   )
 }
 
-function isDistinctUserCheckout(setup: ProjectHostSetup): boolean {
+function isDistinctUserCheckout(setup: ProjectCheckoutClaim): boolean {
   return setup.setupMethod !== 'provisioned' && setup.kind !== 'folder'
 }
 
 // Windows and WSL namespaces compete independently while retaining cross-surface association.
-function getProjectSetupSurfaceKey(setup: ProjectHostSetup): string {
+function getProjectSetupSurfaceKey(setup: ProjectCheckoutClaim): string {
   return `${setup.projectId}::${getRepoSetupOwnerScope(setup)}::${getPathSurface(setup)}`
 }
 
-function getPathSurface(setup: ProjectHostSetup): string {
+function getPathSurface(setup: ProjectCheckoutClaim): string {
   const wslPath = parseWslUncPath(setup.path)
   return wslPath
     ? `wsl:${wslPath.distro.toLowerCase()}`
@@ -47,12 +61,12 @@ function getPathSurface(setup: ProjectHostSetup): string {
       : 'default'
 }
 
-function getCheckoutIdentity(setup: ProjectHostSetup): string {
+function getCheckoutIdentity(setup: ProjectCheckoutClaim): string {
   return normalizeRuntimePathForComparison(setup.path.trim()) || setup.repoId || setup.id
 }
 
 // Stable addedAt/id order makes client and server claims agree despite enumeration order.
-function compareClaims(left: ProjectHostSetup, right: ProjectHostSetup): number {
+function compareClaims(left: ProjectCheckoutClaim, right: ProjectCheckoutClaim): number {
   const byAddedAt = left.createdAt - right.createdAt
   return byAddedAt || (left.repoId < right.repoId ? -1 : left.repoId > right.repoId ? 1 : 0)
 }

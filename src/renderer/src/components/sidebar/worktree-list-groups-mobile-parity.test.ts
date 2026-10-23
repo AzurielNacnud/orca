@@ -110,7 +110,11 @@ async function desktopCatalog(): Promise<{ repos: readonly Repo[]; rows: Project
 
 async function desktopHeaders(projectOrderBy: ProjectOrderBy) {
   const { repos, rows } = await desktopCatalog()
-  const projection = getProjectHostSetupProjectionFromState({ repos, ...rows })
+  const projection = getProjectHostSetupProjectionFromState({
+    repos,
+    endpointProjects: rows.projects,
+    endpointProjectHostSetups: rows.projectHostSetups
+  })
   const worktrees: Worktree[] = PROJECT_SECTION_PARITY_ROWS.map((row) => ({
     ...worktreeFixture,
     id: row.id,
@@ -147,7 +151,12 @@ async function desktopHeaders(projectOrderBy: ProjectOrderBy) {
  */
 async function servedCatalog(projectOrderBy: ProjectOrderBy): Promise<MobileProjectSectionCatalog> {
   const { repos, rows } = await desktopCatalog()
-  const published = getProjectSectionCatalogFromState({ repos, ...rows, projectOrderBy })
+  const published = getProjectSectionCatalogFromState({
+    repos,
+    endpointProjects: rows.projects,
+    endpointProjectHostSetups: rows.projectHostSetups,
+    projectOrderBy
+  })
   if (!published) {
     throw new Error('the renderer published no catalog')
   }

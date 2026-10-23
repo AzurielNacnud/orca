@@ -17,7 +17,7 @@ export type AgentBackgroundSessionTestState = {
     activeRuntimeEnvironmentId: string | null
     terminalMainSideEffectAuthority: boolean | undefined
   }
-  projects: {
+  endpointProjects: {
     id: string
     localWindowsRuntimePreference:
       | { kind: 'inherit-global' }
@@ -78,7 +78,7 @@ export function createAgentBackgroundSessionTestState(mocks: {
       activeRuntimeEnvironmentId: null as string | null,
       terminalMainSideEffectAuthority: undefined as boolean | undefined
     },
-    projects: [
+    endpointProjects: [
       {
         id: 'repo-1',
         localWindowsRuntimePreference: { kind: 'inherit-global' as const }
@@ -138,7 +138,9 @@ export function resetAgentBackgroundSessionTestState(state: AgentBackgroundSessi
     activeRuntimeEnvironmentId: null,
     terminalMainSideEffectAuthority: undefined
   }
-  state.projects = [{ id: 'repo-1', localWindowsRuntimePreference: { kind: 'inherit-global' } }]
+  state.endpointProjects = [
+    { id: 'repo-1', localWindowsRuntimePreference: { kind: 'inherit-global' } }
+  ]
   state.repos = [{ id: 'repo-1', connectionId: null, path: '/repo' }]
   state.folderWorkspaces = []
   state.projectGroups = []

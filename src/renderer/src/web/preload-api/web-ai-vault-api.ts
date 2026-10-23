@@ -31,9 +31,9 @@ export function createWebAiVaultApi(): NonNullable<Partial<PreloadApi>['aiVault'
   )
   return {
     // A browser searches only its selected paired runtime.
-    searchSessions: (request, executionHostScope) =>
+    searchSessions: (request, executionHostScope, isActive) =>
       addressesOwnRuntime(executionHostScope)
-        ? search.searchSessions(request)
+        ? search.searchSessions(request, isActive)
         : Promise.resolve({ kind: 'unavailable', reason: 'no-service' }),
     searchStatus: (executionHostScope) =>
       addressesOwnRuntime(executionHostScope)

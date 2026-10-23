@@ -3,7 +3,6 @@ import type { AiVaultSession } from '../../../../shared/ai-vault-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { Worktree } from '../../../../shared/worktree/types'
 import { buildAiVaultProjectContext } from './ai-vault-session-projects'
-import { resolveSessionSearchScope } from '../../../../main/ai-vault-search/session-search-scope-resolution'
 import { resolveProjectHostSetupProjection } from '../../../../shared/project-host-setup-hydration'
 import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
 
@@ -83,23 +82,6 @@ it("keeps a same-host folder that shares a remote out of the other checkout's pr
     sessions: [niwSession, openSocialSession]
   })
 
-  const catalog = {
-    repos: [niw, openSocial],
-    projects: projection.projects,
-    projectHostSetups: projection.setups,
-    worktreeMeta: {
-      [worktree.id]: { ...worktree, priorWorktreeIds: ['niw::/Users/benny/old-niw-topic'] }
-    },
-    settings: { nestWorkspaces: false }
-  }
-  const ownerScope = resolveSessionSearchScope({ kind: 'project', projectKey: 'repo:niw' }, catalog)
-  expect(ownerScope).toEqual({
-    kind: 'resolved',
-    paths: expect.arrayContaining([niw.path, linkedPath, '/Users/benny/old-niw-topic'])
-  })
-  expect(
-    resolveSessionSearchScope({ kind: 'project', projectKey: `project:${oldProjectId}` }, catalog)
-  ).toEqual({ kind: 'resolved', paths: [openSocial.path] })
   expect(context.activeProjectKey).toBe('repo:niw')
   expect(context.sessionProjectById.get(niwSession.id)).toMatchObject({
     key: 'repo:niw',

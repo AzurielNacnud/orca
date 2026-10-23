@@ -1,3 +1,4 @@
+import { selectCanonicalProjects } from '@/store/project-host-setup-selector'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { toast } from 'sonner'
@@ -69,7 +70,7 @@ export default function AiVaultPanel({
   const projectHostSetupProjection = useProjectHostSetupProjection()
   const resumeTargetState = useAppStore(
     useShallow((state) => ({
-      projects: state.projects,
+      projects: selectCanonicalProjects(state),
       settings: state.settings,
       folderWorkspaces: selectFolderWorkspaces(state),
       projectGroups: state.projectGroups,

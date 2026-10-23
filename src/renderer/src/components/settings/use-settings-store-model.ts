@@ -1,3 +1,7 @@
+import {
+  selectCanonicalProjects,
+  selectCanonicalProjectHostSetups
+} from '@/store/project-host-setup-selector'
 import { useCallback, useMemo, useState } from 'react'
 import type { OrcaHooks } from '../../../../shared/orca-yaml-hook-types'
 import type { ProjectHostSetup } from '../../../../shared/project-types'
@@ -51,8 +55,8 @@ export function useSettingsStoreModel() {
   const fetchKeybindings = useAppStore((s) => s.fetchKeybindings)
   const closeSettingsPage = useAppStore((s) => s.closeSettingsPage)
   const repos = useAppStore((s) => s.repos)
-  const projects = useAppStore((s) => s.projects)
-  const projectHostSetups = useAppStore((s) => s.projectHostSetups)
+  const projects = useAppStore((s) => selectCanonicalProjects(s))
+  const projectHostSetups = useAppStore((s) => selectCanonicalProjectHostSetups(s))
   const updateProject = useAppStore((s) => s.updateProject)
   const updateRepo = useAppStore((s) => s.updateRepo)
   const removeProject = useAppStore((s) => s.removeProject)

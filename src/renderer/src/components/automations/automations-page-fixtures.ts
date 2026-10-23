@@ -239,7 +239,7 @@ export function makeStoreState(): AutomationsPageStoreFixtures {
   return {
     state: {
       repos: [repo],
-      projectHostSetups: [makeProjectHostSetup()],
+      endpointProjectHostSetups: [makeProjectHostSetup()],
       worktreesByRepo: { [REPO_ID]: [worktree] },
       unifiedTabsByWorktree: {},
       terminalLayoutsByTabId: {},

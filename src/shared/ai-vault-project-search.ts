@@ -25,8 +25,12 @@ export async function searchCanonicalProject(
   request: AiVaultSearchRequest,
   scope: ExecutionHostScope,
   catalog: Catalog,
-  search: Search
+  search: Search,
+  isActive: () => boolean = () => true
 ): Promise<AiVaultSearchResponse> {
+  if (!isActive()) {
+    throw new Error('Session search retired')
+  }
   if (request.within?.kind !== 'project') {
     return search(request, scope)
   }
@@ -171,7 +175,8 @@ export async function searchCanonicalProject(
         return true // The endpoint may know a registered path this client's catalog has not loaded.
       }
     })),
-    plan
+    plan,
+    isActive
   )
   const outcomes = response.kind === 'results' ? (response.hosts ?? []) : []
   const reason = outcomes[0]?.outcome

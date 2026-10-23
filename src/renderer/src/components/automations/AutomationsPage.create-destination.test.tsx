@@ -74,8 +74,8 @@ function addSshProject(): void {
   mocks.repoMap.set(SSH_REPO_ID, repo)
   // Without a ready setup on that host the project has no run context, and a
   // save against it is refused before any destination is stated.
-  mocks.state.projectHostSetups = [
-    ...(mocks.state.projectHostSetups as ProjectHostSetup[]),
+  mocks.state.endpointProjectHostSetups = [
+    ...(mocks.state.endpointProjectHostSetups as ProjectHostSetup[]),
     {
       id: 'setup-ssh',
       projectId: 'project-ssh',
@@ -103,8 +103,8 @@ function addCollidingRuntimeProject(): void {
     executionHostId: `runtime:${RUNTIME_ID}`
   } as Repo
   mocks.state.repos = [...(mocks.state.repos as Repo[]), repo]
-  mocks.state.projectHostSetups = [
-    ...(mocks.state.projectHostSetups as ProjectHostSetup[]),
+  mocks.state.endpointProjectHostSetups = [
+    ...(mocks.state.endpointProjectHostSetups as ProjectHostSetup[]),
     {
       id: 'setup-runtime-collision',
       projectId: 'project-runtime-collision',

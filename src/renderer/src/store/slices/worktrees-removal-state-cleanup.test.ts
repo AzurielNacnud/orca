@@ -177,11 +177,11 @@ describe('removeWorktree state cleanup', () => {
     const orphanedSetup = {
       id: 'setup-runtime-ssh',
       hostId: 'ssh:runtime-ssh-orca-1'
-    } as unknown as AppState['projectHostSetups'][number]
+    } as unknown as AppState['endpointProjectHostSetups'][number]
     const userSshSetup = {
       id: 'setup-user-ssh',
       hostId: 'ssh:my-server'
-    } as unknown as AppState['projectHostSetups'][number]
+    } as unknown as AppState['endpointProjectHostSetups'][number]
     const deleteProjectHostSetup = vi.fn().mockResolvedValue(null)
     store.setState({
       worktreesByRepo: { repo1: [wt] },

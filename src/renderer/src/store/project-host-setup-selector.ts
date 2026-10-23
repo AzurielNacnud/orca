@@ -23,12 +23,20 @@ function getDerivedProjection(repos: AppState['repos']): ProjectHostSetupProject
   return projection
 }
 
+export type ProjectCatalogReadState = Pick<AppState, 'repos'> &
+  Partial<Pick<AppState, 'endpointProjects' | 'endpointProjectHostSetups'>> & {
+    projectHostSetupProjection?: ProjectHostSetupProjection
+  }
+
 // Why: this is a zustand selector compared with Object.is, so the result must be
 // reference-stable per (repos, projects, setups) input or every render re-renders.
 export function getProjectHostSetupProjectionFromState(
-  state: Pick<AppState, 'repos'> & Partial<Pick<AppState, 'projects' | 'projectHostSetups'>>
+  state: ProjectCatalogReadState
 ): ProjectHostSetupProjection {
-  const { repos, projects, projectHostSetups: setups } = state
+  if (state.projectHostSetupProjection) {
+    return state.projectHostSetupProjection
+  }
+  const { repos, endpointProjects: projects, endpointProjectHostSetups: setups } = state
   if (!projects || !setups) {
     return getDerivedProjection(repos)
   }
@@ -55,3 +63,11 @@ export function getProjectHostSetupProjectionFromState(
   bySetups.set(setups, projection)
   return projection
 }
+
+export const selectCanonicalProjects = (
+  state: Parameters<typeof getProjectHostSetupProjectionFromState>[0]
+) => getProjectHostSetupProjectionFromState(state).projects
+
+export const selectCanonicalProjectHostSetups = (
+  state: Parameters<typeof getProjectHostSetupProjectionFromState>[0]
+) => getProjectHostSetupProjectionFromState(state).setups

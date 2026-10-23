@@ -1,3 +1,7 @@
+import {
+  getProjectHostSetupProjectionFromState,
+  type ProjectCatalogReadState
+} from '@/store/project-host-setup-selector'
 import type { AppState } from '../../../types'
 import type { ProjectHostSetup } from '../../../../../../shared/project-types'
 import type { DetectedWorktreeListResult, Worktree } from '../../../../../../shared/worktree/types'
@@ -122,11 +126,11 @@ export function toVisibleWorktrees(
 }
 
 export function getProjectHostSetupForRepoHost(
-  state: Partial<Pick<AppState, 'projectHostSetups'>>,
+  state: ProjectCatalogReadState,
   repoId: string,
   hostId: ExecutionHostId
 ): ProjectHostSetup | undefined {
-  return state.projectHostSetups?.find(
+  return getProjectHostSetupProjectionFromState(state).setups.find(
     (setup) => setup.repoId === repoId && setup.hostId === hostId
   )
 }

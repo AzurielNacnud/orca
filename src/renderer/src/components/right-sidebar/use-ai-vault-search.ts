@@ -21,7 +21,7 @@ import { resolveAiVaultSearchSettings } from '../../../../shared/ai-vault-search
 import { isWebClientLocation } from '@/lib/web-client-location'
 import { useAppStore } from '@/store'
 import { searchCanonicalProject } from '../../../../shared/ai-vault-project-search'
-import { getProjectHostSetupProjectionFromState } from '../../store/project-host-setup-selector'
+import { selectProjectSearchCatalog } from '../../store/project-search-catalog'
 import { aiVaultSearchHitToSession } from './ai-vault-search-session'
 
 type SearchIdentity = {
@@ -64,12 +64,9 @@ export function useAiVaultSearch(
       return searchCanonicalProject(
         query,
         host,
-        {
-          ...getProjectHostSetupProjectionFromState(state),
-          worktrees: state.worktrees,
-          rawSetups: state.projectHostSetups
-        },
-        window.api.aiVault.searchSessions
+        selectProjectSearchCatalog(state),
+        (request, host) => window.api.aiVault.searchSessions(request, host, () => !cancelled),
+        () => !cancelled
       )
     }
     async function run(cursor?: string) {

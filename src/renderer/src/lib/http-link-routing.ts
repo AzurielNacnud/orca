@@ -1,8 +1,11 @@
 import {
+  getProjectHostSetupProjectionFromState,
+  type ProjectCatalogReadState
+} from '@/store/project-host-setup-selector'
+import {
   getProjectHostSetupLookup,
   type WorkspaceProjectOwner
 } from '../../../shared/project-host-setup-lookup'
-import type { ProjectHostSetup } from '../../../shared/project-types'
 import { translate } from '@/i18n/i18n'
 import { isFloatingWorkspaceId } from '../../../shared/floating-workspace-worktree'
 import {
@@ -34,7 +37,7 @@ export type HttpLinkSourceOwner =
   | { kind: 'ssh'; connectionId: string }
   | { kind: 'unknown' }
 
-type StoreAccessor = () => {
+type StoreAccessor = () => ProjectCatalogReadState & {
   settings?: Partial<
     Pick<
       GlobalSettings,
@@ -48,9 +51,6 @@ type StoreAccessor = () => {
   activeWorktreeId?: string | null
   activeWorkspaceExecutionHostId?: ExecutionHostId | null
   createBrowserTab: (worktreeId: string, url: string, opts: { activate: boolean }) => unknown
-  repos?: readonly LocalhostLinkRepo[]
-  projects?: readonly LocalhostLinkProject[]
-  projectHostSetups?: readonly ProjectHostSetup[]
   worktreesByRepo?: Record<string, LocalhostLinkWorktree[]>
   allWorktrees?: () => LocalhostLinkWorktree[]
   workspacePortScan?: { result: WorkspacePortScanResult } | null
@@ -66,13 +66,6 @@ type WorkspaceHttpLinkBrowserRequest = {
 }
 
 type WorkspaceHttpLinkBrowserOpener = (request: WorkspaceHttpLinkBrowserRequest) => Promise<void>
-
-type LocalhostLinkRepo = {
-  id: string
-  displayName: string
-}
-
-type LocalhostLinkProject = LocalhostLinkRepo
 
 type LocalhostLinkWorktree = { id: string } & Partial<WorkspaceProjectOwner>
 
@@ -291,14 +284,17 @@ function localhostLabelRouteForTerminalLink(
     return null
   }
   const worktree = findWorktreeById(state, port.owner.worktreeId)
-  const projectId = getProjectHostSetupLookup(state.projectHostSetups).projectId({
+  const projectId = getProjectHostSetupLookup(
+    getProjectHostSetupProjectionFromState(state).setups
+  ).projectId({
     ...worktree,
     repoId: port.owner.repoId
   })
-  const project =
-    projectId && state.projects
-      ? (state.projects.find((entry) => entry.id === projectId) ?? null)
-      : null
+  const project = projectId
+    ? (getProjectHostSetupProjectionFromState(state).projects.find(
+        (entry) => entry.id === projectId
+      ) ?? null)
+    : null
   const projectSource = project ?? repo
   return {
     targetUrl: parsed.toString(),

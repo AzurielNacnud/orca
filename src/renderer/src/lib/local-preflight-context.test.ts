@@ -1,3 +1,4 @@
+import { projectHostSetupProjectionFromRepos } from '../../../shared/project-host-setup-projection'
 import { describe, expect, it } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
 import type { Repo } from '../../../shared/repo-types'
@@ -33,7 +34,10 @@ function makeState(args: {
             ...args.repo
           }
         ]
+  const catalog = projectHostSetupProjectionFromRepos(repos)
   return {
+    endpointProjects: catalog.projects.map((project) => ({ ...project, id: repoId })),
+    endpointProjectHostSetups: catalog.setups.map((setup) => ({ ...setup, projectId: repoId })),
     activeRepoId: repoId,
     activeWorktreeId: args.worktreePath === undefined ? null : worktreeId,
     repos,
@@ -425,7 +429,7 @@ describe('local preflight context', () => {
         localAgentRuntime: 'wsl',
         localAgentWslDistro: 'Ubuntu'
       },
-      projects: [{ id: 'repo-1', localWindowsRuntimePreference: { kind: 'windows-host' } }]
+      endpointProjects: [{ id: 'repo-1', localWindowsRuntimePreference: { kind: 'windows-host' } }]
     } as unknown as AppState
 
     const context = getLocalAgentPreflightContext(state, 'win32')
@@ -470,11 +474,15 @@ describe('local preflight context', () => {
           }
         ]
       },
-      projects: [
+      endpointProjects: [
         { id: 'repo-1', localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' } },
         { id: 'repo-2', localWindowsRuntimePreference: { kind: 'windows-host' } }
       ]
     } as unknown as AppState
+
+    state.endpointProjectHostSetups = projectHostSetupProjectionFromRepos(state.repos).setups.map(
+      (setup) => ({ ...setup, projectId: setup.repoId })
+    )
 
     const context = getLocalAgentPreflightContext(state, 'win32', {}, 'repo-2::worktree-1')
 
@@ -489,7 +497,7 @@ describe('local preflight context', () => {
         terminalWindowsWslDistro: 'Debian',
         localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Debian' }
       },
-      projects: [{ id: 'repo-1', localWindowsRuntimePreference: { kind: 'windows-host' } }]
+      endpointProjects: [{ id: 'repo-1', localWindowsRuntimePreference: { kind: 'windows-host' } }]
     } as unknown as AppState
 
     expect(getLocalProjectExecutionRuntimeContext(state, 'repo-1::worktree-1', 'win32')).toEqual({
@@ -507,7 +515,9 @@ describe('local preflight context', () => {
   it('does not assign the active project runtime to the floating workspace', () => {
     const state = {
       ...makeState({ repoPath: 'C:\\Users\\alice\\repo', worktreePath: 'C:\\Users\\alice\\repo' }),
-      projects: [{ id: 'repo-1', localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' } }]
+      endpointProjects: [
+        { id: 'repo-1', localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' } }
+      ]
     } as unknown as AppState
 
     expect(
@@ -543,7 +553,9 @@ describe('local preflight context', () => {
           worktrees: [{ id: 'repo-1::detected', repoId: 'repo-1', path: 'C:\\detected' }]
         }
       },
-      projects: [{ id: 'repo-1', localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' } }]
+      endpointProjects: [
+        { id: 'repo-1', localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' } }
+      ]
     } as unknown as AppState
 
     expect(
@@ -575,7 +587,7 @@ describe('local preflight context', () => {
   it('resolves a local repo project WSL override before a worktree exists', () => {
     const state = {
       ...makeState({ repoPath: String.raw`C:\Users\alice\repo` }),
-      projects: [
+      endpointProjects: [
         {
           id: 'project-1',
           sourceRepoIds: ['repo-1'],
@@ -675,7 +687,9 @@ describe('local preflight context', () => {
       settings: {
         localWindowsRuntimeDefault: { kind: 'windows-host' }
       },
-      projects: [{ id: 'repo-1', localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' } }]
+      endpointProjects: [
+        { id: 'repo-1', localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' } }
+      ]
     } as unknown as AppState
 
     expect(

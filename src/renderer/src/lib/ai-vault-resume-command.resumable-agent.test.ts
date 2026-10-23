@@ -15,7 +15,7 @@ type ResumableAgentState = Pick<
   | 'activeWorktreeId'
   | 'folderWorkspaces'
   | 'projectGroups'
-  | 'projects'
+  | 'endpointProjects'
   | 'repos'
   | 'settings'
   | 'worktreesByRepo'
@@ -28,7 +28,7 @@ function makeState(): ResumableAgentState {
     folderWorkspaces: [],
     projectGroups: [],
     repos: [{ id: 'repo-1', path: '/Users/ada/repo' }],
-    projects: [{ id: 'repo-1', sourceRepoIds: ['repo-1'] }],
+    endpointProjects: [{ id: 'repo-1', sourceRepoIds: ['repo-1'] }],
     settings: {
       agentDefaultArgs: { claude: '', codex: '' },
       agentDefaultEnv: { claude: {}, codex: {} }

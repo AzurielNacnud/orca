@@ -1,5 +1,6 @@
 import { getRepoExecutionHostId } from './execution-host'
 import type { Project, ProjectHostSetup } from './project-types'
+import { getRepoSetupOwnerScope } from './repo-host-identity'
 
 export type ProjectIdentitySuccession = {
   /** Projected projects with user-set state carried forward from their predecessor row. */
@@ -102,6 +103,35 @@ export function carryProjectStateThroughIdentityChange(
     return carryUserState(project, predecessor)
   })
   if (membership) {
+    const ownerKey = (setup: ProjectHostSetup) =>
+      `${getRepoSetupOwnerScope(setup)}\0${setup.repoId}`
+    const currentByOwner = new Map<string, Set<string>>()
+    for (const setup of membership.current) {
+      if (!setup.repoId) {
+        continue
+      }
+      const key = ownerKey(setup)
+      const ids = currentByOwner.get(key) ?? new Set<string>()
+      ids.add(setup.projectId)
+      currentByOwner.set(key, ids)
+    }
+    const successors = new Map<string, Set<string>>()
+    for (const setup of membership.previous) {
+      if (projectedIds.has(setup.projectId) || !setup.repoId) {
+        continue
+      }
+      const ids = successors.get(setup.projectId) ?? new Set<string>()
+      for (const id of currentByOwner.get(ownerKey(setup)) ?? []) {
+        ids.add(id)
+      }
+      successors.set(setup.projectId, ids)
+    }
+    for (const [previousId, ids] of successors) {
+      remappedProjectIds.delete(previousId)
+      if (ids.size === 1) {
+        remappedProjectIds.set(previousId, [...ids][0]!)
+      }
+    }
     const local = (setup: ProjectHostSetup) =>
       setup.hostId === 'local' && getRepoExecutionHostId(setup) === 'local'
     const previousByRepo = new Map<string, Project>()

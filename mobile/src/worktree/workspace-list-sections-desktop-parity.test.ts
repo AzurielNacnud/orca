@@ -1,8 +1,10 @@
+import { resolveServedProjectSectionClaims } from '../../../src/shared/project-section-catalog-claims'
 import { NO_WORKSPACE_ROW_FILTERS } from '../../../src/shared/workspace-view/workspace-row-filters'
 import { describe, expect, it } from 'vitest'
 import { getRepoExecutionHostId } from '../../../src/shared/execution-host'
 import {
   PROJECT_SECTION_PARITY_HEADERS,
+  OLD_PROJECT_SECTION_PARITY_SERVED,
   PROJECT_SECTION_PARITY_ROWS,
   PROJECT_SECTION_PARITY_SERVED
 } from '../../../src/shared/project-section-parity.test-fixture'
@@ -73,6 +75,36 @@ describe('Project grouping on the phone', () => {
       expect(headers(buildProjectSectionCatalog(served(), [], null, projectOrderBy))).toEqual(
         PROJECT_SECTION_PARITY_HEADERS[projectOrderBy]
       )
+    }
+  )
+
+  it.each(['recent', 'manual'] as const)(
+    'normalizes an accepted old %s snapshot without losing independent clones or concrete targets',
+    (order) => {
+      const verdict = projectSectionsRead.interpret({
+        id: 'old',
+        ok: true,
+        result: { catalog: OLD_PROJECT_SECTION_PARITY_SERVED }
+      })
+      expect(verdict.accepted).toBe(true)
+      if (!verdict.accepted || !verdict.value) {
+        throw new Error('old catalog refused')
+      }
+      const canonical = resolveServedProjectSectionClaims(verdict.value)
+      expect(resolveServedProjectSectionClaims(canonical)).toBe(canonical)
+      const catalog = buildProjectSectionCatalog(verdict.value, [], null, order)
+      expect(headers(catalog)).toEqual(PROJECT_SECTION_PARITY_HEADERS[order])
+      expect(catalog.repos.map((repo) => repo.id)).toEqual(
+        PROJECT_SECTION_PARITY_SERVED.repos.map((repo) => repo.id)
+      )
+      expect(
+        canonical.setups.map(({ repoId, hostId, path }) => ({ repoId, hostId, path }))
+      ).toEqual(verdict.value.setups.map(({ repoId, hostId, path }) => ({ repoId, hostId, path })))
+      expect(
+        canonical.setups
+          .filter((setup) => setup.projectId.startsWith('repo:'))
+          .map((setup) => setup.repoId)
+      ).toEqual(['local-assets', 'local-workspace', 'm4-orca-two'])
     }
   )
 

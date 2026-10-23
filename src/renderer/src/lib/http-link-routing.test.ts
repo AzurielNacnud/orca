@@ -8,6 +8,8 @@ import {
   resolveLocalhostHttpLinkDisplayUrl
 } from './http-link-routing'
 
+import type { Repo } from '../../../shared/repo-types'
+import type { Project } from '../../../shared/project-types'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 
 const toastErrorMock = vi.hoisted(() => vi.fn())
@@ -40,8 +42,8 @@ const storeState = {
   setActiveWorktree: setActiveWorktreeMock,
   ...noActiveWorkspace(),
   createBrowserTab: createBrowserTabMock,
-  repos: [] as { id: string; displayName: string; repoIcon?: null; badgeColor?: string }[],
-  projects: [] as { id: string; displayName: string; repoIcon?: null; badgeColor?: string }[],
+  repos: [] as Repo[],
+  endpointProjects: [] as Project[],
   worktreesByRepo: {} as Record<
     string,
     { id: string; projectId?: string; repoId?: string; displayName?: string }[]
@@ -402,6 +404,8 @@ describe('openHttpLink', () => {
     storeState.repos = [
       {
         id: 'repo-1',
+        path: '/repo',
+        addedAt: 0,
         displayName: 'snapstudio',
         repoIcon: null,
         badgeColor: '#f97316'
@@ -464,6 +468,8 @@ describe('openHttpLink', () => {
     storeState.repos = [
       {
         id: 'repo-1',
+        path: '/repo',
+        addedAt: 0,
         displayName: 'snapstudio',
         repoIcon: null,
         badgeColor: '#f97316'
@@ -556,7 +562,9 @@ describe('openHttpLink', () => {
       localhostWorktreeLabelsEnabled: true,
       activeRuntimeEnvironmentId: null
     }
-    storeState.repos = [{ id: 'repo-1', displayName: 'snapstudio' }]
+    storeState.repos = [
+      { id: 'repo-1', path: '/repo', addedAt: 0, badgeColor: '', displayName: 'snapstudio' }
+    ]
     storeState.worktreesByRepo = { 'repo-1': [{ id: 'wt-main', projectId: 'repo-1' }] }
     storeState.workspacePortScan = {
       result: {
@@ -595,7 +603,9 @@ describe('openHttpLink', () => {
       localhostWorktreeLabelsEnabled: true,
       activeRuntimeEnvironmentId: 'env-other'
     }
-    storeState.repos = [{ id: 'repo-1', displayName: 'snapstudio' }]
+    storeState.repos = [
+      { id: 'repo-1', path: '/repo', addedAt: 0, badgeColor: '', displayName: 'snapstudio' }
+    ]
     storeState.worktreesByRepo = { 'repo-1': [{ id: 'wt-main', projectId: 'repo-1' }] }
     storeState.workspacePortScansByKey = {
       'local:all': {

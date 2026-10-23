@@ -45,7 +45,21 @@ function stateFor(host: ExecutionHostId, distro?: string): State {
         executionHostId: host
       }
     ],
-    projects: [
+    endpointProjectHostSetups: [
+      {
+        id: 'repo',
+        projectId: 'repo',
+        repoId: 'repo',
+        hostId: host,
+        path: worktree.path,
+        displayName: 'project',
+        setupMethod: 'legacy-repo',
+        setupState: 'ready',
+        createdAt: 0,
+        updatedAt: 0
+      }
+    ],
+    endpointProjects: [
       {
         id: 'repo',
         displayName: 'project',
@@ -139,7 +153,7 @@ describe('Antigravity transcript reference ownership', () => {
     const state = stateFor('local')
     state.activeRepoId = null
     state.repos = []
-    state.projects = []
+    state.endpointProjects = []
     state.activeWorktreeId = 'folder:folder-1'
     state.folderWorkspaces = [
       makeFolderWorkspace({ folderPath: '//wsl.localhost/Debian/home/example/project' })
@@ -308,7 +322,7 @@ describe('Antigravity transcript reference ownership', () => {
 
   it('refuses local references while the project runtime requires repair', () => {
     const state = stateFor('local')
-    state.projects[0].localWindowsRuntimePreference = { kind: 'inherit-global' }
+    state.endpointProjects[0].localWindowsRuntimePreference = { kind: 'inherit-global' }
     state.settings = createGlobalSettingsFixture({
       localWindowsRuntimeDefault: { kind: 'wsl', distro: null }
     })

@@ -1,3 +1,8 @@
+import { useAppStore } from '@/store'
+import type * as StoreModule from '@/store'
+import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
+import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
+import type { Repo } from '../../../../shared/repo-types'
 // @vitest-environment happy-dom
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -11,10 +16,16 @@ import { searchHit, searchResults } from '../../../../shared/ai-vault-search-tes
 import { useAiVaultPanelSearch, useAiVaultSearch } from './use-ai-vault-search'
 
 const mockSettings: { aiVaultSearch?: { enabled: boolean } } = {}
-vi.mock('@/store', () => ({
-  useAppStore: (select: (state: { settings: typeof mockSettings }) => unknown) =>
-    select({ settings: mockSettings })
-}))
+vi.mock('@/store', async (importOriginal) => {
+  const actual = await importOriginal<typeof StoreModule>()
+  return {
+    useAppStore: Object.assign(
+      (select: (state: { settings: typeof mockSettings }) => unknown) =>
+        select({ settings: mockSettings }),
+      { getState: actual.useAppStore.getState, setState: actual.useAppStore.setState }
+    )
+  }
+})
 
 const ALL_AGENTS = ['codex' as const]
 const ALL_REQUEST = { query: 'needle', filters: { agents: ['codex'] } }
@@ -63,7 +74,8 @@ it('debounces, skips empty/disabled requests, and never substitutes local for an
   await debounce()
   expect(searchSessions).toHaveBeenCalledExactlyOnceWith(
     { query: 'latest', cursor: undefined },
-    'ssh:remote'
+    'ssh:remote',
+    expect.any(Function)
   )
   unmount()
 })
@@ -109,8 +121,12 @@ it('restarts page one after stale cursors without looping on a changing index', 
     .mockResolvedValueOnce({ kind: 'stale-cursor', generation: 3 })
   act(() => result.current.loadMore())
   await debounce()
-  expect(searchSessions.mock.calls[1]).toEqual([{ ...request, cursor: 'page-2' }, 'runtime:owner'])
-  expect(searchSessions.mock.calls[2]).toEqual([request, 'runtime:owner'])
+  expect(searchSessions.mock.calls[1]).toEqual([
+    { ...request, cursor: 'page-2' },
+    'runtime:owner',
+    expect.any(Function)
+  ])
+  expect(searchSessions.mock.calls[2]).toEqual([request, 'runtime:owner', expect.any(Function)])
   expect(searchSessions).toHaveBeenCalledTimes(3)
   expect(result.current.response?.kind).toBe('stale-cursor')
   unmount()
@@ -160,7 +176,11 @@ it('discards pagination when a host is left and revisited, and replaces stale pa
   await debounce()
   rerender({ host: 'local' })
   await debounce()
-  expect(searchSessions.mock.calls.at(-1)).toEqual([{ ...request, cursor: undefined }, 'local'])
+  expect(searchSessions.mock.calls.at(-1)).toEqual([
+    { ...request, cursor: undefined },
+    'local',
+    expect.any(Function)
+  ])
   unmount()
 })
 
@@ -206,7 +226,11 @@ it('does not revive old results or cursors before debounce when returning from a
   act(() => result.current.loadMore())
   expect(searchSessions).toHaveBeenCalledTimes(1)
   await debounce()
-  expect(searchSessions.mock.calls.at(-1)).toEqual([{ ...request, cursor: undefined }, 'local'])
+  expect(searchSessions.mock.calls.at(-1)).toEqual([
+    { ...request, cursor: undefined },
+    'local',
+    expect.any(Function)
+  ])
   unmount()
 })
 
@@ -241,7 +265,8 @@ it('searches every computer at once and keeps each hit on the computer that owns
   await debounce()
   expect(searchSessions).toHaveBeenCalledExactlyOnceWith(
     { ...ALL_REQUEST, cursor: undefined },
-    'all'
+    'all',
+    expect.any(Function)
   )
   expect(result.current.sessions.map((session) => session.executionHostId)).toEqual([
     'ssh:build-box',
@@ -287,8 +312,12 @@ it('restarts page one under the all scope when the merged cursor goes stale', as
     .mockResolvedValueOnce({ ...searchResults(), generation: 0 })
   act(() => result.current.loadMore())
   await debounce()
-  expect(searchSessions.mock.calls[1]).toEqual([{ ...ALL_REQUEST, cursor: 'merged' }, 'all'])
-  expect(searchSessions.mock.calls[2]).toEqual([ALL_REQUEST, 'all'])
+  expect(searchSessions.mock.calls[1]).toEqual([
+    { ...ALL_REQUEST, cursor: 'merged' },
+    'all',
+    expect.any(Function)
+  ])
+  expect(searchSessions.mock.calls[2]).toEqual([ALL_REQUEST, 'all', expect.any(Function)])
   expect(result.current.sessions.map((session) => session.executionHostId)).toEqual(['local'])
   unmount()
 })
@@ -315,7 +344,8 @@ it('searches the local index with the same query once consent is on', async () =
   await debounce()
   expect(searchSessions).toHaveBeenCalledExactlyOnceWith(
     { ...ALL_REQUEST, cursor: undefined },
-    'local'
+    'local',
+    expect.any(Function)
   )
   expect(result.current.searching).toBe(true)
   expect(result.current.hasQuery).toBe(true)
@@ -367,4 +397,52 @@ it('keeps full-text search for a host that is merely not ready', async () => {
   expect(result.current.searching).toBe(true)
   expect(result.current.titleOnly).toBe(false)
   unmount()
+})
+
+it('reaches native Project search with the store workspace index and current independent owner', async () => {
+  const repos: Repo[] = ['a', 'b'].map((id, index) => ({
+    id,
+    path: `/${id}`,
+    displayName: id,
+    badgeColor: '',
+    addedAt: index,
+    upstream: { owner: 'acme', repo: 'app' }
+  }))
+  const projection = projectHostSetupProjectionFromRepos(repos)
+  const shared = projection.setups.find((setup) => setup.repoId === 'a')!.projectId
+  useAppStore.setState({
+    repos,
+    endpointProjects: [{ ...projection.projects[0]!, sourceRepoIds: ['a', 'b'] }],
+    endpointProjectHostSetups: projection.setups.map((setup) => ({ ...setup, projectId: shared })),
+    worktreesByRepo: {
+      b: [
+        makeWorktree({
+          id: 'b::/linked/b',
+          repoId: 'b',
+          path: '/linked/b',
+          projectId: shared,
+          hostId: 'local'
+        })
+      ]
+    }
+  })
+  searchSessions.mockResolvedValue({
+    ...searchResults(),
+    hits: [{ ...searchHit(), cwd: '/linked/b', sessionId: 'b-session' }]
+  })
+  const request: AiVaultSearchRequest = {
+    query: 'needle',
+    within: { kind: 'project', projectKey: 'repo:b' }
+  }
+  const hook = renderHook(() => useAiVaultSearch(request, 'local', ''))
+  await debounce()
+  expect(searchSessions.mock.calls[0]?.[0].within).toEqual({
+    kind: 'project',
+    projectKey: 'repo:b'
+  })
+  expect(hook.result.current.hits.map((hit) => hit.sessionId)).toEqual(['b-session'])
+  expect(
+    useAppStore.getState().endpointProjectHostSetups.every((setup) => setup.projectId === shared)
+  ).toBe(true)
+  hook.unmount()
 })
