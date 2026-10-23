@@ -1,14 +1,21 @@
 import { OrcaRuntimeWithStopExactTerminalsForWorktree } from './worktree-terminal-stop-targets'
 import {
+  getConnectionExecutionHostId,
   getRepoExecutionHostId,
   getRepoSshConnectionId,
-  normalizeHostPart,
-  parseExecutionHostId
+  parseExecutionHostId,
+  type ExecutionHostId
 } from '../../../../shared/execution-host'
+import type { HostWorktreeTarget } from '../../../../shared/worktree/host-qualified-identity'
 import { getRepoIdFromWorktreeId } from '../../../../shared/worktree/id'
 import type { Repo } from '../../../../shared/repo-types'
 import { getRuntimeBrowserPageRegistry } from '../../runtime-browser-page-registry'
+import { deleteRemovedOwnerBrowserProfile } from '../../browser-host/managed-browser-profile-removal'
 import { listFailedAgentLaunchWorktreeIds } from '../../../agent-launch/agent-launch-pane-attachment'
+import {
+  TerminalUpdateAdmission,
+  type WorktreeTerminalSpawnLeaseOptions
+} from './terminal-update-admission'
 import {
   closeStructuredSessionsForWorktree,
   createStructuredSweepProgress,
@@ -60,22 +67,42 @@ export function listProjectTerminalWorktreeIds(
 }
 
 export abstract class OrcaRuntimeWithStopTerminalsForProject extends OrcaRuntimeWithStopExactTerminalsForWorktree {
-  /** Removed projects' PTY fences by id; ids are UUIDs, so a remaining row means a same-id sibling. */
-  private readonly removedProjectFences = new Map<string, Set<string | null>>()
+  /** Removed projects' spawn hosts by id; ids are UUIDs, so a remaining row means a same-id sibling. */
+  private readonly removedProjectHosts = new Map<string, Set<ExecutionHostId>>()
+  /** Closed by an update's last census until the stop; every spawn lease passes it. */
+  readonly terminalUpdateAdmission = new TerminalUpdateAdmission()
 
+  /**
+   * `target` is the spawn's own workspace copy: the host whose provider runs it. An update's closed
+   * admission still lets through an attach to `reattachSessionId`, calling `requireAttachOnly` so
+   * the caller spawns attach-only.
+   */
   override async acquireWorktreeTerminalSpawn(
-    worktreeId?: string,
-    opts: { refuseSleptWorktree?: boolean; connectionId?: string | null } = {}
+    target: HostWorktreeTarget | undefined,
+    opts: WorktreeTerminalSpawnLeaseOptions = {}
   ): Promise<() => void> {
-    const release = await super.acquireWorktreeTerminalSpawn(worktreeId, opts)
-    const repoId = worktreeId ? getRepoIdFromWorktreeId(worktreeId) : null
-    const removedFences = repoId ? this.removedProjectFences.get(repoId) : undefined
+    // Admission first: the whole lease, lock wait included, is a spawn an update's census awaits.
+    return await this.terminalUpdateAdmission.hold(
+      opts.reattachSessionId,
+      () => this.acquireProjectTerminalSpawn(target, opts),
+      opts.requireAttachOnly
+    )
+  }
+
+  private async acquireProjectTerminalSpawn(
+    target: HostWorktreeTarget | undefined,
+    opts: WorktreeTerminalSpawnLeaseOptions
+  ): Promise<() => void> {
+    const release = await super.acquireWorktreeTerminalSpawn(target, opts)
+    const repoId = target ? getRepoIdFromWorktreeId(target.id) : null
+    const removedHosts = repoId ? this.removedProjectHosts.get(repoId) : undefined
     // Why under the lease: a spawn that resolved its workspace before removal queues behind the sweep.
     // Why the fence: a surviving same-id row on another host must not admit the removed host's spawn.
     if (
+      target &&
       repoId &&
-      removedFences &&
-      !this.removedProjectAdmitsSpawn(repoId, removedFences, opts.connectionId)
+      removedHosts &&
+      !this.removedProjectAdmitsSpawn(repoId, removedHosts, target.hostId)
     ) {
       release()
       throw new Error('repo_not_found')
@@ -136,6 +163,7 @@ export abstract class OrcaRuntimeWithStopTerminalsForProject extends OrcaRuntime
     for (const worktreeId of worktreeIds) {
       this.releaseRemovedWorktreeHostSessions(worktreeId, 'project-removal')
     }
+    deleteRemovedOwnerBrowserProfile({ kind: 'repo', id: repoId })
   }
 
   private async stopProjectPtys(
@@ -164,9 +192,9 @@ export abstract class OrcaRuntimeWithStopTerminalsForProject extends OrcaRuntime
     // Why not the row's stamp: a `runtime:` stamp is how paired clients address a project that runs
     // here, natively or over its nested SSH connection.
     const fence = { resolvedConnectionId: getRepoSshConnectionId(repo) }
-    const removedFences = this.removedProjectFences.get(repo.id) ?? new Set<string | null>()
-    removedFences.add(fence.resolvedConnectionId)
-    this.removedProjectFences.set(repo.id, removedFences)
+    const removedHosts = this.removedProjectHosts.get(repo.id) ?? new Set<ExecutionHostId>()
+    removedHosts.add(getConnectionExecutionHostId(fence.resolvedConnectionId))
+    this.removedProjectHosts.set(repo.id, removedHosts)
     if (this.projectSiblingSharesFence(repo)) {
       return { stopped: 0, worktreeIds: [] }
     }
@@ -252,15 +280,17 @@ export abstract class OrcaRuntimeWithStopTerminalsForProject extends OrcaRuntime
   /** Only a surviving row on the spawn's own host, or any row when no removal touched it. */
   private removedProjectAdmitsSpawn(
     repoId: string,
-    removedFences: ReadonlySet<string | null>,
-    spawnConnectionId: string | null | undefined
+    removedHosts: ReadonlySet<ExecutionHostId>,
+    spawnHostId: ExecutionHostId
   ): boolean {
-    const connectionId = normalizeHostPart(spawnConnectionId)
+    // Why every row: a `runtime:` stamp can name files registered here (repo-execution-host.ts).
     const survivors = (this.store?.getRepos?.() ?? []).filter((row) => row.id === repoId)
-    if (!removedFences.has(connectionId)) {
+    if (!removedHosts.has(spawnHostId)) {
       return survivors.length > 0
     }
-    return survivors.some((row) => getRepoSshConnectionId(row) === connectionId)
+    return survivors.some(
+      (row) => getConnectionExecutionHostId(getRepoSshConnectionId(row)) === spawnHostId
+    )
   }
 
   /** A paired server's row is residue here: its sessions run on that server, never in this process. */

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,10 +6,15 @@ import { getManagedOrcadFenceEnvironmentId } from '../../../shared/managed-orcad
 import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../../shared/pairing'
 import {
   addManagedOrcadEnvironment,
+  refreshManagedOrcadPairing,
   removeManagedOrcadEnvironment
 } from '../../../shared/runtime-environment-managed-orcad-store'
-import { listEnvironments } from '../../../shared/runtime-environment-store'
-import type { SshTarget } from '../../../shared/ssh-types'
+import { listEnvironments, resolveEnvironment } from '../../../shared/runtime-environment-store'
+import {
+  getPreferredPairingOffer,
+  type KnownRuntimeEnvironment
+} from '../../../shared/runtime-environments'
+import type { SshRemotePtyLease, SshTarget } from '../../../shared/ssh-types'
 import { closeTestStores, createSqliteTestStore } from '../../persistence-test-harness'
 import { Store } from '../../persistence/loading-store/store'
 import { listOrcadMigrationSourceCutovers } from '../../ssh/orcad-migration-cutover-journal'
@@ -17,6 +22,9 @@ import type { OrcadManagedConversionArgs } from './orcad-runtime-conversion'
 import { fakeOrcadMigrationDestination } from '../../ssh/orcad-migration-destination-fake'
 import { reconcileManagedOrcadSshTargets, visibleRepos } from '../../ssh/orcad-retained-source'
 import { SshConnectionStore } from '../../ssh/connection/ssh-connection-store'
+import { getDefaultPersistedState, getDefaultWorkspaceSession } from '../../../shared/constants'
+import { toSshExecutionHostId } from '../../../shared/execution-host'
+import { makeTerminalScrollbackSnapshotRef } from '../../terminal-scrollback-snapshots'
 
 const mocks = vi.hoisted(() => {
   const state: { targetStore: unknown } = { targetStore: null }
@@ -65,7 +73,7 @@ beforeEach(() => {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: SshConnectionStore wraps the real test store it is given.
   mocks.state.targetStore = new SshConnectionStore(store as never)
   destination = fakeOrcadMigrationDestination()
-  mocks.ensureTunnel.mockResolvedValue(undefined)
+  mocks.ensureTunnel.mockImplementation(resolveEnvironment)
   // Registers the server the fence named, as the real deploy would after pairing.
   mocks.deploy.mockImplementation(async (path: string, args: { name: string }) => {
     const owner = getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))
@@ -105,18 +113,144 @@ const convert = (
   censusHost: OrcadManagedConversionArgs['censusHost'] = async () => ({
     verdict: 'exited',
     count: 0
-  })
+  }),
+  isBridgedPaneLease?: OrcadManagedConversionArgs['isBridgedPaneLease']
 ) =>
   convertSshTargetToManagedOrcad(userDataPath, {
     sshTargetId: TARGET.id,
     name: 'Managed',
     censusHost,
+    isBridgedPaneLease,
     destinationFor: () => destination,
     releaseDirectSession,
     now: () => new Date('2026-10-02T00:00:00.000Z')
   })
 
 describe('converting an SSH host into a managed server', () => {
+  it.each(['live', 'unverifiable'] as const)(
+    'offers and completes the move with unreadable scrollback while relay terminals are %s',
+    async (verdict) => {
+      const worktreeId = 'repo-1::/srv/app'
+      const tabId = 'a0b28c21-0065-4056-93d5-46fe37604193'
+      const leafId = '11111111-1111-4111-8111-111111111111'
+      const ref = makeTerminalScrollbackSnapshotRef(tabId, leafId)
+      const session = getDefaultWorkspaceSession()
+      session.tabsByWorktree[worktreeId] = [
+        {
+          id: tabId,
+          ptyId: null,
+          worktreeId,
+          title: 'Agent',
+          customTitle: null,
+          color: null,
+          sortOrder: 0,
+          createdAt: 1
+        }
+      ]
+      session.terminalLayoutsByTabId[tabId] = {
+        root: { type: 'leaf', leafId },
+        activeLeafId: leafId,
+        expandedLeafId: null,
+        scrollbackRefsByLeafId: { [leafId]: ref }
+      }
+      const hostId = toSshExecutionHostId(TARGET.id)
+      const profile = getDefaultPersistedState(userDataPath)
+      profile.repos = store.getRepos()
+      profile.sshTargets = [TARGET]
+      profile.workspaceSessionsByHostId = { [hostId]: session }
+      profile.sshRemotePtyLeases = [
+        {
+          targetId: TARGET.id,
+          ptyId: 'agent-pty',
+          tabId,
+          leafId,
+          worktreeId,
+          state: 'detached',
+          createdAt: 1,
+          updatedAt: 1
+        },
+        {
+          targetId: TARGET.id,
+          ptyId: 'older-agent-pty',
+          tabId: 'closed-tab',
+          leafId,
+          worktreeId,
+          state: 'expired',
+          supersededBy: 'agent-pty',
+          createdAt: 1,
+          updatedAt: 1
+        }
+      ]
+      const reportDirectory = join(userDataPath, 'reported-profile')
+      mkdirSync(reportDirectory)
+      const dataFile = join(reportDirectory, 'orca-data.json')
+      writeFileSync(dataFile, JSON.stringify(profile))
+      store = createSqliteTestStore(Store, { dataFile })
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the registry wraps this real test store.
+      mocks.state.targetStore = new SshConnectionStore(store as never)
+      const retire = vi.spyOn(store, 'markSshRemotePtyLease')
+      const census = async () => ({ verdict, count: 1 })
+      const isBridgedPaneLease = (lease: SshRemotePtyLease): boolean => lease.ptyId === 'agent-pty'
+      const refused = await convert(census, isBridgedPaneLease)
+      expect(refused).toMatchObject({ outcome: 'refused', canLeaveBehind: true })
+      expect(destination.commits).toBe(0)
+      expect(store.getSshTarget(TARGET.id)?.managedServerLeaveBehind).toBeUndefined()
+      store.updateSshTarget(TARGET.id, {
+        managedServerLeaveBehind: { confirmedAt: '2026-10-23T00:00:00.000Z' }
+      })
+      await expect(convert(census, isBridgedPaneLease)).resolves.toMatchObject({
+        outcome: 'converted'
+      })
+      expect(destination.commits).toBe(1)
+      const [journal] = listOrcadMigrationSourceCutovers(userDataPath)
+      expect(journal?.bridgedPtyIds).toEqual(['agent-pty', 'older-agent-pty'])
+      const moved = journal?.manifest.payload.dormantState?.workspaceSession
+      expect(moved?.tabsByWorktree[worktreeId]?.map((tab) => tab.id)).toEqual([tabId])
+      expect(moved?.terminalLayoutsByTabId[tabId]).toMatchObject({ root: { type: 'leaf', leafId } })
+      expect(moved?.terminalLayoutsByTabId[tabId]?.scrollbackRefsByLeafId).toBeUndefined()
+      expect(
+        store.getWorkspaceSession(hostId)?.terminalLayoutsByTabId[tabId]?.scrollbackRefsByLeafId
+      ).toEqual({ [leafId]: ref })
+      expect(store.getSshRemotePtyLeases(TARGET.id)).toEqual([
+        expect.objectContaining({ ptyId: 'agent-pty', state: 'detached', tabId, leafId }),
+        expect.objectContaining({ ptyId: 'older-agent-pty', state: 'expired' })
+      ])
+      expect(retire).not.toHaveBeenCalled()
+    }
+  )
+
+  it('commits first time with the pairing the tunnel re-paired to while it opened', async () => {
+    mocks.ensureTunnel.mockImplementation(async (path: string, id: string) => {
+      // The server refused the stored token; the tunnel paired again over SSH.
+      refreshManagedOrcadPairing(
+        path,
+        id,
+        encodePairingOffer({
+          v: PAIRING_OFFER_VERSION,
+          endpoint: 'ws://127.0.0.1:46768/',
+          deviceToken: 'fresh-token',
+          publicKeyB64: 'public-key'
+        })
+      )
+      return resolveEnvironment(path, id)
+    })
+    const destinationFor = vi.fn((_environment: KnownRuntimeEnvironment) => destination)
+    const result = await convertSshTargetToManagedOrcad(userDataPath, {
+      sshTargetId: TARGET.id,
+      name: 'Managed',
+      censusHost: async () => ({ verdict: 'exited', count: 0 }),
+      destinationFor,
+      releaseDirectSession,
+      now: () => new Date('2026-10-02T00:00:00.000Z')
+    })
+    expect(result).toMatchObject({ outcome: 'converted' })
+    expect(destination.commits).toBe(1)
+    const used = destinationFor.mock.calls[0]![0]
+    expect(getPreferredPairingOffer(used).deviceToken).toBe('fresh-token')
+    // The re-pair keeps the migration mark that blocks rollbacks across this commit.
+    expect(used.orcadMigratedAt).toBe('2026-10-02T00:00:00.000Z')
+  })
+
   it('fences, deploys, marks the server, commits once, then keeps the source rows', async () => {
     const result = await convert()
     expect(result).toMatchObject({ outcome: 'converted' })

@@ -849,9 +849,9 @@ describe('project group store routing', () => {
     const store = createTestStore()
     store.setState({ repos: [remoteRepo], projectGroups: [projectGroup] })
 
-    await expect(
-      store.getState().moveProjectToGroup(remoteRepo.id, projectGroup.id, 3)
-    ).resolves.toBe(true)
+    await expect(store.getState().moveProjectToGroup(remoteRepo, projectGroup.id, 3)).resolves.toBe(
+      true
+    )
 
     expect(projectGroupsMoveProject).toHaveBeenCalledWith({
       projectId: remoteRepo.id,

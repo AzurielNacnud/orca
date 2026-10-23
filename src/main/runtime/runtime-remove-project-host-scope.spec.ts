@@ -123,6 +123,22 @@ export function registerRuntimeRemoveProjectHostScopeTests(): void {
       )
       expect(repos.map((repo) => repo.projectGroupId)).toEqual([undefined, undefined])
     })
+
+    it('moves the SSH row a paired client names by its connection', async () => {
+      const { runtime, repos } = createRuntime()
+
+      await runtime.moveProjectToGroup('dup', 'group-1', undefined, 'ssh-1')
+
+      expect(repos.map((repo) => repo.projectGroupId)).toEqual([undefined, 'group-1'])
+    })
+
+    it('moves the local row a paired client names with no connection', async () => {
+      const { runtime, repos } = createRuntime()
+
+      await runtime.moveProjectToGroup('dup', 'group-1', undefined, null)
+
+      expect(repos.map((repo) => repo.projectGroupId)).toEqual(['group-1', undefined])
+    })
   })
 
   describe('repo.update with the same repo id on two execution hosts', () => {

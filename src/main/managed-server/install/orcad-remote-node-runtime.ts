@@ -8,8 +8,8 @@
  * store GC also takes (design D5); nothing here deletes a runtime.
  */
 import { randomBytes } from 'node:crypto'
-import { copyFile, link, mkdtemp, rm } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { rm } from 'node:fs/promises'
+import { basename } from 'node:path'
 import {
   pinnedNodeRuntimeAsset,
   NODE_RUNTIME_PIN,
@@ -28,7 +28,9 @@ import {
   execCommand,
   isUnconfirmedSshCommandTermination
 } from '../../ssh/remote-exec/remote-exec-command'
-import { uploadRelayDirectory } from './remote-install-transfers'
+import { uploadRemoteInstallDirectory } from './remote-install-transfers'
+import { remoteSha256Command } from './remote-sha256-command'
+import { stageNodeRuntimeArchive } from './remote-node-runtime-host-download'
 import {
   isWindowsRemoteHost,
   joinRemotePath,
@@ -95,11 +97,7 @@ export function posixNodeRuntimeExecutable(host: RemoteHostPlatform, runtimeDir:
 }
 
 /** A per-installer stage beside the runtime; its dot prefix keeps it out of `node-*` listings. */
-export function nodeRuntimeStageDir(
-  host: RemoteHostPlatform,
-  runtimeDir: string,
-  token: string
-): string {
+function nodeRuntimeStageDir(host: RemoteHostPlatform, runtimeDir: string, token: string): string {
   return joinRemotePath(
     host,
     remoteDirname(runtimeDir, host),
@@ -122,11 +120,6 @@ export function createExecProbedStageCommand(host: RemoteHostPlatform, stageDir:
     `echo "${REMOTE_NODE_RUNTIME_EXIT_PREFIX}$orca_x_status"; printf '%s\\n' "$orca_x" | head -c 2000; }; ` +
     `else rm -f ${probe}; fi; }`
   )
-}
-
-// Why both tools: GNU/busybox ship sha256sum, macOS ships shasum; either prints the digest first.
-export function remoteSha256Command(path: string): string {
-  return `{ sha256sum ${path} 2>/dev/null || shasum -a 256 ${path}; } | cut -d' ' -f1`
 }
 
 /** Ready only when the executable hashes to the pin and reports the pinned version. */
@@ -252,13 +245,13 @@ export function installNodeRuntimeFromHostArchiveCommand(
   return `(umask 077 && mkdir -p ${stage} && ${copy} && ${promote}); status=$?; rm -rf ${stage}; exit $status`
 }
 
-export type RemoteRuntimeStep = <T>(operation: () => Promise<T>) => Promise<T>
+type RemoteRuntimeStep = <T>(operation: () => Promise<T>) => Promise<T>
 
 const runDirectly: RemoteRuntimeStep = (operation) => operation()
 
-export type EnsuredRemoteNodeRuntime = {
+type EnsuredRemoteNodeRuntime = {
   executable: string
-  transfer: 'cached' | 'uploaded'
+  transfer: 'cached' | 'uploaded' | 'host-downloaded'
 }
 
 /**
@@ -272,6 +265,8 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
   target: NodeRuntimeTarget
   /** The locally verified pinned archive (pinned-runtime-materializer). */
   archivePath: () => Promise<string>
+  /** Where a hand-copied archive makes `archivePath` succeed offline; named when every download fails. */
+  offlineArchivePath?: string
   signal?: AbortSignal
   /** Wraps each host round trip, so a caller can tell an unconfirmed channel from a local failure. */
   remoteStep?: RemoteRuntimeStep
@@ -316,14 +311,14 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
         remoteDirname(runtimeDir, host)
       )
     }
-    const archivePath = await options.archivePath()
-    const uploadDir = await mkdtemp(join(dirname(archivePath), '.runtime-upload-'))
-    localStage = uploadDir
-    const archive = basename(archivePath)
-    await link(archivePath, join(uploadDir, archive)).catch(() =>
-      copyFile(archivePath, join(uploadDir, archive))
-    )
-    await remoteStep(() => uploadRelayDirectory(conn, uploadDir, stageDir, host, { signal }))
+    const { archive } = await stageNodeRuntimeArchive({
+      ...options,
+      exec,
+      stageDir,
+      upload: (dir) =>
+        remoteStep(() => uploadRemoteInstallDirectory(conn, dir, stageDir, host, { signal })),
+      onLocalStage: (dir) => (localStage = dir)
+    })
     let promoteRan = false
     // Why unwrapped on Windows: these are already self-contained powershell.exe command lines.
     const runLocked = (command: string): Promise<string> =>
@@ -363,7 +358,7 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
     // Why: the Windows promote script removes its stage on every path; skip a second powershell.exe.
     hostRemovedStage = windows && promoteRan
     assertRemoteNodeRuntimePromoted(promoted)
-    return { executable, transfer: 'uploaded' }
+    return { executable, transfer: localStage ? 'uploaded' : 'host-downloaded' }
   } catch (error) {
     stageUnconfirmed = isUnconfirmedSshCommandTermination(error)
     throw error

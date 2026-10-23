@@ -86,7 +86,8 @@ describe('terminal file links carry their source tab', () => {
     expect(openFileForLinkMock).toHaveBeenCalledWith(
       expect.objectContaining({ filePath: '/tmp/src/a.ts', worktreeId: 'wt-1' }),
       { forceContentReload: true },
-      { sourceTabId: 'unified-term', workspaceId: 'wt-1', hostId: null }
+      { sourceTabId: 'unified-term', workspaceId: 'wt-1', hostId: null },
+      expect.any(Function)
     )
   })
 
@@ -104,7 +105,8 @@ describe('terminal file links carry their source tab', () => {
         workspaceId: 'wt-1',
         hostId: null,
         targetGroupId: 'group-a'
-      })
+      }),
+      expect.any(Function)
     )
   })
 
@@ -182,6 +184,7 @@ describe('terminal file links carry their source tab', () => {
 
   it('keeps automatic HTML opens on their existing browser route', async () => {
     setPlatform('Macintosh')
+    storeState.settings = { openLinksInApp: true }
     seedSourceTab()
 
     openDetectedFilePath('/tmp/report.html', null, null, sourceDeps)

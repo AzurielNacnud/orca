@@ -24,6 +24,7 @@ import {
   testState,
   writeDataFile
 } from './persistence-test-harness'
+import { hostWorktreeTarget } from '../shared/worktree/host-qualified-identity'
 
 const { trackMock, getCohortAtEmitMock } = vi.hoisted(() => ({
   trackMock: vi.fn(),
@@ -42,7 +43,6 @@ vi.mock('electron', () => ({
 vi.mock('./telemetry/client', () => ({ track: trackMock }))
 vi.mock('./telemetry/cohort-classifier', () => ({ getCohortAtEmit: getCohortAtEmitMock }))
 
-/** Stage then commit: the only path a destination publishes a catalog through. */
 function commitCatalog(
   store: ReturnType<typeof createStore>,
   input: ReturnType<typeof manifest>,
@@ -267,7 +267,7 @@ describe('orcad migration catalog persistence', () => {
 
   it('rejects dormant-state conflicts before publishing any catalog row', () => {
     const store = createStore()
-    store.setWorktreeMeta(DORMANT_WORKTREE_ID, {
+    store.setWorktreeMeta(hostWorktreeTarget({ id: DORMANT_WORKTREE_ID, hostId: 'local' }), {
       ...dormantState().worktreeMeta[0].meta,
       comment: 'Different owner'
     })
@@ -383,6 +383,39 @@ describe('orcad migration catalog persistence', () => {
     expect(store.getRepos()).toHaveLength(1)
   })
 
+  it('aborts by reference from its own staged copy, never a different manifest or a commit', () => {
+    const store = createStore()
+    const input = manifest()
+    const reference = { migrationId: input.migrationId, manifestSha256: input.manifestSha256 }
+
+    expect(store.abortStagedOrcadMigrationCatalogByReference(reference)).toEqual({
+      ...reference,
+      state: 'absent',
+      aborted: false
+    })
+    store.stageOrcadMigrationCatalog(input)
+    expect(() =>
+      store.abortStagedOrcadMigrationCatalogByReference({
+        ...reference,
+        manifestSha256: 'f'.repeat(64)
+      })
+    ).toThrow('orcad_migration_id_reused_with_different_manifest')
+    expect(store.getOrcadMigrationCatalogState(input).state).toBe('staged')
+    expect(store.abortStagedOrcadMigrationCatalogByReference(reference)).toEqual({
+      ...reference,
+      state: 'absent',
+      aborted: true
+    })
+    expect(store.getOrcadMigrationCatalogState(input).state).toBe('absent')
+    commitCatalog(store, input)
+    expect(store.abortStagedOrcadMigrationCatalogByReference(reference)).toEqual({
+      ...reference,
+      state: 'committed',
+      aborted: false
+    })
+    expect(store.getRepos()).toHaveLength(1)
+  })
+
   it('requires a durable stage before commit and bounds concurrent dormant catalogs', () => {
     const store = createStore()
     const input = manifest()
@@ -403,7 +436,6 @@ describe('orcad migration catalog persistence', () => {
     ).toThrow('orcad_migration_staging_capacity_exceeded')
     expect(store.getRepos()).toEqual([])
 
-    // A week later no client came back: the stages expire and stop holding the server awake.
     const later = () => new Date(Date.now() + 8 * 24 * 60 * 60 * 1000)
     expect(store.hasStagedOrcadMigrationCatalog(later().getTime())).toBe(false)
     expect(

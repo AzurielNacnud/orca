@@ -38,6 +38,7 @@ import {
   onlyLeavableOrcadMigrationBlockers
 } from '../../ssh/targets/ssh-target-orcad-preflight'
 import { ORCAD_MIGRATION_LEAVE_BEHIND_TERMINALS_REASON } from '../../ssh/orcad-migration-source-fence'
+import type { OrcadMigrationPaneLeasePredicate } from '../../ssh/orcad-migration-bridged-panes'
 import { retainOrcadMigrationSource } from '../../ssh/orcad-migration-source-retention'
 import {
   linkedOrcadMigrationCutoverPort,
@@ -52,6 +53,7 @@ export type OrcadManagedConversionArgs = {
   name: string
   /** The census of the host's relay endpoints that must prove exit. */
   censusHost?: ((target: SshTarget) => ReturnType<CensusHostRelayTerminals>) | null
+  isBridgedPaneLease?: OrcadMigrationPaneLeasePredicate
   /** The destination's T6-9 catalog client, reached through the server's tunnel. */
   destinationFor: (environment: KnownRuntimeEnvironment) => OrcadMigrationDestinationCatalog
   /** The server's own projects, so ones this host already holds at the same path link to them. */
@@ -90,12 +92,14 @@ export async function convertSshTargetToManagedOrcad(
     throw new Error('orcad_migration_destination_environment_mismatch')
   }
   // Before any commit can land, so a crash after it still blocks rollbacks across it.
-  const marked = recordManagedOrcadMigration(
+  recordManagedOrcadMigration(
     userDataPath,
     environment.id,
     (args.now ?? (() => new Date()))().toISOString()
   )
-  await ensureOrcadManagedTunnel(userDataPath, environment.id)
+  // Why the record ensure returns: a re-pair while the tunnel stands replaces the credentials
+  // every request below must carry; it keeps the migration mark recorded above.
+  const marked = await ensureOrcadManagedTunnel(userDataPath, environment.id)
   const { claims, targetStore } = requireManagedOrcadInfrastructure()
   const store = targetStore.getOrcadMigrationSource()
   const destination = args.destinationFor(marked)
@@ -138,7 +142,7 @@ export async function convertSshTargetToManagedOrcad(
     throw new Error(`orcad_migration_commit_not_proven:${committed.phase}`)
   }
   if (committed.phase === 'destination-committed') {
-    retainOrcadMigrationSource(userDataPath, committed.migrationId, args.now)
+    await retainOrcadMigrationSource(userDataPath, committed.migrationId, store, args.now)
   }
   const linkedProjects = linkedOrcadMigrationProjects(store, linked)
   return {
@@ -167,7 +171,8 @@ async function fenceOrResume(
     store,
     claims,
     target,
-    censusHost: censusHost ? () => censusHost(target) : null
+    censusHost: censusHost ? () => censusHost(target) : null,
+    isBridgedPaneLease: args.isBridgedPaneLease
   })
   const existing = source.resolveFence()
   if (existing.state === 'fenced') {
@@ -186,11 +191,7 @@ async function fenceOrResume(
     (environment) => getOrcadSshDeployment(environment)?.sshTargetId === target.id
   )
   if (converted) {
-    return refuse(
-      'live',
-      'orcad_migration_already_managed',
-      'This SSH host is already a managed server.'
-    )
+    return refuse('live', 'orcad_migration_already_managed', 'Orca already runs on this SSH host.')
   }
   // The fence re-checks leases once it holds.
   const terminalProof = await source.assessTerminals()
@@ -229,7 +230,15 @@ async function fenceOrResume(
     result.blockers &&
     onlyLeavableOrcadMigrationBlockers(result.blockers) &&
     !target.managedServerLeaveBehind
-  if (leavable && terminalProof.verdict !== 'exited') {
+  const canLeaveBehind =
+    leavable &&
+    leaveBehindClearsOrcadMigrationBlockers(
+      store,
+      target.id,
+      terminalProof.verdict === 'bridged' ? terminalProof.bridgedPtyIds : [],
+      args.isBridgedPaneLease
+    )
+  if (leavable && terminalProof.verdict !== 'exited' && !canLeaveBehind) {
     // Why no offer: leaving tabs behind would strand terminals the relay bridge still serves.
     return refuse(
       result.verdict,
@@ -240,9 +249,7 @@ async function fenceOrResume(
   return {
     ...refuse(result.verdict, result.code, result.reason),
     // Why previewed: an offer the confirmed export would refuse again is a dead end.
-    ...(leavable && leaveBehindClearsOrcadMigrationBlockers(store, target.id)
-      ? { canLeaveBehind: true }
-      : {})
+    ...(canLeaveBehind ? { canLeaveBehind: true } : {})
   }
 }
 

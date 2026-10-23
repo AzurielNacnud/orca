@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { jiraSearchUsers, type RuntimeJiraSettings } from '@/runtime/runtime-jira-client'
 import { translate } from '@/i18n/i18n'
-import type { JiraUser } from '../../../shared/jira-types'
+import type { JiraUser } from '../../../shared/jira/jira-types'
 
 const USER_SEARCH_DEBOUNCE_MS = 250
 

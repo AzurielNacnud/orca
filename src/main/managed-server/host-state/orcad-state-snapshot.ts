@@ -135,7 +135,9 @@ export function serializedStateMutationCommand(
     'else "$@"; fi; };',
     // Why timeout inside the group: KILL then reaches tar and rm, not only the shell.
     // The deadline is a word list, so the script is sent once, not once per branch.
-    `orca_deadline=; command -v timeout >/dev/null 2>&1 && orca_deadline="timeout -s KILL ${ORCAD_STATE_MUTATION_DEADLINE_SECONDS}";`,
+    // BusyBox before 1.30 spells it `timeout -t SECS`, as the room probe found.
+    `orca_deadline=; if timeout 1 true 2>/dev/null; then orca_deadline="timeout -s KILL ${ORCAD_STATE_MUTATION_DEADLINE_SECONDS}";`,
+    `elif timeout -t 1 true 2>/dev/null; then orca_deadline="timeout -t ${ORCAD_STATE_MUTATION_DEADLINE_SECONDS} -s KILL"; fi;`,
     `orca_state_group $orca_deadline ${run};`,
     `status=$?; ${owned ? `[ "$status" -eq ${ORCAD_FENCE_LOST_EXIT} ] && exit ${ORCAD_FENCE_LOST_EXIT}; ` : ''}if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then echo ${ORCAD_STATE_MUTATION_DEADLINE}; fi`
   ].join(' ')
@@ -196,7 +198,7 @@ export function captureOrcadStateSnapshotCommand(
   )
 }
 
-export type OrcadSnapshotCapture = 'captured' | 'empty' | 'failed'
+type OrcadSnapshotCapture = 'captured' | 'empty' | 'failed'
 
 /**
  * The last line that is one of `verdicts`. Why not simply the last line: a gateway that merges
@@ -230,7 +232,7 @@ export function probeOrcadStateSnapshotCommand(
   return `test -f ${archive} && echo PRESENT || echo ABSENT`
 }
 
-export type OrcadSnapshotPresence = 'present' | 'absent' | 'unverifiable'
+type OrcadSnapshotPresence = 'present' | 'absent' | 'unverifiable'
 
 /** A lost probe is `unverifiable`, never `absent`. */
 export function parseOrcadSnapshotPresence(output: string): OrcadSnapshotPresence {
@@ -312,7 +314,7 @@ function removeMembersCommand(members: string): string {
   return `[ -n "$ok" ] && for m in ${members}; do rm -rf "$root/$m" || { ok=; break; }; done;`
 }
 
-export type OrcadSnapshotRestore = 'restored' | 'missing' | 'failed'
+type OrcadSnapshotRestore = 'restored' | 'missing' | 'failed'
 
 export function parseOrcadSnapshotRestore(output: string): OrcadSnapshotRestore {
   const value = lastVerdict(output, ['RESTORED', 'MISSING', 'FAILED'])

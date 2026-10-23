@@ -25,6 +25,7 @@ import { buildWorkspaceTerminalLayoutPlan } from './workspace-terminal-layout-pl
 import { addHydratedSshWorktreePlaceholders } from './workspace-terminal-ssh-placeholders'
 import { retainUnverifiedPtyLossTabIds } from './terminal-unverified-pty-loss'
 import { restoreActiveTabIdByWorktree } from './workspace-terminal-active-tabs'
+import { retainPairedTerminalTabCloseIntentsForCatalog } from '../../runtime/paired-terminal-tab-close-intents'
 
 export function createWorkspaceTerminalHydrationActions(
   set: TerminalStoreSet,
@@ -180,10 +181,16 @@ export function createWorkspaceTerminalHydrationActions(
             session.closedTerminalTabTombstonesByTabId ?? s.closedTerminalTabTombstonesByTabId,
           // Why keep the store's when absent: as above, a pull merge's session carries no intents.
           // Replaced wholesale, not through the replay's reveal path: only the startup read carries
-          // them, before any snapshot can have hidden a tab.
-          pairedTerminalTabCloseIntentsByEnvironment:
+          // them, before any snapshot can have hidden a tab. A catalog that published first has
+          // already pruned, so a server removed while the app was closed is filtered here.
+          pairedTerminalTabCloseIntentsByEnvironment: retainPairedTerminalTabCloseIntentsForCatalog(
             session.pairedTerminalTabCloseIntentsByEnvironment ??
-            s.pairedTerminalTabCloseIntentsByEnvironment,
+              s.pairedTerminalTabCloseIntentsByEnvironment,
+            {
+              hydrated: s.runtimeEnvironmentCatalogHydrated,
+              environmentIds: s.runtimeEnvironments.map((environment) => environment.id)
+            }
+          ),
           automaticAgentResumeClaimsByTabId: {},
           sleepingAgentSessionsByPaneKey,
           pendingReconnectWorktreeIds,

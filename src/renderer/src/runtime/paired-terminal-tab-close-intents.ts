@@ -44,3 +44,15 @@ export function clearPairedTerminalTabCloseIntents(
     now: args.now
   })
 }
+
+/** Only the closes owed to a server the catalog still lists; the rest can never be sent. */
+export function retainPairedTerminalTabCloseIntentsForCatalog(
+  intents: PairedTerminalTabCloseIntentsByEnvironment,
+  catalog: { hydrated: boolean; environmentIds: readonly string[] }
+): PairedTerminalTabCloseIntentsByEnvironment {
+  if (!catalog.hydrated) {
+    return intents
+  }
+  const listed = new Set(catalog.environmentIds)
+  return Object.fromEntries(Object.entries(intents).filter(([id]) => listed.has(id)))
+}

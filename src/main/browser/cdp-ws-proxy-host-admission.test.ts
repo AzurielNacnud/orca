@@ -91,6 +91,32 @@ describe('CdpWsProxy under a host command', () => {
     client.close()
   })
 
+  it('refuses a helper the PDF of a page that moved to a desktop file while it printed', async () => {
+    let movedToFile = false
+    let finish = (): void => {}
+    const held = runWithRemoteCliPageAdmission(
+      PAGE_ID,
+      () => {
+        if (movedToFile) {
+          throw new Error('not browsing through the host')
+        }
+      },
+      () => new Promise<void>((resolve) => (finish = resolve))
+    )
+    mock.webContents.printToPDF.mockImplementation(async () => {
+      movedToFile = true
+      return Buffer.from('%PDF-private')
+    })
+    const client = await connect(endpoint)
+
+    const printed = await sendAndReceive(client, { id: 1, method: 'Page.printToPDF', params: {} })
+
+    expect(printed).toMatchObject({ id: 1, error: { message: 'not browsing through the host' } })
+    finish()
+    await held
+    client.close()
+  })
+
   function holdPage(): { revoke: () => void; release: () => Promise<void> } {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mock implements every WebContents member the release path calls.
     const page = { ...mock.webContents, id: PAGE_ID } as never
@@ -140,7 +166,7 @@ describe('CdpWsProxy under a host command', () => {
       expect(mouseEvents(mock)).toEqual(['mousePressed'])
       expect(keyUps(mock)).toHaveLength(0)
       await page.release()
-      // Off the page, so letting go completes no click the host had started.
+      // Release off-page to avoid completing the revoked click.
       expect(mock.webContents.debugger.sendCommand).toHaveBeenCalledWith(
         MOUSE,
         expect.objectContaining({ type: 'mouseReleased', x: -1, y: -1 })

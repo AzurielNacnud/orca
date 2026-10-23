@@ -1,3 +1,4 @@
+import { acquireReadyCodexForTest } from './codex-structured-session-adapter-fixture'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
@@ -12,18 +13,12 @@ import type { CodexStructuredSessionEvent } from './codex-structured-session-sta
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { codexProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 
-// Proves the host's child records are actually REACHED from provider traffic: the tracker is
-// unit-tested separately, and a producer that is correct but unwired publishes nothing while
-// every one of its own tests stays green. Every surface, the strip included, reads those records.
-
 type Published = { sessionId: string; evidence: AgentChildWorkEvidence['type'][] }
 
 const THREAD_ID = '01a07d54-3785-71d0-b065-82c8ebbc572a'
 const PARENT_TURN = '01a07d54-37be-72e1-8206-8f0c23dd2cef'
 const CHILD_ID = '01a07d54-5523-78a3-91f5-e0acb1dab065'
 
-/** A three-route stand-in, deliberately smaller than the full adapter harness:
- *  this suite only needs a thread and a notification pipe. */
 function fakeCodex(close: () => Promise<boolean> = async () => true): {
   handlers: () => CodexAppServerConnectionHandlers
   openConnection: typeof openCodexAppServerConnection
@@ -99,7 +94,7 @@ async function adapterWithSession(
     onChildWorkEvidence: (sessionId, evidence) =>
       published.push({ sessionId, evidence: evidence.map((edge) => edge.type) })
   })
-  await adapter.acquire({
+  await acquireReadyCodexForTest(adapter, {
     identity: identity('session-1'),
     fence: 7,
     spawnToken: 'spawn-9',
@@ -157,7 +152,11 @@ describe("codex background tasks reach the host's child records", () => {
     const published: Published[] = []
     const { adapter, codex } = await adapterWithSession(published)
     const oldExit = codex.handlers().onExit
-    await adapter.acquire({ identity: identity('session-1'), fence: 8, spawnToken: 'spawn-10' })
+    await acquireReadyCodexForTest(adapter, {
+      identity: identity('session-1'),
+      fence: 8,
+      spawnToken: 'spawn-10'
+    })
     codex.handlers().onNotification?.('turn/started', {
       threadId: CHILD_ID,
       turn: { id: 'replacement-child-turn' }
@@ -200,7 +199,6 @@ describe("codex background tasks reach the host's child records", () => {
         }
       })
       await vi.waitFor(() => expect(adapter.backgroundTaskState('session-1')).toBeUndefined())
-      // The open turn's lifecycle row is revised to interrupted, never tombstoned.
       expect(appendItem.mock.calls.map((call) => call[1])).toEqual([
         expect.objectContaining({ kind: 'turn', state: 'interrupted' })
       ])
@@ -245,7 +243,7 @@ describe("codex background tasks reach the host's child records", () => {
         }
       })
     }
-    // The parent and its first child already hold two running turns.
+    // Setup already opened the parent and first child, leaving 254 slots.
     for (let index = 0; index < 254; index += 1) {
       startChild(index)
     }
@@ -266,14 +264,13 @@ describe("codex background tasks reach the host's child records", () => {
 
     const spawn = subagentNotification('started')
     codex.handlers().onNotification?.(spawn.method, spawn.params)
-    // Mid-turn: the child is running, so its record is live now.
     expect(published).toEqual([{ sessionId: 'session-1', evidence: ['live'] }])
     expect(adapter.backgroundTaskState('session-1')).toEqual(running)
 
     published.length = 0
     codex.handlers().onNotification?.(TURN_COMPLETED.method, TURN_COMPLETED.params)
 
-    // Turn end is not the child's outcome: nothing reaches its record.
+    // The spawning turn's end does not prove the child's outcome.
     expect(published).toEqual([])
     expect(adapter.backgroundTaskState('session-1')).toEqual(running)
   })
@@ -288,7 +285,6 @@ describe("codex background tasks reach the host's child records", () => {
 
     expect(await adapter.closeSession('session-1')).toBe(true)
 
-    // The records hear the session end, which settles the child still running.
     expect(published).toEqual([{ sessionId: 'session-1', evidence: ['session-ended'] }])
     expect(adapter.backgroundTaskState('session-1')).toBeUndefined()
   })

@@ -39,6 +39,11 @@ export {
   type TerminalFileContext
 } from './terminal-file-path-mapping'
 import { runtimeTargetEnvironmentId } from '@/runtime/runtime-client-target'
+import {
+  httpLinkDirectClickDestination,
+  type HttpLinkDestination
+} from '@/lib/http-link-destinations'
+import { isHtmlFilePath, localHtmlFileDestinations } from './local-html-file-destinations'
 
 export type FileOpenFailure = {
   /** `missing` is a verified absence; `unverifiable` means the host could not answer (dropped SSH, timeout, denied path). */
@@ -51,7 +56,10 @@ type TerminalFileOpenDeps = {
   worktreePath: string
   runtimeEnvironmentId?: string | null
   wslDistro?: string | null
+  /** Shift+modifier: the OS default app, or the other link-routing browser for a local HTML file. */
   openWithSystemDefault?: boolean
+  /** Where a local HTML file opens, chosen from its popover; otherwise link routing decides. */
+  browserDestination?: HttpLinkDestination
   /** The paired-server terminal that printed the link; lets its host grant a file outside workspaces. */
   terminalHandle?: string | null
   /** Reports a path that could not be verified before opening; skipped once a later open supersedes it. */
@@ -60,10 +68,6 @@ type TerminalFileOpenDeps = {
   sourceTabId?: string | null
   /** "Open in this group": pins the source tab's group at activation, or refuses. */
   openInSourceGroup?: boolean
-}
-
-export function isHtmlFilePath(filePath: string): boolean {
-  return /\.html?$/i.test(filePath)
 }
 
 function openHtmlFileInBrowser(filePath: string, worktreeId: string, clientLocal: boolean): void {
@@ -90,6 +94,13 @@ export function shouldOpenTerminalFileWithSystemDefault(fileContext: TerminalFil
 }
 
 let latestOpenDetectedFilePathRequestId = 0
+
+/** Supersedes earlier opens now, for a click still deciding what to open; true until a later open. */
+export function reserveDetectedFilePathOpenTurn(): () => boolean {
+  const requestId = ++latestOpenDetectedFilePathRequestId
+  cancelPendingEditorLineRevealFrames()
+  return () => requestId === latestOpenDetectedFilePathRequestId
+}
 
 export function openDetectedFilePath(
   filePath: string,
@@ -206,7 +217,21 @@ export function openDetectedFilePath(
     }
 
     const canOpenWithSystemDefault = shouldOpenTerminalFileWithSystemDefault(fileContext)
-    if (openWithSystemDefault && canOpenWithSystemDefault) {
+    // Why: a remote workspace's hint and rows promise Orca before the path resolves, and an
+    // explicit group request falls through so the HTML branch can refuse it.
+    const pageDestination =
+      canOpenWithSystemDefault &&
+      !clientLocal &&
+      hostGrantId === null &&
+      !explicitGroupRequest &&
+      isHtmlFilePath(mappedFilePath)
+        ? (deps.browserDestination ??
+          httpLinkDirectClickDestination(localHtmlFileDestinations(), openWithSystemDefault))
+        : null
+    const opensWithSystemDefault = pageDestination
+      ? pageDestination === 'system'
+      : openWithSystemDefault
+    if (opensWithSystemDefault && canOpenWithSystemDefault) {
       // Why: Shift+Cmd/Ctrl mirrors URL links by escaping Orca and honoring the
       // user's OS file associations without adding editor-specific settings.
       const openedWithSystemDefault = await window.api.shell.openFilePath(
@@ -236,8 +261,8 @@ export function openDetectedFilePath(
       return
     }
 
-    // Why: local HTML files render in Orca's browser for ordinary Cmd/Ctrl-click,
-    // and remain the fallback if Shift+Cmd/Ctrl cannot launch the OS default.
+    // Why: a local HTML file routed to Orca renders in its browser, which also catches a
+    // system-browser open the OS could not launch.
     if (isHtmlFilePath(mappedFilePath) && hostGrantId === null) {
       if (canOpenWithSystemDefault) {
         // Why: Orca's browser has no group placement in v1.

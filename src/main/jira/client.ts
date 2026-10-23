@@ -6,8 +6,8 @@ import type {
   JiraSite,
   JiraSiteSelection,
   JiraViewer
-} from '../../shared/jira-types'
-import { clearAttachmentImagesForSite } from './attachment-image-cache'
+} from '../../shared/jira/jira-types'
+import { clearAttachmentImagesForSite } from './attachments/image-cache'
 import { acquire, release } from './request-queue'
 import {
   getCredentialError,
