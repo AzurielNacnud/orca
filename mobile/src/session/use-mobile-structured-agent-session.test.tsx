@@ -246,7 +246,9 @@ describe('useMobileStructuredAgentSession', () => {
   })
   const client = {
     sendRequest,
-    subscribe
+    subscribe,
+    getState: () => 'connected',
+    onStateChange: () => () => {}
   } as unknown as RpcClient
   let storedOperations: Map<string, string>
 

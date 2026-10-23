@@ -68,7 +68,12 @@ describe('useMobileStructuredAgentSession turn indicator', () => {
     listener = onData
     return vi.fn()
   })
-  const client = { sendRequest, subscribe } as unknown as RpcClient
+  const client = {
+    sendRequest,
+    subscribe,
+    getState: () => 'connected',
+    onStateChange: () => () => {}
+  } as unknown as RpcClient
   // Stable across renders: a fresh callback would re-run the hold/subscribe effect
   // and release the session out from under the test.
   const onSendError = vi.fn()

@@ -163,6 +163,7 @@ it.each([1, 10, 100])(
             hostSupport: {
               permissionModes: true,
               permissionOwn: true,
+              statusFeed: true,
               coherentModelCatalog: false
             },
             mutate: vi.fn(async () => ({ status: 'rejected' as const }))

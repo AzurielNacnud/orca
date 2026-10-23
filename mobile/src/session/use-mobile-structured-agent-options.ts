@@ -45,7 +45,7 @@ export function useMobileStructuredAgentOptions(args: {
   /** What the host advertised; null until its status probe answers. */
   hostSupport: Pick<
     StructuredAgentSessionHostSupport,
-    'permissionModes' | 'permissionOwn' | 'coherentModelCatalog'
+    'permissionModes' | 'permissionOwn' | 'coherentModelCatalog' | 'statusFeed'
   > | null
 }) {
   const { agent, client, enabled, fence, mutate, optionStamp, sessionId, hostSupport } = args
@@ -77,6 +77,7 @@ export function useMobileStructuredAgentOptions(args: {
   } = useMobileStructuredOptionState({
     agent,
     enabled,
+    statusFeed: hostSupport?.statusFeed === true,
     fence,
     optionCatalog,
     sessionId,

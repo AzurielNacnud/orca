@@ -160,7 +160,7 @@ function Probe(props: ProbeProps): null {
       fence: props.fence,
       mutate: props.mutate,
       ...(props.optionStamp ? { optionStamp: props.optionStamp } : {}),
-      hostSupport: { permissionModes: true }
+      hostSupport: { permissionModes: true, statusFeed: false }
     })
   )
   return null

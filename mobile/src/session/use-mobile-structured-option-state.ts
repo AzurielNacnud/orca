@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { mobileStructuredSessionStatusFeed } from './mobile-structured-session-status-feed'
 import { projectRuntimePermission } from '../../../src/shared/structured-agent-session-permission-option'
 import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
@@ -29,6 +29,7 @@ export function useMobileStructuredOptionState(args: {
   coherentCatalog?: boolean
   agent: string | null
   enabled: boolean
+  statusFeed: boolean
   fence: number | null
   optionCatalog: AgentSessionOptionCatalog | null
   sessionId: string | null
@@ -36,6 +37,7 @@ export function useMobileStructuredOptionState(args: {
   const {
     agent,
     enabled,
+    statusFeed,
     fence,
     optionCatalog,
     sessionId,
@@ -45,13 +47,16 @@ export function useMobileStructuredOptionState(args: {
     worktree,
     coherentCatalog: hostCoherentCatalog = false
   } = args
-  const feed = useMemo(() => (client ? mobileStructuredSessionStatusFeed(client) : null), [client])
-  const summary = useSyncExternalStore(feed?.subscribe ?? (() => () => {}), () =>
-    sessionId ? feed?.getSnapshot().get(sessionId) : undefined
-  )
   const connected = useSyncExternalStore(
     client?.onStateChange ?? (() => () => {}),
     () => client?.getState() === 'connected'
+  )
+  const feed =
+    enabled && connected && statusFeed && client && sessionId
+      ? mobileStructuredSessionStatusFeed(client)
+      : null
+  const summary = useSyncExternalStore(feed?.subscribe ?? (() => () => {}), () =>
+    sessionId ? feed?.getSnapshot().get(sessionId) : undefined
   )
   const projectPermission = <T extends { reportedPermissionMode?: string | null }>(state: T): T =>
     projectRuntimePermission(state, summary, fence)
