@@ -1,7 +1,10 @@
 import { z } from 'zod'
 import { pluginCapabilitySchema } from '../plugin-capabilities'
 import { orcaEngineRangeSchema } from './plugin-manifest-engine-range'
-import { pluginContributesShape } from '../plugin-contribution-points'
+import {
+  pluginContributesShape,
+  pluginReservedContributesShape
+} from '../plugin-contribution-points'
 import { pluginIdSchema, pluginRelativePathSchema } from './plugin-manifest-fields'
 import { pluginManifestDetailFields } from '../plugin-detail-fields'
 import { PLUGIN_ICON_RULE_TEXT, pluginManifestImageFields } from '../plugin-image-fields'
@@ -127,7 +130,7 @@ const pluginManifestFields = {
       )
     ),
   contributes: z
-    .object(pluginContributesShape)
+    .object({ ...pluginContributesShape, ...pluginReservedContributesShape })
     .strict()
     // Why prefault: runs `{}` through the schema, so every family's own default applies.
     .prefault({})
