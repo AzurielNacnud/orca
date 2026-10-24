@@ -12,7 +12,7 @@ import {
 } from './plugin-command-keybindings'
 
 const command: ActivePluginCommand = {
-  pluginKey: 'orca-samples.tasks',
+  pluginKey: 'samples.tasks',
   pluginName: 'Tasks',
   id: 'open',
   title: 'Open Tasks',
@@ -23,7 +23,7 @@ const command: ActivePluginCommand = {
 
 describe('plugin command keybindings', () => {
   it('builds a stable dynamic action definition', () => {
-    expect(pluginCommandKeybindingActionId(command)).toBe('plugin:orca-samples.tasks/open')
+    expect(pluginCommandKeybindingActionId(command)).toBe('plugin:samples.tasks/open')
     expect(pluginCommandKeybindingDefinition(command)).toMatchObject({
       title: 'Open Tasks — Tasks',
       group: 'Plugins',
