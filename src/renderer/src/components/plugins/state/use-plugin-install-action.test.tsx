@@ -124,7 +124,7 @@ describe('usePluginInstallAction', () => {
     const { hook } = setup()
     const codeListing = {
       ...listing,
-      release: { ...listing.release!, execution: 'instructional' as const }
+      release: { ...listing.release!, execution: 'declarative' as const }
     }
     vi.mocked(window.api.plugins.installMarketplacePlugin).mockResolvedValue(installResult(false))
     await act(async () => hook.current?.install(codeListing, { preview: codePreview }))
@@ -149,7 +149,7 @@ describe('usePluginInstallAction', () => {
     const { hook } = setup()
     const codeListing = {
       ...listing,
-      release: { ...listing.release!, execution: 'instructional' as const }
+      release: { ...listing.release!, execution: 'declarative' as const }
     }
     vi.mocked(window.api.plugins.installMarketplacePlugin).mockResolvedValue(installResult(false))
     await act(async () => hook.current?.install(codeListing, { preview: codePreview }))

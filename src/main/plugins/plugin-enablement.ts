@@ -5,7 +5,7 @@ import {
 import type { Store } from '../persistence'
 import type { PluginService } from './plugin-service'
 import type { PluginConsentRequest } from '../../shared/plugins/approval/plugin-consent-request'
-import { verifyInstructionalPluginContent } from './plugin-instructional-content-integrity'
+import { verifyDeclarativePluginContent } from './plugin-declarative-content-integrity'
 
 /**
  * Single write path for consent + enablement. Consent is recorded as
@@ -37,8 +37,8 @@ export async function applyPluginConsent(input: {
   }
   if (input.decision === 'approve') {
     // Why: IPC and serve callers can bypass the renderer dialog, so main must
-    // prove every instructional byte is still reviewable before enabling it.
-    await verifyInstructionalPluginContent(plugin)
+    // prove every declarative byte is still reviewable before enabling it.
+    await verifyDeclarativePluginContent(plugin)
   }
   const settings = store.getSettings()
   const disabled = new Set(normalizePluginIdList(settings.disabledPlugins))
