@@ -1,0 +1,210 @@
+import { BrowserWindow, ipcMain, type WebContents } from 'electron'
+import {
+  BROWSER_AGENT_ACTIVITY_CHANNEL,
+  BROWSER_AGENT_CURSOR_ARRIVED_CHANNEL,
+  BROWSER_AGENT_CURSOR_CHANNEL,
+  type BrowserAgentActivityEvent,
+  type BrowserAgentCursorEvent
+} from '../../shared/browser-agent-activity-contract'
+import { getActiveRpcCaller } from '../runtime/rpc/rpc-active-caller'
+
+// Spans an agent's thinking between steps; a finished, failed or disconnected agent clears within it.
+const ACTIVITY_IDLE_MS = 20_000
+const CURSOR_ARRIVAL_TIMEOUT_MS = 1500
+
+/** A CDP mouse event's params, as the agent sent them. */
+export type AgentPointerInput = {
+  type?: unknown
+  x?: unknown
+  y?: unknown
+  buttons?: unknown
+}
+
+type PageActivity = {
+  commands: number
+  idleTimer: ReturnType<typeof setTimeout> | null
+}
+
+type PendingArrival = {
+  browserPageId: string
+  rendererId: number
+  timer: ReturnType<typeof setTimeout>
+  resolve: () => void
+}
+
+type BrowserAgentActivityDeps = {
+  pageIdForGuest: (guestWebContentsId: number) => string | null
+  rendererForPage: (browserPageId: string) => WebContents | null
+}
+
+const NO_COMMAND = (): void => {}
+
+/** Which pages an agent drives, and the show-before-act handshake for its pointer. */
+export class BrowserAgentActivity {
+  private readonly pages = new Map<string, PageActivity>()
+  private readonly pendingArrivals = new Map<number, PendingArrival>()
+  private sequence = 0
+  private listening = false
+
+  constructor(private readonly deps: BrowserAgentActivityDeps) {}
+
+  /** Marks the page as agent-driven for one command; people's relayed input never counts. */
+  beginCommand(browserPageId: string): () => void {
+    if (getActiveRpcCaller()?.kind !== 'local-cli') {
+      return NO_COMMAND
+    }
+    let page = this.pages.get(browserPageId)
+    if (!page) {
+      page = { commands: 0, idleTimer: null }
+      this.pages.set(browserPageId, page)
+    }
+    // Every command republishes, so a reloaded or newly attached window catches up.
+    this.publish(browserPageId, true)
+    if (page.idleTimer) {
+      clearTimeout(page.idleTimer)
+      page.idleTimer = null
+    }
+    page.commands += 1
+    const owned = page
+    let ended = false
+    return () => {
+      if (ended || this.pages.get(browserPageId) !== owned) {
+        return
+      }
+      ended = true
+      owned.commands -= 1
+      if (owned.commands === 0) {
+        owned.idleTimer = setTimeout(() => this.end(browserPageId), ACTIVITY_IDLE_MS)
+      }
+    }
+  }
+
+  end(browserPageId: string): void {
+    const page = this.pages.get(browserPageId)
+    if (!page) {
+      return
+    }
+    if (page.idleTimer) {
+      clearTimeout(page.idleTimer)
+    }
+    this.pages.delete(browserPageId)
+    for (const [sequence, pending] of this.pendingArrivals) {
+      if (pending.browserPageId === browserPageId) {
+        this.settleArrival(sequence)
+      }
+    }
+    this.publish(browserPageId, false)
+  }
+
+  /** Moves the page's agent cursor to an input's point; resolves once it has visibly landed. */
+  async showPointer(guest: WebContents, input: AgentPointerInput): Promise<void> {
+    const press = input.type === 'mousePressed'
+    const { x, y } = input
+    if ((input.type !== 'mouseMoved' && !press) || !isFiniteNumber(x) || !isFiniteNumber(y)) {
+      return
+    }
+    const browserPageId = this.deps.pageIdForGuest(guest.id)
+    if (!browserPageId || !this.pages.get(browserPageId)?.commands) {
+      return
+    }
+    const renderer = this.deps.rendererForPage(browserPageId)
+    if (!renderer || renderer.isDestroyed()) {
+      return
+    }
+    const viewport = await readLayoutViewport(guest)
+    if (!viewport || renderer.isDestroyed()) {
+      return
+    }
+    // Drag steps and the press after a move follow without waiting; only a fresh move is shown first.
+    const window = BrowserWindow.fromWebContents(renderer)
+    const watchable = !!window && window.isVisible() && !window.isMinimized()
+    const awaitsArrival = watchable && !press && !input.buttons
+    const sequence = ++this.sequence
+    const event: BrowserAgentCursorEvent = {
+      browserPageId,
+      sequence,
+      x,
+      y,
+      viewportWidth: viewport.width,
+      viewportHeight: viewport.height,
+      press,
+      awaitsArrival
+    }
+    if (!awaitsArrival) {
+      renderer.send(BROWSER_AGENT_CURSOR_CHANNEL, event)
+      return
+    }
+    this.listenForArrivals()
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => this.settleArrival(sequence), CURSOR_ARRIVAL_TIMEOUT_MS)
+      this.pendingArrivals.set(sequence, { browserPageId, rendererId: renderer.id, timer, resolve })
+      renderer.send(BROWSER_AGENT_CURSOR_CHANNEL, event)
+    })
+  }
+
+  private settleArrival(sequence: number): void {
+    const pending = this.pendingArrivals.get(sequence)
+    if (!pending) {
+      return
+    }
+    this.pendingArrivals.delete(sequence)
+    clearTimeout(pending.timer)
+    pending.resolve()
+  }
+
+  private listenForArrivals(): void {
+    if (this.listening) {
+      return
+    }
+    this.listening = true
+    ipcMain.on(BROWSER_AGENT_CURSOR_ARRIVED_CHANNEL, (event, reply: unknown) => {
+      const sequence =
+        reply !== null && typeof reply === 'object' && 'sequence' in reply ? reply.sequence : null
+      if (typeof sequence !== 'number') {
+        return
+      }
+      if (this.pendingArrivals.get(sequence)?.rendererId === event.sender.id) {
+        this.settleArrival(sequence)
+      }
+    })
+  }
+
+  private publish(browserPageId: string, active: boolean): void {
+    const renderer = this.deps.rendererForPage(browserPageId)
+    if (renderer && !renderer.isDestroyed()) {
+      const event: BrowserAgentActivityEvent = { browserPageId, active }
+      renderer.send(BROWSER_AGENT_ACTIVITY_CHANNEL, event)
+    }
+  }
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+async function readLayoutViewport(
+  guest: WebContents
+): Promise<{ width: number; height: number } | null> {
+  try {
+    const metrics: unknown = await guest.debugger.sendCommand('Page.getLayoutMetrics')
+    const viewport =
+      metrics !== null && typeof metrics === 'object' && 'cssLayoutViewport' in metrics
+        ? metrics.cssLayoutViewport
+        : null
+    if (
+      viewport !== null &&
+      typeof viewport === 'object' &&
+      'clientWidth' in viewport &&
+      'clientHeight' in viewport &&
+      isFiniteNumber(viewport.clientWidth) &&
+      isFiniteNumber(viewport.clientHeight) &&
+      viewport.clientWidth > 0 &&
+      viewport.clientHeight > 0
+    ) {
+      return { width: viewport.clientWidth, height: viewport.clientHeight }
+    }
+  } catch {
+    // A page that cannot report its viewport just shows no cursor.
+  }
+  return null
+}

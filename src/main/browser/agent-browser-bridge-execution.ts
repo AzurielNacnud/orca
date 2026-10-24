@@ -96,7 +96,18 @@ export abstract class AgentBrowserBridgeExecution extends AgentBrowserBridgeTabs
     }
     args.push('--json')
 
-    const stdout = await this.runAgentBrowserRaw(sessionName, args, execOptions)
+    const pointAtTarget = execOptions?.pointAtTarget === true
+    if (pointAtTarget) {
+      session.proxy.pointAtNextNode(true)
+    }
+    let stdout: string
+    try {
+      stdout = await this.runAgentBrowserRaw(sessionName, args, execOptions)
+    } finally {
+      if (pointAtTarget) {
+        session.proxy.pointAtNextNode(false)
+      }
+    }
     const translated = translateResult(stdout)
 
     if (!translated.ok) {

@@ -27,6 +27,7 @@ export const NATIVE_CHAT_TOOL_RUN_SENTENCE_COPY: Record<
   unknown: { one: 'Ran 1 command', many: 'Ran {{value0}} commands' },
   fileChange: { one: 'Edited 1 file', many: 'Edited {{value0}} files' },
   webSearch: { one: 'Searched the web 1 time', many: 'Searched the web {{value0}} times' },
+  browser: { one: 'Used the browser', many: 'Used the browser {{value0}} times' },
   mcpToolCall: { one: 'Used 1 integration', many: 'Used {{value0}} integrations' },
   subAgentActivity: { one: 'Ran 1 agent', many: 'Ran {{value0}} agents' },
   todoList: { one: 'Updated the plan', many: 'Updated the plan {{value0}} times' },
@@ -45,6 +46,7 @@ export const NATIVE_CHAT_TOOL_RUN_LIVE_SENTENCE_COPY: Record<
   unknown: { one: 'Running 1 command', many: 'Running {{value0}} commands' },
   fileChange: { one: 'Editing 1 file', many: 'Editing {{value0}} files' },
   webSearch: { one: 'Searching the web 1 time', many: 'Searching the web {{value0}} times' },
+  browser: { one: 'Using the browser', many: 'Using the browser {{value0}} times' },
   mcpToolCall: { one: 'Using 1 integration', many: 'Using {{value0}} integrations' },
   subAgentActivity: { one: 'Running 1 agent', many: 'Running {{value0}} agents' },
   todoList: { one: 'Updating the plan', many: 'Updating the plan {{value0}} times' },
@@ -67,11 +69,11 @@ export type NativeChatToolRunClause = {
  *  calls it made. First-use order rather than a count ranking: the sentence then
  *  reads in the order the work happened. */
 export function nativeChatToolRunClauses(
-  calls: readonly { name: string; mcpIdentity?: NativeChatMcpIdentity }[]
+  calls: readonly { name: string; mcpIdentity?: NativeChatMcpIdentity; input?: unknown }[]
 ): NativeChatToolRunClause[] {
   const counts = new Map<NativeChatToolCategory, number>()
   for (const call of calls) {
-    const category = nativeChatToolCategory(call.name, call.mcpIdentity) ?? 'other'
+    const category = nativeChatToolCategory(call.name, call.mcpIdentity, call.input) ?? 'other'
     counts.set(category, (counts.get(category) ?? 0) + 1)
   }
   return [...counts].map(([category, count]) => ({ category, count }))

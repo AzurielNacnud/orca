@@ -3441,3 +3441,47 @@ html.native-shell .app-layout {
     transition: transform var(--reference-title-duration) linear 400ms;
   }
 }
+
+/* Agent cursor over a browser page: it never takes input and only moves by transform/opacity. */
+.browser-agent-cursor-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.browser-agent-cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform, opacity;
+}
+
+.browser-agent-cursor-glyph {
+  --browser-agent-cursor-fill: var(--foreground);
+  --browser-agent-cursor-outline: var(--background);
+  transition: opacity 0.6s ease;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ai-action-accent) 85%, transparent))
+    drop-shadow(0 0 12px color-mix(in srgb, var(--ai-action-accent) 45%, transparent));
+}
+
+.browser-agent-cursor-ring {
+  position: absolute;
+  left: -12px;
+  top: -12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  border: 2px solid var(--ai-action-accent);
+  background: color-mix(in srgb, var(--ai-action-accent) 18%, transparent);
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-agent-cursor-glyph {
+    transition: none;
+  }
+}

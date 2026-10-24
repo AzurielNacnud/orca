@@ -119,7 +119,9 @@ export abstract class AgentBrowserBridgeInteractionCommands extends AgentBrowser
   ): Promise<BrowserCheckResult> {
     return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
       const args = checked ? ['check', element] : ['uncheck', element]
-      return (await this.execAgentBrowser(sessionName, args)) as BrowserCheckResult
+      return (await this.execAgentBrowser(sessionName, args, {
+        pointAtTarget: true
+      })) as BrowserCheckResult
     })
   }
 
@@ -129,7 +131,9 @@ export abstract class AgentBrowserBridgeInteractionCommands extends AgentBrowser
     browserPageId?: string
   ): Promise<BrowserFocusResult> {
     return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
-      return (await this.execAgentBrowser(sessionName, ['focus', element])) as BrowserFocusResult
+      return (await this.execAgentBrowser(sessionName, ['focus', element], {
+        pointAtTarget: true
+      })) as BrowserFocusResult
     })
   }
 

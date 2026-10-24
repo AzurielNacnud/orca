@@ -74,6 +74,7 @@ export abstract class AgentBrowserBridgeQueue extends AgentBrowserBridgeShutdown
       options.requireScopedTarget
     )
     const sessionName = `${ORCA_TAB_SESSION_PREFIX}${pageId}`
+    const endAgentCommand = this.browserManager.beginAgentCommand(pageId)
 
     return new Promise<T>((resolve, reject) => {
       let queue = this.commandQueues.get(sessionName)
@@ -101,8 +102,14 @@ export abstract class AgentBrowserBridgeQueue extends AgentBrowserBridgeShutdown
             )
           return origin.run(run)
         },
-        resolve: resolve as (value: unknown) => void,
-        reject
+        resolve: (value) => {
+          endAgentCommand()
+          resolve(value as T)
+        },
+        reject: (error) => {
+          endAgentCommand()
+          reject(error)
+        }
       })
       this.processQueue(sessionName)
     })

@@ -151,7 +151,7 @@ export abstract class AgentBrowserBridgeCoreCommands extends AgentBrowserBridgeQ
       browserPageId,
       async (sessionName) => {
         if (!(await this.isExplicitContentEditableTarget(sessionName, element))) {
-          await this.execAgentBrowser(sessionName, ['focus', element])
+          await this.execAgentBrowser(sessionName, ['focus', element], { pointAtTarget: true })
           // One stdin edit avoids argv limits and repeated copying of the growing field value.
           await this.execAgentBrowser(sessionName, ['eval', '--stdin'], {
             stdinText: focusedValueSetExpression(JSON.stringify(value), { dispatchEvents: true })
