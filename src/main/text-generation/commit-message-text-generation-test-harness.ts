@@ -11,7 +11,13 @@ export type MockDiscoveryChild = ChildProcess & {
 }
 
 export function createMockDiscoveryChild(): MockDiscoveryChild {
-  return Object.assign(new ChildProcess(), {
+  const child = new ChildProcess()
+  Object.defineProperties(child, {
+    stdout: { writable: true, configurable: true, enumerable: true },
+    stderr: { writable: true, configurable: true, enumerable: true },
+    stdin: { writable: true, configurable: true, enumerable: true }
+  })
+  return Object.assign(child, {
     pid: 123,
     kill: vi.fn(() => true),
     stdout: new PassThrough(),
