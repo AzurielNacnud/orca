@@ -76,6 +76,7 @@ export abstract class AgentBrowserBridgeQueue extends AgentBrowserBridgeShutdown
     const sessionName = `${ORCA_TAB_SESSION_PREFIX}${pageId}`
     const endAgentCommand = this.browserManager.beginAgentCommand(pageId)
 
+    // Dropped commands never execute, so settling also ends the lease; ending twice is harmless.
     return new Promise<T>((resolve, reject) => {
       let queue = this.commandQueues.get(sessionName)
       if (!queue) {
@@ -100,19 +101,14 @@ export abstract class AgentBrowserBridgeQueue extends AgentBrowserBridgeShutdown
               },
               options
             )
-          return origin.run(run)
+          // Settle before the queue starts the next command, which may be a person's input.
+          return origin.run(run).finally(endAgentCommand)
         },
-        resolve: (value) => {
-          endAgentCommand()
-          resolve(value as T)
-        },
-        reject: (error) => {
-          endAgentCommand()
-          reject(error)
-        }
+        resolve: resolve as (value: unknown) => void,
+        reject
       })
       this.processQueue(sessionName)
-    })
+    }).finally(endAgentCommand)
   }
 
   protected async executeQueuedCommand<T>(

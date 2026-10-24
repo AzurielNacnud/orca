@@ -47,7 +47,7 @@ function setup() {
   }
   const activity = new BrowserAgentActivity({
     pageIdForGuest: (id) => (id === guest.id ? PAGE : null),
-    // SAFETY: the owner only calls id/isDestroyed/send on the renderer.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the owner reads only id, isDestroyed and send.
     rendererForPage: () => renderer as unknown as Electron.WebContents
   })
   const agentCommand = (): (() => void) =>
@@ -55,14 +55,15 @@ function setup() {
   const cursorEvents = () =>
     sent
       .filter((entry) => entry.channel === BROWSER_AGENT_CURSOR_CHANNEL)
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only cursor events are sent on this channel.
       .map((entry) => entry.data as BrowserAgentCursorEvent)
   const arrive = (sequence: number, senderId = renderer.id) => {
     for (const listener of ipcListeners.get(BROWSER_AGENT_CURSOR_ARRIVED_CHANNEL) ?? []) {
       listener({ sender: { id: senderId } }, { sequence })
     }
   }
-  // SAFETY: the owner only reads id and debugger.sendCommand from the guest.
   const show = (input: Record<string, unknown>) =>
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the owner reads only id and debugger.sendCommand.
     activity.showPointer(guest as unknown as Electron.WebContents, input)
   return { activity, sent, agentCommand, cursorEvents, arrive, show }
 }

@@ -38,9 +38,11 @@ export abstract class AgentBrowserBridgeInputCommands extends AgentBrowserBridge
     browserPageId?: string
   ): Promise<BrowserSelectResult> {
     return this.enqueueTargetedCommand(worktreeId, browserPageId, async (sessionName) => {
-      return (await this.execAgentBrowser(sessionName, ['select', element, value], {
-        pointAtTarget: true
-      })) as BrowserSelectResult
+      return (await this.execAgentBrowser(sessionName, [
+        'select',
+        element,
+        value
+      ])) as BrowserSelectResult
     })
   }
 

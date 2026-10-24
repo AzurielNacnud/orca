@@ -1,4 +1,5 @@
 import { COMMAND_TOKEN_SCAN_MAX_CHARS, getCommandTokenPathBasename } from './command-token-scanner'
+import { tokenizeCommandLine } from './agent-command-line-entrypoint'
 
 /** The browser CLI's command keys per handler group. Kept apart from the CLI's
  *  lazy handler imports so the renderer and mobile can read them too. */
@@ -104,17 +105,16 @@ const BROWSER_COMMAND_WORDS = new Set<string>(
 
 // The published launcher names per platform, plus the dev build's.
 const ORCA_CLI_BASENAME = /^orca(?:-dev|-ide)?(?:\.cmd|\.exe)?$/i
-const SEGMENT_SEPARATOR = /&&|\|\||[;|\n]/
 const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 
 export type OrcaBrowserCommand = { pageId: string | null }
 
 /** The first `orca <browser command>` a shell command line runs, with the page it
- *  targets, or null when it runs none. Quoting inside a segment is not parsed. */
+ *  targets, or null when it runs none. Quoted text is an argument, never a command. */
 export function parseOrcaBrowserCommand(command: string): OrcaBrowserCommand | null {
   const scanned = command.slice(0, COMMAND_TOKEN_SCAN_MAX_CHARS)
-  for (const segment of scanned.split(SEGMENT_SEPARATOR)) {
-    const tokens = segment.trim().split(/\s+/).map(unquote)
+  for (const segment of splitUnquotedSegments(scanned)) {
+    const tokens = tokenizeCommandLine(segment)
     let index = 0
     while (index < tokens.length && ENV_ASSIGNMENT.test(tokens[index])) {
       index += 1
@@ -140,15 +140,30 @@ function pageFlagValue(args: readonly string[]): string | null {
       return args[index + 1] || null
     }
     if (arg.startsWith('--page=')) {
-      return unquote(arg.slice('--page='.length)) || null
+      return arg.slice('--page='.length) || null
     }
   }
   return null
 }
 
-function unquote(token: string): string {
-  const quote = token[0]
-  return token.length >= 2 && (quote === '"' || quote === "'") && token.at(-1) === quote
-    ? token.slice(1, -1)
-    : token
+/** Splits a command line at `&&`, `||`, `;`, `|` and newlines outside quotes. */
+function splitUnquotedSegments(commandLine: string): string[] {
+  const segments: string[] = []
+  let current = ''
+  let quote: '"' | "'" | null = null
+  for (let index = 0; index < commandLine.length; index += 1) {
+    const char = commandLine[index]
+    if (quote === null && (char === '"' || char === "'")) {
+      quote = char
+    } else if (quote === char) {
+      quote = null
+    } else if (quote === null && (char === ';' || char === '|' || char === '&' || char === '\n')) {
+      segments.push(current)
+      current = ''
+      continue
+    }
+    current += char
+  }
+  segments.push(current)
+  return segments
 }

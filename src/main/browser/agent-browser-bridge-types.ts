@@ -54,8 +54,6 @@ export type AgentBrowserExecOptions = {
   timeoutMs?: number
   timeoutError?: BrowserError
   stdinText?: string
-  /** The command acts on an element without pointer input; show the agent cursor on it first. */
-  pointAtTarget?: boolean
 }
 
 export type EnqueueTargetedCommandOptions = {
