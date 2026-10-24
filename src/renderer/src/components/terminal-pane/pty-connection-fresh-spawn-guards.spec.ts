@@ -247,7 +247,7 @@ export function registerPtyConnectionFreshSpawnGuardsTests(): void {
       const { connectPanePty } = await import('./pty-connection')
       const transport = createMockTransport()
       transportFactoryQueue.push(transport)
-      const repos: AppState['repos'] = [{ ...TEST_REPO, id: 'repo1', path: '/tmp/wt-1' }]
+      const repos: AppState['repos'][number][] = [{ ...TEST_REPO, id: 'repo1', path: '/tmp/wt-1' }]
       mockStoreState = {
         ...mockStoreState,
         settings: {
