@@ -103,6 +103,12 @@ it.each(['J', 'R', 'P', 'L', 'T', 'U', 'C'] as const)(
           id: `saved-${index}`,
           contentType: 'agent-session' as const,
           label: 'Codex Chat',
+          groupId: 'fixture-group',
+          worktreeId: workspace,
+          customLabel: null,
+          color: null,
+          sortOrder: index,
+          createdAt: 0,
           get entityId() {
             labelVisits++
             return id(index - Math.max(sizes.U - sizes.T, 0))

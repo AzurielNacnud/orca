@@ -92,7 +92,7 @@ it.each([10, 100])('scopes %i old commands incrementally across clear', async (c
   )
   expect(item).not.toHaveBeenCalled()
   const boundary = { operationId: 'clear', afterFence: 7, clearedAt: 101 }
-  await journal.context.clear(boundary, { write: () => {}, committed: () => {} }, 'clear')
+  await journal.context.clear(boundary, { write: () => {}, committed: () => {} })
   const record = { ...agentSessionRecordFixture(), providerContextBoundary: boundary }
   item.mockClear()
   floor.mockClear()

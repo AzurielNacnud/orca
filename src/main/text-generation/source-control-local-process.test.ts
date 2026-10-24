@@ -183,11 +183,12 @@ describe('context-owned one-shot settlement', () => {
       const stopping = vi
         .spyOn(supervisedStop, 'stopSupervisedChildProcess')
         .mockImplementation(async (...args) => {
-          await stop(...args)
+          const result = await stop(...args)
           await cleanup.promise
           if (route === 'reject-cleanup') {
             throw new Error('Cleanup refused')
           }
+          return result
         })
       const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
       try {
@@ -222,7 +223,7 @@ describe('context-owned one-shot settlement', () => {
         }
         expect(settled).toBe(false)
         expect(stopping).toHaveBeenCalledOnce()
-        child.signalCode = 'SIGTERM'
+        Object.defineProperty(child, 'signalCode', { value: 'SIGTERM' })
         child.emit('exit', null, 'SIGTERM')
         await vi.advanceTimersByTimeAsync(0)
         expect(settled).toBe(false)
@@ -245,7 +246,7 @@ describe('context-owned one-shot settlement', () => {
     }
   )
 
-  it.each(['claude', 'opencode', 'custom'])(
+  it.each(['claude', 'opencode', 'custom'] as const)(
     'preserves applicable %s plans and skips stale fallback',
     async (agentId) => {
       for (const currentAfterClose of [true, false]) {
