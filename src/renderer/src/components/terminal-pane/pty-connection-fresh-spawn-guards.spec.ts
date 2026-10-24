@@ -1,6 +1,7 @@
 import { bindPtyConnectionTestMocks } from './pty-connection-mocks.spec'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
+import type { AppState } from '@/store/types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { flushAsyncTicks } from './pty-connection-test-async'
 import { sendTerminalInputThroughPane } from './pty-connection-test-dom'
@@ -254,7 +255,7 @@ export function registerPtyConnectionFreshSpawnGuardsTests(): void {
           terminalWindowsWslDistro: 'Debian',
           localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Debian' }
         },
-        repos: [{ ...TEST_REPO, id: 'repo1', path: '/tmp/wt-1' }],
+        repos: [{ ...TEST_REPO, id: 'repo1', path: '/tmp/wt-1' }] satisfies AppState['repos'],
         endpointProjectHostSetups: [
           {
             id: 'repo1',

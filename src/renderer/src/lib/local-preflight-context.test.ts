@@ -492,7 +492,7 @@ describe('local preflight context', () => {
       repos: [
         { ...TEST_REPO, id: 'repo-1', path: 'C:\\Users\\alice\\active' },
         { ...TEST_REPO, id: 'repo-2', path: 'C:\\Users\\alice\\target' }
-      ],
+      ] satisfies AppState['repos'],
       worktreesByRepo: {
         'repo-1': [
           makeWorktree({
@@ -696,7 +696,7 @@ describe('local preflight context', () => {
           connectionId: 'builder',
           executionHostId: 'ssh:builder'
         }
-      ],
+      ] satisfies AppState['repos'],
       worktreesByRepo: {
         'repo-1': [
           makeWorktree({
