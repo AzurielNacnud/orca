@@ -6,10 +6,13 @@ import type { AgentSessionSendResult } from '../../../shared/agent-session-wire'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { isStructuredAgentSessionCommandTurnId } from './structured-agent-session-command-turn'
+import { structuredAgentSessionCommandTurn } from './structured-agent-session-command-turn'
+import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 
 /** Scope active turns to the live generation so ended commands cannot hold delivery waits. */
 export type SendSettlementJournal = Pick<AgentSessionJournal, 'submissions' | 'cursor'> & {
   activeTurnId: () => string | null
+  itemBody?: AgentSessionJournal['itemBody']
 }
 
 type SettledSend = {
@@ -19,7 +22,11 @@ type SettledSend = {
 
 type SendSettlement = SettledSend | 'pending' | 'missing'
 
-export type SendSettlementPoint = 'answered' | 'handed-over' | 'handed-over-or-behind-command'
+export type SendSettlementPoint =
+  | 'answered'
+  | 'handed-over'
+  | 'handed-over-or-behind-command'
+  | 'goal-command'
 
 export type SendSettlementWaitOptions = {
   signal?: AbortSignal
@@ -56,10 +63,18 @@ function settledSend(
     return 'missing'
   }
   const waiting =
-    until === 'answered'
-      ? submission.dispatchState === 'pending'
-      : isQueuedAgentJournalSubmission(submission) &&
-        !(until === 'handed-over-or-behind-command' && runningCommand(journal))
+    until === 'goal-command'
+      ? (() => {
+          const turn = readAgentJournalTurn(
+            journal.itemBody?.(structuredAgentSessionCommandTurn(clientMessageId).itemId) ??
+              undefined
+          )
+          return turn ? turn.state === 'running' : submission.dispatchState === 'pending'
+        })()
+      : until === 'answered'
+        ? submission.dispatchState === 'pending'
+        : isQueuedAgentJournalSubmission(submission) &&
+          !(until === 'handed-over-or-behind-command' && runningCommand(journal))
   return waiting ? 'pending' : { cursor: journal.cursor(), value: { clientMessageId, submission } }
 }
 

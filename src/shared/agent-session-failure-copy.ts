@@ -133,6 +133,10 @@ export const AGENT_SESSION_FAILURE_COPY = {
   compactionFailed: 'Compaction failed.',
   compactionFailedQuoted: 'Compaction failed: {{detail}}.',
   compactionUnconfirmed: 'Compaction completion is unconfirmed.',
+  goalActivationFailed:
+    '{{agent}} could not activate the goal. Set or resume it again to continue.',
+  goalActivationUnconfirmed:
+    '{{agent}} did not confirm goal activation. Check the goal before setting or resuming it again.',
   cancelUnconfirmed: 'Cancellation was not confirmed.',
   stopRefused: "{{agent}} didn't stop.",
   stopRefusedQuoted: "{{agent}} didn't stop: {{detail}}.",

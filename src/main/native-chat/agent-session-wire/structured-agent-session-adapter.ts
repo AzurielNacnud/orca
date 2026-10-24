@@ -28,7 +28,7 @@ import type {
 } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionAtRestCommands } from './structured-agent-session-at-rest-commands'
 import type { AgentSessionSlashCommand } from '../../../shared/agent-session-wire'
-import type { AgentSessionThreadGoalChange } from '../../../shared/agent-session-thread-goal-wire'
+import type { StructuredAgentSessionGoalAdapter } from './structured-agent-session-goal-adapter'
 import type { AgentSessionRefusalReason } from '../../../shared/agent-session-wire-refusals'
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import type {
@@ -284,6 +284,8 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
     fence: number
     command: StructuredAgentSessionCommandRun
   }): Promise<AgentSessionCommandAdmission>
+  dispatchGoal?: StructuredAgentSessionGoalAdapter['dispatchGoal']
+  changeThreadGoal?: StructuredAgentSessionGoalAdapter['changeThreadGoal']
   /** Cancel only the requested turn; absent turnId also covers dispatches whose turns have not opened. */
   cancelTurn(input: {
     sessionId: string
@@ -296,15 +298,6 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
     /** Re-read journal turn immediately before interrupt; direct callers may omit this guard. */
     resolveLiveTurnId?: () => string | null
   }): Promise<AgentSessionCancelOutcome>
-  /** Rejection proves refusal; thrown changes have unknown effects. */
-  changeThreadGoal?(input: {
-    sessionId: string
-    fence: number
-    change: AgentSessionThreadGoalChange
-    /** Existing recorded goals require set to create a new objective, never rewrite the old one. */
-    replacesGoal: boolean
-    signal?: AbortSignal
-  }): Promise<{ ok: true } | { ok: false; rejected: string }>
   /** Stop named tasks only; acknowledge each accepted stop immediately so later batch failures cannot erase it. */
   stopBackgroundTasks?(input: {
     sessionId: string

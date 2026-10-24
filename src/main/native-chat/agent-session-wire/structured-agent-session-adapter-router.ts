@@ -53,6 +53,14 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
     this.owner(input.sessionId).dispatch(input)
 
+  dispatchGoal: NonNullable<StructuredAgentSessionAdapter['dispatchGoal']> = (input) => {
+    const dispatch = this.owner(input.sessionId).dispatchGoal
+    if (!dispatch) {
+      throw new Error('Goal turns are unavailable for this provider.')
+    }
+    return dispatch(input)
+  }
+
   /** Session support may narrow the owner’s declared rewind, never widen it. */
   rewindSupport: NonNullable<StructuredAgentSessionAdapter['rewindSupport']> = (
     sessionId,

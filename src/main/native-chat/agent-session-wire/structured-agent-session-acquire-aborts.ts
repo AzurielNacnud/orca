@@ -44,10 +44,17 @@ export class StructuredAgentSessionAcquireAborts {
       )
   }
 
-  abort(sessionId: string, reason: string | Error): { reached: boolean; handedOver: boolean } {
+  abort(
+    sessionId: string,
+    reason: string | Error,
+    goals = true
+  ): { reached: boolean; handedOver: boolean } {
     let reached = false
     let handedOver = false
     for (const { controller, handover, goal } of this.inFlight.get(sessionId) ?? []) {
+      if (goal && !goals) {
+        continue
+      }
       reached ||= (handover || goal) && !controller.signal.aborted
       handedOver ||= handover && !controller.signal.aborted
       controller.abort(typeof reason === 'string' ? new Error(reason) : reason)

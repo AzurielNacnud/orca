@@ -21,8 +21,32 @@ import {
   latestStructuredAgentSessionRequest
 } from './structured-agent-session-latest-request'
 import { projectStructuredAgentSessionStatusSummary } from './structured-agent-session-projection'
+import { normalizeAgentSessionGoalSend } from './agent-session-goal-command'
+import { firstStructuredAgentSessionPrompt } from './structured-agent-session-first-prompt'
 
 const START_FAILURE = 'Claude is not signed in.'
+
+it.each(['Ship it', 'resume'])(
+  'keeps the native goal %s turn as the request independently of command completion',
+  (objective) => {
+    const entry = userEntry('goal', 1)
+    entry.body = normalizeAgentSessionGoalSend('codex', {
+      kind: 'message',
+      role: 'user',
+      blocks: [{ type: 'text', text: `/goal ${objective}` }]
+    })
+    const items = [
+      entry,
+      turn('seed', 2, { state: 'completed', outcome: 'failure', userItemId: entry.itemId }),
+      turn('compact:goal', 3, { state: 'completed', outcome: 'success', userItemId: entry.itemId })
+    ]
+    expect(latestStructuredAgentSessionRequest(items, [])).toMatchObject({
+      id: 'seed',
+      outcome: 'failure'
+    })
+    expect(firstStructuredAgentSessionPrompt(items)).toBe(`/goal ${objective}`)
+  }
+)
 
 /** `intoTurn` names the turn the message's handover delivered it into — a steer. */
 function userEntry(

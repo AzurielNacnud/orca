@@ -12,6 +12,7 @@ export type StructuredAgentSessionPendingSend = {
   queuedAt: number
   delivery?: 'queue-if-active'
   options?: Readonly<Record<string, string>>
+  goalIntent?: 'set'
   usageLimitContinuationOfTurnItemId?: string
   /**
    * `sending`: on its way, its one request out or about to be; the chat takes no other send meanwhile.

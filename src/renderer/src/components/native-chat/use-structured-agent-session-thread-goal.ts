@@ -10,6 +10,8 @@ import type {
   AgentSessionThreadGoalResult
 } from '../../../../shared/agent-session-thread-goal-wire'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
+import type { StructuredAgentSessionSendRequest } from './structured-agent-session-send-slot'
+import type { StructuredAgentSessionAttachment } from '../../../../shared/structured-agent-session-send-mutation'
 
 export type StructuredAgentSessionThreadGoal = {
   goal: AgentJournalThreadGoal | null
@@ -17,6 +19,7 @@ export type StructuredAgentSessionThreadGoal = {
   /** False where only the agent's own `/goal` changes the goal: Orca sends it `/goal clear`, and
    *  the agent has no pause. */
   hostChanges: boolean
+  sendsGoals?: boolean
   /** Resolves false when the change was refused or not sent; the error surfaces separately. */
   change: (change: AgentSessionThreadGoalChange) => Promise<boolean>
 }
@@ -31,11 +34,16 @@ export function useStructuredAgentSessionThreadGoal(args: {
   journalEpoch?: string | null
   mutate: StructuredAgentSessionMutate
   /** Sends the agent a command, for a goal only its own `/goal` changes. */
-  send: (text: string) => boolean | 'queued'
+  send: (
+    text: string,
+    attachments?: readonly StructuredAgentSessionAttachment[],
+    request?: StructuredAgentSessionSendRequest
+  ) => boolean | 'queued'
+  goalSends?: boolean
 }): StructuredAgentSessionThreadGoal | null {
   const { journalItems, mutate, support, reported, journalEpoch, send } = args
   const [pending, setPending] = useState(false)
-  const pendingRef = useRef(false)
+  const pendingRef = useRef(0)
   const report = support ?? reported
   // The loaded window reaches the live head, so a goal row in it is newer than the host's
   // whole-journal answer; that answer covers only rows older than the window.
@@ -54,10 +62,19 @@ export function useStructuredAgentSessionThreadGoal(args: {
       if (!hostChanges) {
         return next.kind === 'clear' && send(CLEAR_GOAL_COMMAND) !== false
       }
-      if (pendingRef.current) {
-        return false
+      if (
+        args.goalSends &&
+        (next.kind === 'set' || (next.kind === 'status' && next.status === 'active'))
+      ) {
+        return (
+          send(
+            next.kind === 'set' ? `/goal ${next.objective}` : '/goal resume',
+            [],
+            next.kind === 'set' ? { goalIntent: 'set' } : undefined
+          ) !== false
+        )
       }
-      pendingRef.current = true
+      pendingRef.current += 1
       setPending(true)
       try {
         const result = await mutate<AgentSessionThreadGoalResult>(
@@ -67,14 +84,14 @@ export function useStructuredAgentSessionThreadGoal(args: {
         )
         return result !== null
       } finally {
-        pendingRef.current = false
-        setPending(false)
+        pendingRef.current -= 1
+        setPending(pendingRef.current > 0)
       }
     },
-    [hostChanges, mutate, send]
+    [args.goalSends, hostChanges, mutate, send]
   )
   if (report === undefined || (!hostChanges && goal === null)) {
     return null
   }
-  return { goal, pending, hostChanges, change }
+  return { goal, pending, hostChanges, sendsGoals: args.goalSends, change }
 }

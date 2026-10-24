@@ -139,6 +139,8 @@ const AgentSessionOptions = z.record(z.string(), z.string()).refine(isAgentSessi
 export const SendParams = z
   .object({
     envelope: MutationEnvelope,
+    // Explicit Set intent is sent only to hosts advertising goal-send.v1.
+    goalIntent: z.literal('set').optional(),
     retryUnknown: z.literal(true).optional(),
     /** Queue the send as a host-held draft while the main agent is working. Strict object, so an
      *  older host refuses it: clients send it only when `agent-session.queued-messages.v1` is

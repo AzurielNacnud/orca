@@ -1,3 +1,4 @@
+import { agentSessionGoalDisplayBody } from './agent-session-goal-command'
 import {
   AGENT_STATUS_MAX_FIELD_LENGTH,
   normalizeOptionalField,
@@ -87,7 +88,7 @@ function itemBlocks(item: AgentJournalRenderItem): {
 } | null {
   const body = item.body
   if (body.kind === 'message') {
-    return { role: body.role, blocks: body.blocks }
+    return { role: body.role, blocks: agentSessionGoalDisplayBody(body).blocks }
   }
   if (isStructuredAgentSessionToolAction(body)) {
     const call = structuredAgentSessionToolCallBlock(body, item.itemId)

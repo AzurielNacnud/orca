@@ -18672,6 +18672,8 @@
         "compactionFailed": "압축에 실패했습니다.",
         "compactionFailedQuoted": "압축에 실패했습니다: {{detail}}.",
         "compactionUnconfirmed": "압축 완료가 확인되지 않았습니다.",
+        "goalActivationFailed": "{{agent}}에서 목표를 활성화하지 못했습니다. 계속하려면 목표를 다시 설정하거나 재개하세요.",
+        "goalActivationUnconfirmed": "{{agent}}에서 목표 활성화를 확인하지 못했습니다. 다시 설정하거나 재개하기 전에 목표를 확인하세요.",
         "cancelUnconfirmed": "취소가 확인되지 않았습니다.",
         "backgroundTaskNotStopped": "백그라운드 작업이 중지되지 않았습니다.",
         "backgroundTasksNotStopped": "백그라운드 작업이 중지되지 않았습니다.",

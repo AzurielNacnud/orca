@@ -33,7 +33,7 @@ it.each(['goal', 'rewind'] as const)(
         body: queued
       })
     ).toMatchObject({ ok: true })
-    const change = { kind: 'set' as const, objective: 'A goal during compact' }
+    const change = { kind: 'status' as const, status: 'paused' as const }
     const expectedEpoch = (await host.journalSnapshot(SESSION)).cursor.epoch
     const itemId = 'codex:thread-1:turn-1:1'
     const result =
@@ -60,7 +60,7 @@ it.each(['goal', 'rewind'] as const)(
   }
 )
 
-it('releases a startup goal when earlier delivery parks behind compact', async () => {
+it('releases a startup Clear when earlier delivery parks behind compact', async () => {
   const { host, dispatch } = hostTestState()
   const opened = Promise.withResolvers<StructuredAgentSessionProviderOpenResult>()
   host.deps.adapter.open = () => opened.promise
@@ -75,7 +75,7 @@ it('releases a startup goal when earlier delivery parks behind compact', async (
       await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
     ).toMatchObject({ ok: true })
   }
-  const change = { kind: 'set' as const, objective: 'A goal requested during startup' }
+  const change = { kind: 'clear' as const }
   const result = host.changeThreadGoal(CALLER, {
     envelope: envelope('agentSession.threadGoal', { change }),
     change

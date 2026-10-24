@@ -48,7 +48,9 @@ function isNativeChatStructuredHostCommand(
 ): boolean {
   return (
     isStructuredAgentSessionComposerCommand(text, agent) ||
-    (transport.threadGoal !== undefined && isStructuredAgentSessionGoalCommand(text))
+    (transport.threadGoal !== undefined &&
+      !transport.threadGoal.sendsGoals &&
+      isStructuredAgentSessionGoalCommand(text))
   )
 }
 

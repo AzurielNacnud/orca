@@ -63,6 +63,7 @@ export function handleCodexSessionExit(input: {
     })
   }
   session.ended = true
+  session.goalTurn?.retire()
   settleCodexRequestEndWaiters(session)
   // Journal recovery settles sends that can no longer receive a provider echo.
   session.dispatchEchoes.clear()

@@ -17,6 +17,7 @@ import {
 } from './structured-agent-session-pending-sends'
 
 export type StructuredAgentSessionSendInput = {
+  goalIntent?: 'set'
   sessionId: string
   text: string
   attachments?: readonly StructuredAgentSessionAttachment[]
@@ -36,7 +37,7 @@ export type StructuredAgentSessionSendInput = {
 
 export type StructuredAgentSessionSendRequest = Pick<
   StructuredAgentSessionSendInput,
-  'callerKeepsText' | 'usageLimitContinuationOfTurnItemId' | 'skills'
+  'callerKeepsText' | 'usageLimitContinuationOfTurnItemId' | 'skills' | 'goalIntent'
 > & { onSettled?: (outcome: StructuredAgentSessionSendOutcome) => void }
 
 /** Takes the chat's one send slot, drawn as sending; null while another send of the chat is out. */
@@ -53,6 +54,7 @@ export function takeStructuredAgentSessionSendSlot(
     body: structuredAgentSessionSendBody(input.text, attachments, input.skills),
     previewUris: attachments.map((attachment) => attachment.previewUri),
     queuedAt: input.now ?? Date.now(),
+    ...(input.goalIntent ? { goalIntent: input.goalIntent } : {}),
     ...(input.delivery ? { delivery: input.delivery } : {}),
     ...(input.options ? { options: input.options } : {}),
     ...(input.usageLimitContinuationOfTurnItemId

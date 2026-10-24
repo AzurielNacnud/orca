@@ -248,6 +248,7 @@ export class StructuredAgentSessionClientDelivery {
       submissions: () =>
         journal.submissions().map(this.currentWork(sessionId, journal).publishedSubmission),
       cursor: () => journal.cursor(),
+      itemBody: (id: string) => journal.itemBody(id),
       activeTurnId: () => this.currentWork(sessionId, journal).activeTurnId()
     }
   }

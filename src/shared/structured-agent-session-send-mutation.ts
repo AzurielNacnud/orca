@@ -13,6 +13,7 @@ import { structuredAgentSessionPayloadFingerprint } from './structured-agent-ses
 
 /** What a send carries beside its message: both join the OPERATION fingerprint, never the body's. */
 export type StructuredAgentSessionSendControl = {
+  goalIntent?: 'set'
   delivery?: 'queue-if-active'
   options?: Readonly<Record<string, string>>
   usageLimitContinuationOfTurnItemId?: string
@@ -28,6 +29,7 @@ export function agentSessionSendControlFields(
   send: StructuredAgentSessionSendControl
 ): StructuredAgentSessionSendControl {
   return {
+    ...(send.goalIntent ? { goalIntent: send.goalIntent } : {}),
     ...(send.delivery ? { delivery: send.delivery } : {}),
     ...(send.options ? { options: send.options } : {}),
     ...(send.usageLimitContinuationOfTurnItemId

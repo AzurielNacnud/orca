@@ -88,7 +88,8 @@ export class CodexJournalTurnBoundaries {
           threadId: event.threadId,
           turnId,
           state: 'running',
-          startedAt
+          startedAt,
+          ...this.deps.activeTurns.requestOrigin(event.threadId, turnId)
         })
     if (admission.accepted) {
       this.deps.activeTurns.remember(
@@ -102,7 +103,7 @@ export class CodexJournalTurnBoundaries {
     return admission
   }
 
-  /** Revises a turn only after Codex echoes the exact send inside it. */
+  /** Exact echoes and empty-input start replies bind the original submission to its native turn. */
   attributeRequest(input: {
     sessionId: string
     clientMessageId: string
@@ -127,6 +128,7 @@ export class CodexJournalTurnBoundaries {
       : this.recentTurns.requestOriginRevision(input.threadId, input.turnId, requestOrigin)
     const revision = activeRevision ?? settledRevision
     if (!revision) {
+      this.deps.activeTurns.rememberRequestOrigin(input.threadId, input.turnId, requestOrigin)
       return CODEX_JOURNAL_ADMITTED
     }
     const admission = publishCodexTurnLifecycle({

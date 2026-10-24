@@ -50,6 +50,14 @@ export type CodexJournalTranslatorDeps = {
 
 export type CodexJournalTranslator = {
   handle: (event: CodexStructuredSessionEvent) => CodexJournalTranslationAdmission
+  /** Empty-input goal starts use the actual reply turn ID without inventing an echo. */
+  attributeRequest: (input: {
+    sessionId: string
+    clientMessageId: string
+    threadId: string
+    turnId: string
+    requestOrigin: CodexDispatchRequestOrigin
+  }) => CodexJournalTranslationAdmission
   /** The next primary turn carries this command and determines its end. */
   beginCommand: (command: StructuredAgentSessionCommandRun) => void
   /** The command was never taken. */

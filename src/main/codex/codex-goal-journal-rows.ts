@@ -1,4 +1,4 @@
-// Codex emits goal notifications without create_goal items; only notifications establish goal state.
+// Goal replies and notifications establish state without create_goal items.
 
 import type {
   AgentJournalThreadGoal,

@@ -18637,6 +18637,8 @@
         "compactionFailed": "压缩失败。",
         "compactionFailedQuoted": "压缩失败：{{detail}}。",
         "compactionUnconfirmed": "未确认压缩是否完成。",
+        "goalActivationFailed": "{{agent}} 未能激活目标。请重新设置或恢复目标以继续。",
+        "goalActivationUnconfirmed": "{{agent}} 未确认目标激活。请先检查目标，再重新设置或恢复。",
         "cancelUnconfirmed": "未确认取消。",
         "backgroundTaskNotStopped": "后台任务未停止。",
         "backgroundTasksNotStopped": "后台任务未停止。",

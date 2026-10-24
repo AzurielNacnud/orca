@@ -8,20 +8,29 @@ import type {
   AgentJournalTurnLifecycle
 } from './agent-session-journal-types'
 import { readAgentJournalTurn } from './agent-session-turn-record'
+import { agentSessionSavedGoalCommand } from './agent-session-goal-command'
 
 export function isStructuredAgentSessionCommandEntry(
   body: AgentJournalItemBody | null | undefined
 ): boolean {
-  return body?.kind === 'message' && body.command !== undefined
+  if (body?.kind !== 'message' || body.command === undefined) {
+    return false
+  }
+  const goal = agentSessionSavedGoalCommand(body)
+  return goal?.kind !== 'set' && goal?.kind !== 'resume'
 }
 
-/** A turn a command entry opened: the entry its record names carries the command. */
+/** Goal orchestration is a command turn; the native work it seeds remains a real request. */
 export function isStructuredAgentSessionCommandTurn(
-  turn: Pick<AgentJournalTurnLifecycle, 'userItemId'> | null | undefined,
+  turn: Pick<AgentJournalTurnLifecycle, 'userItemId' | 'turnId'> | null | undefined,
   bodyOf: (itemId: string) => AgentJournalItemBody | null | undefined
 ): boolean {
   return (
-    turn?.userItemId !== undefined && isStructuredAgentSessionCommandEntry(bodyOf(turn.userItemId))
+    turn !== null &&
+    turn !== undefined &&
+    (turn.turnId.startsWith('compact:') ||
+      (turn.userItemId !== undefined &&
+        isStructuredAgentSessionCommandEntry(bodyOf(turn.userItemId))))
   )
 }
 

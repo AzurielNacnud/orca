@@ -37,7 +37,6 @@ async function publishRunningTurn(first: string): Promise<void> {
 
 it.each([
   { label: 'pause', change: { kind: 'status', status: 'paused' } },
-  { label: 'edit', change: { kind: 'set', objective: 'Updated objective' } },
   { label: 'clear', change: { kind: 'clear' } }
 ] as const)(
   'runs a goal $label while Codex holds an earlier send for different choices',
@@ -76,25 +75,119 @@ it.each([
   }
 )
 
-it('releases a startup goal when a second message parks while the first turn opens', async () => {
+it.each([
+  { label: 'Set', change: { kind: 'set', objective: 'Updated objective' } },
+  { label: 'Resume', change: { kind: 'status', status: 'active' } }
+] as const)(
+  'keeps $label behind earlier held input and a matching-options busy turn',
+  async ({ change }) => {
+    const dispatchGoal = vi.fn(async () => ({
+      admission: { state: 'accepted' as const, providerIdentity: null },
+      completion: 'success' as const
+    }))
+    rig.host.deps.adapter.changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
+    rig.host.deps.adapter.dispatchGoal = dispatchGoal
+    const first = await rig.workingSend()
+    await rig.settleAccepted(first, 'a')
+    await publishRunningTurn(first)
+    const held = rig.send('Earlier input', undefined, { carried: { model: 'model-b' } })
+    await held.result
+    const goal = rig.host.changeThreadGoal(QUEUED_RIG_CALLER, {
+      envelope: rig.envelope({ change }, 'agentSession.threadGoal', hostTestOperationId()),
+      change
+    })
+    await rig.host.collaboratorsForTests().serialize(SESSION, async () => {})
+    expect(dispatchGoal).not.toHaveBeenCalled()
+    expect(rig.dispatch).toHaveBeenCalledOnce()
+    async function endTurn() {
+      rig
+        .providerEvents()
+        .appendItem(
+          { provider: 'codex', threadId: THREAD, turnId: 'turn-a', ordinal: 99 },
+          { kind: 'turn', turnId: 'turn-a', state: 'completed', outcome: 'success' },
+          { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+        )
+      await rig.host.flushStreamedEvents(SESSION)
+    }
+    await endTurn()
+    await eventually(() => expect(rig.dispatch).toHaveBeenCalledTimes(2))
+    await publishRunningTurn(held.id)
+    await rig.settleAccepted(held.id, 'b')
+    expect(dispatchGoal).not.toHaveBeenCalled()
+    await endTurn()
+    expect(await goal).toMatchObject({ ok: true })
+    expect(dispatchGoal).toHaveBeenCalledOnce()
+    expect(rig.host.deps.adapter.changeThreadGoal).not.toHaveBeenCalled()
+  }
+)
+
+it('admits startup goals without bypassing earlier sends', async () => {
   await rig.dispose()
   rig = await createQueuedMessageTestRig({ starting: true, restartable: true })
-  const changeGoal = vi.fn(async () => ({ ok: true as const }))
-  rig.host.deps.adapter.changeThreadGoal = changeGoal
+  rig.host.deps.adapter.dispatchGoal = vi.fn(async () => ({
+    admission: { state: 'accepted' as const, providerIdentity: null },
+    completion: 'success' as const
+  }))
   const first = rig.send('First model', undefined, { carried: { model: 'model-a' } })
   const second = rig.send('Second model', undefined, { carried: { model: 'model-b' } })
   await first.result
   await second.result
-  const change = { kind: 'set' as const, objective: 'A startup objective' }
-  const goal = rig.host.changeThreadGoal(QUEUED_RIG_CALLER, {
-    envelope: rig.envelope({ change }, 'agentSession.threadGoal', hostTestOperationId()),
-    change
-  })
-  await rig.host.collaboratorsForTests().serialize(SESSION, async () => {})
+  const goal = rig.send('/goal Startup objective')
+  expect(await goal.result).toMatchObject({ ok: true })
   await rig.proveStart()
-  await eventually(() => expect(changeGoal).toHaveBeenCalledOnce())
-  expect(await goal).toMatchObject({ ok: true })
-  expect(rig.dispatch).toHaveBeenCalledOnce()
+  await eventually(() => expect(rig.dispatch).toHaveBeenCalledOnce())
+  expect(rig.host.deps.adapter.dispatchGoal).not.toHaveBeenCalled()
   await rig.settleAccepted(first.id, 'a')
   await eventually(() => expect(rig.dispatch).toHaveBeenCalledTimes(2))
+  await rig.settleAccepted(second.id, 'b')
+  await eventually(() => expect(rig.host.deps.adapter.dispatchGoal).toHaveBeenCalledOnce())
 })
+
+it.each(['paused', 'started', 'active'] as const)(
+  'never resumes a %s sequence after host restart',
+  async (stage) => {
+    const blocked = Promise.withResolvers<never>()
+    rig.host.deps.adapter.dispatchGoal = vi.fn(async (input) => {
+      if (stage !== 'paused') {
+        await input.onStarted('seed')
+      }
+      rig.providerEvents().appendItem(
+        { provider: 'orca', clientMessageId: 'observed-goal' },
+        {
+          kind: 'status',
+          text: 'Goal',
+          threadGoal: {
+            state: 'set',
+            goal: {
+              objective: 'Ship it',
+              status: stage === 'active' ? 'active' : 'paused',
+              tokenBudget: null,
+              tokensUsed: 0,
+              timeUsedSeconds: 0,
+              createdAt: 1,
+              updatedAt: 1
+            }
+          }
+        },
+        { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+      )
+      await rig.host.flushStreamedEvents(SESSION)
+      return blocked.promise
+    })
+    const sent = rig.send('/goal Ship it')
+    await sent.result
+    await eventually(() => expect(rig.host.deps.adapter.dispatchGoal).toHaveBeenCalledOnce())
+    await rig.host.flushStreamedEvents(SESSION)
+    rig.crashRestartHostProcess()
+    await rig.host.restoreReadableSessions()
+    const snapshot = await rig.host.journalSnapshot(SESSION)
+    expect(snapshot.submissions.find((s) => s.clientMessageId === sent.id)).toMatchObject({
+      dispatchState: 'unknown',
+      recovered: true
+    })
+    expect(rig.host.deps.adapter.dispatchGoal).toHaveBeenCalledOnce()
+    expect(
+      snapshot.items.some((i) => i.body.kind === 'status' && i.body.threadGoal?.state === 'set')
+    ).toBe(true)
+  }
+)

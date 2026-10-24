@@ -1,6 +1,7 @@
 // Command receipts prove acceptance; other plans use ledger rows and journal replay.
 
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
+import { normalizeAgentSessionGoalSend } from '../../../shared/agent-session-goal-command'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
@@ -146,13 +147,18 @@ export function sendPlan(
     run: async (ctx) => {
       params.beforeRun?.()
       const source = sendSource(params)
+      const body = normalizeAgentSessionGoalSend(
+        ctx.agents.capabilities(ctx.agent)?.threadGoal ? ctx.agent : '',
+        params.body,
+        params.goalIntent
+      )
       return performSend(ctx, {
         origin: params.userSend ? 'client' : 'host',
         ...(source ? { source } : {}),
         clientMessageId,
         ...(params.options ? { options: params.options } : {}),
-        payloadFingerprint: agentSessionSendBodyFingerprint(params.envelope.sessionId, params.body),
-        body: params.body
+        payloadFingerprint: agentSessionSendBodyFingerprint(params.envelope.sessionId, body),
+        body
       })
     },
     replay: (ctx, outcome) => {

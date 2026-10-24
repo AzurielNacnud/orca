@@ -21,6 +21,8 @@ import { openTestAgentSessionRecordStore } from '../runtime/agent-session-record
 import { recoverStructuredRewind } from '../native-chat/agent-session-wire/structured-rewind-recovery'
 import { usableJournalHistoryOrigin } from '../native-chat/agent-session-journal/journal-history-origin'
 import { catchUpCodexThread } from './codex-structured-thread-catch-up'
+import { normalizeAgentSessionGoalSend } from '../../shared/agent-session-goal-command'
+import { agentSessionSendBodyFingerprint } from '../../shared/structured-agent-session-send-mutation'
 
 const SESSION = 'session-codex-catch-up'
 const THREAD = 'thread-abc'
@@ -142,6 +144,75 @@ export async function chat(clock: { now: number }) {
 
 describe('Codex chat catch-up', () => {
   registerCodexCatchUpEchoTests({ chat, turn, sessionId: SESSION, threadId: THREAD })
+
+  it('keeps goal intent, legacy display and unknown delivery through identified and older history', async () => {
+    const c = await chat({ now: 1_000 })
+    const body = normalizeAgentSessionGoalSend('codex', {
+      kind: 'message',
+      role: 'user',
+      blocks: [{ type: 'text', text: '/goal Ship it' }]
+    })
+    const fingerprint = agentSessionSendBodyFingerprint(SESSION, body)
+    await c.journal.appendSubmission({
+      clientMessageId: 'goal',
+      body,
+      payloadFingerprint: fingerprint,
+      fence: 1,
+      handoverRecorded: true
+    })
+    await c.journal.resolveDispatch({
+      clientMessageId: 'goal',
+      state: 'pending',
+      fence: 1,
+      turnScope: { kind: 'thread' }
+    })
+    await c.journal.markPendingSubmissionsUnknown(1)
+    await c.journal.appendItem(
+      { provider: 'orca', clientMessageId: 'legacy-goal' },
+      {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/goal legacy' }],
+        sentAs: 'goal'
+      },
+      { fence: 1, turnScope: { kind: 'thread' } }
+    )
+    const before = c.journal.snapshot()
+    await c.reopen()
+    await c.open(
+      [true, false].map((identified, index) => ({
+        ...turn(index + 2),
+        items: [
+          {
+            type: 'userMessage',
+            id: `input-${index}`,
+            ...(identified ? { clientId: 'goal' } : {}),
+            content: [{ type: 'text', text: 'Ship it' }]
+          }
+        ]
+      }))
+    )
+    expect(c.journal.snapshot().submissions).toEqual(before.submissions)
+    expect(c.journal.submission('goal')).toMatchObject({
+      dispatchState: 'unknown',
+      payloadFingerprint: fingerprint
+    })
+    expect(c.texts()).toEqual([
+      'user:/goal Ship it',
+      'user:/goal legacy',
+      '(continued-outside)',
+      'user:Ship it'
+    ])
+    expect(
+      projectStructuredItemsToNativeChat(c.journal.snapshot().items)
+        .filter((m) => m.role === 'user')
+        .map((m) => m.blocks)
+    ).toEqual([
+      [{ type: 'text', text: 'Ship it' }],
+      [{ type: 'text', text: '/goal legacy' }],
+      [{ type: 'text', text: 'Ship it' }]
+    ])
+  })
 
   it('retains the complete outside answer tail through catch-up, disk reopen and display', async () => {
     const c = await chat({ now: 1_000 })

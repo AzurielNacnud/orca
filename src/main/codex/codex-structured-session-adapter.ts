@@ -39,13 +39,12 @@ import * as turnEnd from './codex-structured-turn-end-settlement'
 import { createCodexStructuredNotificationRetry } from './codex-structured-notification-retry'
 import { acquireCodexStructuredSession } from './codex-structured-session-acquire'
 import { codexStoppedRequestEndWait, settleCodexRequestEndWaiters } from './codex-request-end-wait'
-import { changeCodexThreadGoal } from './codex-structured-thread-goal'
+import { changeCodexOwnedThreadGoal } from './codex-structured-thread-goal'
+import { dispatchCodexGoal } from './codex-structured-goal-dispatch'
+import { cancelCodexGoalTurn } from './codex-structured-goal-stop'
 import { startCodexTerminalStopProbe } from './codex-background-terminals'
 import { codexBackgroundTaskStops, stopCodexBackgroundTasks } from './codex-background-task-stops'
-import {
-  answerCodexStructuredPrompt,
-  cancelCodexStructuredTurn
-} from './codex-structured-prompt-ownership'
+import { answerCodexStructuredPrompt } from './codex-structured-prompt-ownership'
 
 export type {
   CodexStructuredLaunch,
@@ -248,12 +247,11 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     }
   }
 
+  dispatchGoal: NonNullable<StructuredAgentSessionAdapter['dispatchGoal']> = (input) =>
+    dispatchCodexGoal(this.session(input.sessionId), input, this.deps.requestTimeoutMs)
+
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = (request) =>
-    cancelCodexStructuredTurn({
-      request,
-      sessions: this.sessions,
-      requestTimeoutMs: this.deps.requestTimeoutMs
-    })
+    cancelCodexGoalTurn(request, this.sessions, this.deps.requestTimeoutMs)
 
   awaitStoppedRequestEnd = codexStoppedRequestEndWait(this.sessions)
 
@@ -294,13 +292,7 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
   }
 
   changeThreadGoal: NonNullable<StructuredAgentSessionAdapter['changeThreadGoal']> = (input) =>
-    changeCodexThreadGoal(
-      this.session(input.sessionId),
-      input.change,
-      input.replacesGoal,
-      this.deps.requestTimeoutMs,
-      input.signal
-    )
+    changeCodexOwnedThreadGoal(this.session(input.sessionId), input, this.deps.requestTimeoutMs)
 
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (request) =>
     answerCodexStructuredPrompt({ request, sessions: this.sessions })

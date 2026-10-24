@@ -1,5 +1,6 @@
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
+import { withLegacyGoalReply } from './structured-agent-session-goal-reply'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Serialize durable mutations per conversation; open at rest and start a child only when work needs it.
 
@@ -18,10 +19,7 @@ import { createStructuredAgentSessionHostMutationContext } from './structured-ag
 import * as lifetime from './structured-agent-session-conversation-lifetime'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import { createStructuredAgentSessionTabSurface as createTabs } from './structured-agent-session-host-tabs'
-import {
-  structuredAgentSessionMutationDelegates,
-  type StructuredAgentSessionMutationContext
-} from './structured-agent-session-host-mutations'
+import { structuredAgentSessionMutationDelegates } from './structured-agent-session-host-mutations'
 import { flushStructuredAgentSessionHost } from './structured-agent-session-host-teardown'
 import type * as HostTypes from './structured-agent-session-host-types'
 import { StructuredAgentSessionEventRecovery } from './structured-agent-session-event-recovery'
@@ -273,7 +271,7 @@ export class StructuredAgentSessionHost {
     }).finally(() => this.clientDelivery.closeAll())
   }
 
-  private mutationContext = (): StructuredAgentSessionMutationContext =>
+  private mutationContext = () =>
     createStructuredAgentSessionHostMutationContext({
       deps: this.deps,
       sessions: this.sessions,
@@ -302,7 +300,7 @@ export class StructuredAgentSessionHost {
   cancel = this.mutations.cancel
   respondToPrompt = this.mutations.respondToPrompt
   setOption = this.mutations.setOption
-  changeThreadGoal = this.mutations.changeThreadGoal
+  changeThreadGoal = withLegacyGoalReply(this.mutationContext, this.waitForSendSettlement)
   readOptions = this.mutations.readOptions
 
   rewind = (caller: HostTypes.StructuredAgentSessionCaller, params: AgentSessionRewindParams) =>

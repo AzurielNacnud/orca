@@ -247,6 +247,8 @@ const FAILURE_SENTENCES = {
     say(context.retryControl ? 'commandRefused' : 'commandRefusedTryAgain'),
   compactionFailed: (_context, fact, _surface, say) =>
     quotingPersonDetail(say, 'compactionFailed', 'compactionFailedQuoted', fact.detail),
+  goalActivationFailed: namingAgent('goalActivationFailed'),
+  goalActivationUnconfirmed: namingAgent('goalActivationUnconfirmed'),
   compactionUnconfirmed: (_context, _fact, _surface, say) => say('compactionUnconfirmed'),
   cancelUnconfirmed: (_context, _fact, _surface, say) => say('cancelUnconfirmed'),
   // The agent was reached and declined, so the sentence says that, not that the Stop was lost.

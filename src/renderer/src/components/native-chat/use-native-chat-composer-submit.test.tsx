@@ -40,6 +40,7 @@ function harness(options: {
   imageAttachments?: NativeChatComposerImageAttachment[]
   /** The PTY lane has no structured transport at all. */
   lane?: 'pty'
+  send?: NativeChatStructuredComposerTransport['send']
   capturePresentation?: NativeChatStructuredComposerTransport['capturePresentation']
 }) {
   const onError = vi.fn()
@@ -49,6 +50,7 @@ function harness(options: {
     capturePresentation: options.capturePresentation ?? (() => () => true),
     onError,
     onSubmitted,
+    send: options.send,
     ...(options.threadGoal ? { threadGoal: options.threadGoal } : {})
   } as unknown as NativeChatStructuredComposerTransport
   const calls = {
@@ -141,6 +143,23 @@ describe('composer goal mode', () => {
     act(() => withoutGoals.hook.result.current.goalMode.interceptPick(pick)(GOAL_ITEM))
     expect(pick).toHaveBeenCalledWith(GOAL_ITEM)
     expect(withoutGoals.hook.result.current.goalMode.active).toBe(false)
+  })
+
+  it('clears an admitted capable-host goal immediately through the ordinary send path', () => {
+    const send = vi.fn(() => true)
+    const setObjective = vi.fn()
+    const { hook, type } = harness({
+      draft: '/go',
+      threadGoal: { setObjective, sendsGoals: true },
+      send
+    })
+    act(() => hook.result.current.goalMode.interceptPick(vi.fn())(GOAL_ITEM))
+    type('clear', 0)
+    act(() => hook.result.current.send())
+    expect(send).toHaveBeenCalledWith('/goal clear', [], { goalIntent: 'set' })
+    expect(setObjective).not.toHaveBeenCalled()
+    expect(readNativeChatDraftCache(SCOPE)).toBe('')
+    expect(hook.result.current.goalMode.active).toBe(false)
   })
 
   it('sets the draft as the goal instead of sending it, then leaves goal mode', async () => {

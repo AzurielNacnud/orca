@@ -1,4 +1,5 @@
 import type { AgentSessionSendResult } from '../../../shared/agent-session-wire'
+import { normalizeAgentSessionGoalSend } from '../../../shared/agent-session-goal-command'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import { maybeQueueStructuredAgentSessionSend } from './structured-agent-session-queued-messages'
@@ -13,13 +14,21 @@ export async function runQueueableStructuredAgentSessionSend(
     delivery?: 'queue-if-active'
     queuedImageCards?: boolean
     options?: Readonly<Record<string, string>>
+    goalIntent?: 'set'
     userSend?: true
     personsMessage?: true
   },
   immediate: () => Promise<TurnOutcome<AgentSessionSendResult>>
 ): Promise<TurnOutcome<AgentSessionSendResult>> {
   // Decide queueing first; blocked sends fall through to immediate refusal.
-  const queued = await maybeQueueStructuredAgentSessionSend(context, ctx, params)
+  const queued = await maybeQueueStructuredAgentSessionSend(context, ctx, {
+    ...params,
+    body: normalizeAgentSessionGoalSend(
+      ctx.agents.capabilities(ctx.agent)?.threadGoal ? ctx.agent : '',
+      params.body,
+      params.goalIntent
+    )
+  })
   if (queued) {
     return queued
   }

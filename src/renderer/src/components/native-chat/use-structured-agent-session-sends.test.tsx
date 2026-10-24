@@ -3,7 +3,12 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ call: vi.fn() }))
+const mocks = vi.hoisted(() => ({ call: vi.fn(), goalSupported: false }))
+
+vi.mock('@/runtime/structured-agent-session-host-capability', () => ({
+  useStructuredAgentSessionHostCapabilityState: () =>
+    mocks.goalSupported ? 'supported' : 'unsupported'
+}))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call
@@ -77,3 +82,34 @@ it('takes no second send while the first is out', () => {
   expect(first).toBe('queued')
   expect(second).toBe(false)
 })
+
+it.each([false, true])(
+  'sends the additive goal intent only to an advertising host: %s',
+  async (supported) => {
+    mocks.goalSupported = supported
+    mocks.call.mockClear()
+    mocks.call.mockImplementation(() => new Promise(() => {}))
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionSends({
+        sessionId: 'intent-session',
+        target: { kind: 'local' },
+        fence: 1,
+        submissions: [],
+        queuedMessageIds: [],
+        queue: QUEUEING,
+        historyLoaded: false,
+        isWorking: false
+      })
+    )
+    act(() => {
+      result.current.send('/goal resume', [], { goalIntent: 'set' })
+    })
+    await vi.waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    const params = mocks.call.mock.calls[0][2]
+    if (supported) {
+      expect(params).toHaveProperty('goalIntent', 'set')
+    } else {
+      expect(params).not.toHaveProperty('goalIntent')
+    }
+  }
+)

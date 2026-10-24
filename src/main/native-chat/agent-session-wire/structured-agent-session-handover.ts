@@ -30,6 +30,8 @@ import {
   beginStructuredAgentSessionHandover,
   whileStructuredAgentSessionHandingOver
 } from './structured-agent-session-handing-over'
+import { agentSessionSavedGoalCommand } from '../../../shared/agent-session-goal-command'
+import { beginGoalHandover } from './structured-agent-session-goal-handover'
 
 export type AgentSessionHandoverContext = StructuredAgentSessionCommandHandoverContext & {
   acquireAborts?: Pick<StructuredAgentSessionAcquireAborts, 'begin'>
@@ -61,6 +63,9 @@ export async function beginSubmissionHandover(
       fence: ctx.fence
     })
     return null
+  }
+  if (ctx.record()?.provider === 'codex' && agentSessionSavedGoalCommand(body)) {
+    return beginGoalHandover(ctx, submission, body, stillCurrent)
   }
   if (body.command) {
     await whileStructuredAgentSessionHandingOver(

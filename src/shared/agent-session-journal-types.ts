@@ -116,8 +116,8 @@ export type AgentJournalMessageItem = {
   kind: 'message'
   role: NativeChatRole
   blocks: NativeChatBlock[]
-  /** Absent ⇒ an ordinary turn input. `goal` ⇒ the text was set as the thread
-   *  goal's objective, and the provider pursues it without a turn of its own. */
+  /** Goal objective. New command-stamped rows retain /goal text and own a configured first turn;
+   *  older bare-objective rows preceded autonomous work without their own input turn. */
   sentAs?: AgentJournalMessageSendMode
   /** Present on a conversation command the user sent, such as `/compact`. The text is what the
    *  user typed; this names the command so no reader parses it. Open like `sentAs`. */

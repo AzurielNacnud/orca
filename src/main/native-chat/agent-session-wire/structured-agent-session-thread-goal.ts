@@ -19,7 +19,13 @@ import type {
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
-import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
+import {
+  performSend,
+  type AgentSessionTurnContext,
+  type TurnOutcome
+} from './structured-agent-session-turns'
+import { normalizeAgentSessionGoalSend } from '../../../shared/agent-session-goal-command'
+import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { throwIfSignalAborted } from '../../../shared/abort-signal-reason'
 import { contextStructuredAgentSessionCurrentWork } from './structured-agent-session-current-work'
 
@@ -46,21 +52,6 @@ export function refuseThreadGoalUnsupported(
 /** Operation identity makes replay upsert the same objective row. */
 function objectiveIdentity(clientOperationId: string): AgentJournalItemIdentity {
   return { provider: 'orca', clientMessageId: `thread-goal:${clientOperationId}` }
-}
-
-/** Provider-journaled transitions recover operations whose response was lost. */
-export function journalRecordsThreadGoalChange(
-  goal: AgentJournalThreadGoal | null,
-  change: AgentSessionThreadGoalChange
-): boolean {
-  switch (change.kind) {
-    case 'clear':
-      return goal === null
-    case 'status':
-      return goal !== null && goal.status === change.status
-    case 'set':
-      return goal !== null && goal.status === 'active' && goal.objective === change.objective
-  }
 }
 
 export async function performThreadGoalChange(
@@ -128,23 +119,51 @@ export function threadGoalPlan(params: {
   const value: AgentSessionThreadGoalResult = { change: params.change.kind }
   return {
     method: 'agentSession.threadGoal',
+    ...(threadGoalStartsTurn(params.change) ? { settlesWithWrite: true as const } : {}),
     fields: { change: params.change },
-    run: (ctx) =>
-      performThreadGoalChange(ctx, {
+    run: async (ctx) => {
+      if (ctx.agent === 'codex' && threadGoalStartsTurn(params.change)) {
+        const unsupported = refuseThreadGoalUnsupported(ctx.adapter, ctx.agents, ctx.agent)
+        if (unsupported) {
+          return unsupported
+        }
+        const text =
+          params.change.kind === 'set' ? `/goal ${params.change.objective}` : '/goal resume'
+        const body = normalizeAgentSessionGoalSend(
+          'codex',
+          { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] },
+          params.change.kind === 'set' ? 'set' : undefined
+        )
+        const result = await performSend(ctx, {
+          clientMessageId: legacyGoalMessageId(ctx.resolvedBy, params.envelope.clientOperationId),
+          origin: 'client',
+          payloadFingerprint: agentSessionSendBodyFingerprint(ctx.sessionId, body),
+          body
+        })
+        return result.ok ? { ok: true, value } : result
+      }
+      return performThreadGoalChange(ctx, {
         clientOperationId: params.envelope.clientOperationId,
         change: params.change,
         signal: params.signal
-      }),
-    // Recover lost responses from provider-journaled state; otherwise every change is safe to repeat.
+      })
+    },
+    // Starts replay their submission; historical unknown operations never recreate goals.
     recoverUnknownFromDurableState: true,
     replay: (ctx, outcome) =>
       outcome.status === 'succeeded' ||
-      (outcome.status === 'unknown' &&
-        journalRecordsThreadGoalChange(ctx.journal.threadGoal(), params.change))
+      (ctx.agent === 'codex' && threadGoalStartsTurn(params.change) && outcome.status !== 'failed')
         ? value
-        : null,
-    rerunWhenReplayMissing: () => true
+        : null
   }
+}
+
+export function threadGoalStartsTurn(change: AgentSessionThreadGoalChange): boolean {
+  return change.kind === 'set' || (change.kind === 'status' && change.status === 'active')
+}
+
+export function legacyGoalMessageId(callerKey: string, operationId: string): string {
+  return `thread-goal:${encodeURIComponent(callerKey)}:${operationId}`
 }
 
 /** Report host-changeable goals separately from goals only the agent’s /goal can change. */

@@ -264,6 +264,7 @@ export function createCodexJournalTranslator(
       }
       return publishActivity(event, unhandled)
     },
+    attributeRequest: (input) => turnBoundaries.attributeRequest(input),
     beginCommand: (command) => commands.begin(command),
     forgetCommand: (turnId) => commands.forget(turnId),
     commandProviderTurnId: (turnId) => commands.providerTurnId(turnId),

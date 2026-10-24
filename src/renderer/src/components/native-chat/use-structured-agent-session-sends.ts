@@ -1,4 +1,5 @@
 import { useStructuredAgentSessionHostCapabilityState } from '@/runtime/structured-agent-session-host-capability'
+import { AGENT_SESSION_GOAL_SEND_CAPABILITY } from '../../../../shared/agent-session-goal-command'
 import { AGENT_SESSION_SEND_SKILLS_RUNTIME_CAPABILITY } from '../../../../shared/agent-session-create-capabilities'
 import type { StructuredAgentSessionSendRequest } from './structured-agent-session-send-slot'
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
@@ -64,6 +65,9 @@ export function useStructuredAgentSessionSends(args: {
       target,
       AGENT_SESSION_SEND_SKILLS_RUNTIME_CAPABILITY
     ) === 'supported'
+  const takesGoalIntent =
+    useStructuredAgentSessionHostCapabilityState(target, AGENT_SESSION_GOAL_SEND_CAPABILITY) ===
+    'supported'
   const subscribe = useCallback(
     (listener: () => void) => subscribeToStructuredAgentSessionPendingSends(sessionId, listener),
     [sessionId]
@@ -115,6 +119,7 @@ export function useStructuredAgentSessionSends(args: {
         target,
         text,
         attachments,
+        ...(takesGoalIntent && request?.goalIntent ? { goalIntent: request.goalIntent } : {}),
         ...(request?.callerKeepsText ? { callerKeepsText: request.callerKeepsText } : {}),
         ...(request?.usageLimitContinuationOfTurnItemId
           ? { usageLimitContinuationOfTurnItemId: request.usageLimitContinuationOfTurnItemId }
@@ -140,7 +145,17 @@ export function useStructuredAgentSessionSends(args: {
         ? 'queued'
         : true
     },
-    [isWorking, queue, queuedMessageIds, sendOptions, sessionId, stopping, takesSkills, target]
+    [
+      isWorking,
+      queue,
+      queuedMessageIds,
+      sendOptions,
+      sessionId,
+      stopping,
+      takesSkills,
+      takesGoalIntent,
+      target
+    ]
   )
 
   return {

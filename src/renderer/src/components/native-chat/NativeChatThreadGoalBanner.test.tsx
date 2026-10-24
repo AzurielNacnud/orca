@@ -105,10 +105,10 @@ describe('NativeChatThreadGoalBanner', () => {
     expect(view.container).toBeEmptyDOMElement()
   })
 
-  it('disables the goal commands while one is in flight, but not the expand toggle', () => {
+  it('keeps distinct goal controls available while a request is in flight', () => {
     renderBanner(goal(), true)
-    expect(screen.getByRole('button', { name: 'Clear goal' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Pause goal' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Clear goal' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Pause goal' })).toBeEnabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Show full goal' }))
     expect(screen.getByRole('button', { name: 'Hide full goal' })).toBeEnabled()

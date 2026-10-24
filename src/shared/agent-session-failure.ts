@@ -64,6 +64,8 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'commandRefused',
   'compactionFailed',
   'compactionUnconfirmed',
+  'goalActivationFailed',
+  'goalActivationUnconfirmed',
   'cancelUnconfirmed',
   /** A Stop naming no turn reached the agent, which ended nothing while the chat read working. */
   'stopRefused',
@@ -94,6 +96,8 @@ export function isAgentSessionFailureKind(value: unknown): value is AgentSession
 const STATUS_ROW_ONLY_FAILURE_KINDS = [
   'compactionFailed',
   'compactionUnconfirmed',
+  'goalActivationFailed',
+  'goalActivationUnconfirmed',
   'cancelUnconfirmed',
   'stopRefused',
   'stopFailed',

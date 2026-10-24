@@ -133,6 +133,15 @@ export type CodexStructuredSessionAdapterDeps = {
 }
 
 export type CodexSession = {
+  /** Child-scoped ownership retires with this exact acquisition, never a later session. */
+  goalTurn?: {
+    clientMessageId: string
+    stopped: boolean
+    mayOpenTurn: () => boolean
+    retire: () => void
+    retired: Promise<void>
+  }
+  goalWrites?: Promise<unknown>
   events?: StructuredAgentSessionEventSink
   account?: AgentSessionAccountKind
   connection: CodexAppServerConnection

@@ -59,7 +59,8 @@ function harness(options: {
   support?: { current: AgentJournalThreadGoal | null }
   reported?: { current: AgentJournalThreadGoal }
   mutate?: StructuredAgentSessionMutate
-  send?: (text: string) => boolean | 'queued'
+  send?: Parameters<typeof useStructuredAgentSessionThreadGoal>[0]['send']
+  goalSends?: boolean
 }) {
   const mutate = options.mutate ?? mutateWith(async () => null).mutate
   return renderHook(() =>
@@ -68,6 +69,7 @@ function harness(options: {
       support: options.support,
       reported: options.reported,
       mutate,
+      goalSends: options.goalSends,
       send: options.send ?? (() => true)
     })
   )
@@ -106,28 +108,43 @@ describe('useStructuredAgentSessionThreadGoal', () => {
     expect(cleared.result.current?.goal).toBeNull()
   })
 
-  it('serializes changes: a second submit while one is unsettled is answered false, not sent', async () => {
-    let settle: (value: { change: 'set' } | null) => void = () => undefined
-    const { mutate, calls } = mutateWith(
-      () => new Promise<{ change: 'set' } | null>((resolve) => (settle = resolve))
+  it('admits distinct controls while another request remains pending', async () => {
+    const held = Promise.withResolvers<unknown>()
+    let requests = 0
+    const { mutate, calls } = mutateWith(() =>
+      ++requests === 1 ? held.promise : Promise.resolve({ change: 'clear' })
     )
-    const { result } = harness({ support: { current: null }, mutate })
-
+    const { result } = harness({ support: { current: GOAL }, mutate })
     let first: Promise<boolean> = Promise.resolve(false)
-    let second: Promise<boolean> = Promise.resolve(false)
     act(() => {
-      first = result.current!.change({ kind: 'set', objective: 'Ship the parser' })
-      second = result.current!.change({ kind: 'set', objective: 'Ship the parser' })
-    })
-    await expect(second).resolves.toBe(false)
-    expect(calls).toHaveBeenCalledTimes(1)
-    expect(calls).toHaveBeenCalledWith('agentSession.threadGoal', 'agentSession.threadGoal', {
-      change: { kind: 'set', objective: 'Ship the parser' }
+      first = result.current!.change({ kind: 'status', status: 'paused' })
     })
     expect(result.current?.pending).toBe(true)
+    await act(async () => {
+      expect(await result.current!.change({ kind: 'clear' })).toBe(true)
+    })
+    expect(calls).toHaveBeenCalledTimes(2)
+    expect(result.current?.pending).toBe(true)
+    await act(async () => {
+      held.resolve({ change: 'status' })
+      await first
+    })
+    expect(result.current?.pending).toBe(false)
+  })
 
-    await act(async () => settle({ change: 'set' }))
-    await expect(first).resolves.toBe(true)
+  it('uses sends for capable-host Set and Resume, preserving explicit reserved-word intent', async () => {
+    const send = vi.fn(() => true)
+    const { mutate, calls } = mutateWith(async () => null)
+    const { result } = harness({ support: { current: GOAL }, goalSends: true, mutate, send })
+    await act(async () => {
+      expect(await result.current!.change({ kind: 'set', objective: 'clear' })).toBe(true)
+      expect(await result.current!.change({ kind: 'status', status: 'active' })).toBe(true)
+    })
+    expect(send.mock.calls).toEqual([
+      ['/goal clear', [], { goalIntent: 'set' }],
+      ['/goal resume', [], undefined]
+    ])
+    expect(calls).not.toHaveBeenCalled()
     expect(result.current?.pending).toBe(false)
   })
 

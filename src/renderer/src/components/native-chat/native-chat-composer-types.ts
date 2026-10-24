@@ -61,7 +61,7 @@ export type NativeChatStructuredComposerTransport = {
   contextUsage?: StructuredAgentContextUsage | null
   worktreeId?: string
   /** Present only where the host can set this session's goal. */
-  threadGoal?: { setObjective: (objective: string) => Promise<boolean> }
+  threadGoal?: { setObjective: (objective: string) => Promise<boolean>; sendsGoals?: boolean }
   onError: (message: string | null, detail?: NativeChatComposerErrorDetail) => void
   /** A local send: brings the latest into view at the press, not when the host answers. */
   onSubmitted?: () => void

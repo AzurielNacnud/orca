@@ -126,10 +126,12 @@ export async function startCodexTurn(
     turnOptions?: Readonly<Record<string, string>>
     signal?: AbortSignal
     onReply?: () => void
+    startOnly?: boolean
+    expectEcho?: boolean
   }
 ): Promise<{ turnId: string | null; via: AgentJournalTurnJoin } | false> {
   // Arm before writing: echoes and turn/started can arrive before the reply.
-  if (!host.dispatchEchoes.arm(input.clientMessageId, input.requestedAt)) {
+  if (!host.dispatchEchoes.arm(input.clientMessageId, input.requestedAt, input.expectEcho)) {
     return false
   }
   // Interrupt-acknowledged turns cannot take steers while awaiting completion.
@@ -138,14 +140,27 @@ export async function startCodexTurn(
   let runningTurnId: string | null
   try {
     runningTurnId = await codexRunningOrOpeningTurn(host, input.signal)
+    const deadline = Date.now() + (input.timeoutMs ?? 120_000)
+    while (input.startOnly && runningTurnId) {
+      input.signal?.throwIfAborted()
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) {
+        throw new Error('goal turn remains busy')
+      }
+      await host.turnOpenWaits.wait(runningTurnId, Math.min(5_000, remaining))
+      runningTurnId = await codexRunningOrOpeningTurn(host, input.signal)
+    }
   } catch (error) {
     host.dispatchEchoes.disarm(input.clientMessageId)
     throw error
   }
-  let steered = steerable(runningTurnId) ? await steerCodexTurn(host, runningTurnId, input) : null
+  let steered =
+    !input.startOnly && steerable(runningTurnId)
+      ? await steerCodexTurn(host, runningTurnId, input)
+      : null
   // Retry steering once if another turn opened during the refused request.
   const runningSince = steered ? undefined : [...(host.activeTurnIds ?? [])].at(-1)
-  if (steerable(runningSince) && runningSince !== runningTurnId) {
+  if (!input.startOnly && steerable(runningSince) && runningSince !== runningTurnId) {
     steered = await steerCodexTurn(host, runningSince, input)
   }
   if (steered) {
@@ -200,6 +215,9 @@ export async function dispatchCodexTurn(
     requestedAt?: number
     turnOptions?: Readonly<Record<string, string>>
     signal?: AbortSignal
+    startOnly?: boolean
+    expectEcho?: boolean
+    onStarted?: (turnId: string) => Promise<void>
   },
   timeoutMs: number | undefined
 ): Promise<AgentSessionDispatchOutcome> {
@@ -242,6 +260,9 @@ export async function dispatchCodexTurn(
       input.clientMessageId,
       answeredAt ?? session.dispatchEchoes.tick()
     )
+  }
+  if (answer.turnId) {
+    await input.onStarted?.(answer.turnId)
   }
   const endedFirst = answer.turnId
     ? session.dispatchEchoes.bindTurn(

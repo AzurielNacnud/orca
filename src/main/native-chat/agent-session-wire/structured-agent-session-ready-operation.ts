@@ -217,7 +217,7 @@ export async function runWithReadyStructuredAgentSessionOperation<T>(
       if (
         child.child &&
         !child.readiness &&
-        !context.deliveryOrder.hasActiveSend(envelope.sessionId)
+        (options.goal || !context.deliveryOrder.hasActiveSend(envelope.sessionId))
       ) {
         return {
           result: await run({ ok: true, child: child.child, deadline, signal: authority?.signal })

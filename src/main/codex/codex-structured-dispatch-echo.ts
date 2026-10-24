@@ -29,7 +29,7 @@ export type CodexDispatchEchoes = {
   /** Sends still executing; ended turns release them even without an echo. */
   heldSends: () => ReadonlySet<string>
   /** False at capacity preserves older pending sends. */
-  arm: (clientMessageId: string, requestedAt?: number) => boolean
+  arm: (clientMessageId: string, requestedAt?: number, expectEcho?: boolean) => boolean
   /** True once per armed send. */
   settle: (clientMessageId: string) => boolean
   /** Drops an armed send whose write never reached the provider. */
@@ -68,6 +68,7 @@ export function createCodexDispatchEchoes(onHeldChange?: () => void): CodexDispa
   const armed = new Map<
     string,
     {
+      expectEcho: boolean
       requestedAt: number | null
       sequence: number
       turn?: { threadId: string; turnId: string; via: AgentJournalTurnJoin }
@@ -141,7 +142,7 @@ export function createCodexDispatchEchoes(onHeldChange?: () => void): CodexDispa
         status = { active, at: ++clock }
       }),
     heldSends,
-    arm(clientMessageId, requestedAt) {
+    arm(clientMessageId, requestedAt, expectEcho = true) {
       const existing = armed.get(clientMessageId)
       if (existing) {
         if (existing.requestedAt === null && requestedAt !== undefined) {
@@ -152,7 +153,11 @@ export function createCodexDispatchEchoes(onHeldChange?: () => void): CodexDispa
       if (armed.size >= MAX_CODEX_PENDING_DISPATCH_ECHOES) {
         return false
       }
-      armed.set(clientMessageId, { requestedAt: requestedAt ?? null, sequence: nextSequence++ })
+      armed.set(clientMessageId, {
+        expectEcho,
+        requestedAt: requestedAt ?? null,
+        sequence: nextSequence++
+      })
       return true
     },
     settle: (clientMessageId) => reporting(() => armed.delete(clientMessageId)),
@@ -169,7 +174,7 @@ export function createCodexDispatchEchoes(onHeldChange?: () => void): CodexDispa
         if (end) {
           entry.turnEnded = true
         }
-        if (end && settles(end)) {
+        if (end && (settles(end) || !entry.expectEcho)) {
           armed.delete(clientMessageId)
         }
         return end
@@ -210,6 +215,11 @@ export function createCodexDispatchEchoes(onHeldChange?: () => void): CodexDispa
           entry.turnEnded = true
         }
         if (!settles(end)) {
+          for (const { clientMessageId, entry } of bound) {
+            if (!entry.expectEcho) {
+              armed.delete(clientMessageId)
+            }
+          }
           return []
         }
         for (const { clientMessageId } of bound) {

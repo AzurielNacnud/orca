@@ -200,7 +200,7 @@ export async function handOverStructuredAgentSessionCommand(
   }
 }
 
-async function openCommandTurn(
+export async function openCommandTurn(
   ctx: StructuredAgentSessionCommandHandoverContext,
   submission: AgentJournalSubmission
 ) {

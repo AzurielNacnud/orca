@@ -16,6 +16,10 @@ export const STRUCTURED_AGENT_SESSION_THREAD_GOAL_METHODS = [
     permission: 'workspace',
     params: ThreadGoalParams,
     handler: async (params, ctx) =>
-      requireSessionHost(ctx, params.envelope.sessionId).changeThreadGoal(callerFor(ctx), params)
+      requireSessionHost(ctx, params.envelope.sessionId).changeThreadGoal(
+        callerFor(ctx),
+        params,
+        ctx.signal
+      )
   })
 ]

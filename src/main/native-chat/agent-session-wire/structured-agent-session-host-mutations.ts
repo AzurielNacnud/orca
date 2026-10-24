@@ -19,7 +19,11 @@ import type {
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-thread-goal-wire'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
-import { refuseThreadGoalUnsupported, threadGoalPlan } from './structured-agent-session-thread-goal'
+import {
+  refuseThreadGoalUnsupported,
+  threadGoalPlan,
+  threadGoalStartsTurn
+} from './structured-agent-session-thread-goal'
 import {
   mutateStructuredAgentSession,
   runStructuredAgentSessionMutation,
@@ -67,6 +71,7 @@ export function sendStructuredAgentSessionTurn(
     delivery?: 'queue-if-active'
     queuedImageCards?: boolean
     options?: Readonly<Record<string, string>>
+    goalIntent?: 'set'
     usageLimitContinuationOfTurnItemId?: string
     /** Client send RPCs set origin=client for recovery; host mail/continuations/launch sends omit it. */
     userSend?: true
@@ -202,7 +207,7 @@ function abortProviderWaitForStop(
   ) {
     return null
   }
-  return context.acquireAborts.abort(envelope.sessionId, 'stopped while starting')
+  return context.acquireAborts.abort(envelope.sessionId, 'stopped while starting', false)
 }
 
 export function respondToStructuredAgentSessionPrompt(
@@ -244,6 +249,21 @@ export async function changeStructuredAgentSessionThreadGoal(
   params: { envelope: AgentSessionMutationEnvelope; change: AgentSessionThreadGoalChange }
 ): Promise<AgentSessionMutationResult<AgentSessionThreadGoalResult>> {
   const plan = threadGoalPlan(params)
+  if (
+    context.deps.store.getRecord(params.envelope.sessionId)?.provider === 'codex' &&
+    threadGoalStartsTurn(params.change)
+  ) {
+    return mutateStructuredAgentSession(
+      context,
+      caller,
+      params.envelope,
+      {
+        ...plan,
+        conversationWrite: true
+      },
+      sendPreparation(context, params.envelope)
+    )
+  }
   return runWithReadyStructuredAgentSessionOperation(
     context,
     caller.callerKey,

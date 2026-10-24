@@ -199,3 +199,42 @@ describe('structured send settlement compatibility wait', () => {
     await expect(second).resolves.toBeUndefined()
   })
 })
+
+describe('goal command completion waits', () => {
+  afterEach(() => vi.useRealTimers())
+  it('does not treat accepted input as goal activation and bounds each legacy observer', async () => {
+    vi.useFakeTimers()
+    const input = journal('accepted')
+    const running = {
+      ...input,
+      itemBody: () => ({
+        kind: 'turn' as const,
+        turnId: 'compact:client-1',
+        state: 'running' as const
+      })
+    }
+    const settlements = new StructuredAgentSessionSendSettlement(() => running)
+    const retained = Array.from({ length: 64 }, () =>
+      settlements.wait('session-1', 'client-1', { until: 'goal-command' })
+    )
+    expect(
+      await settlements.wait('session-1', 'client-1', { until: 'goal-command' })
+    ).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(await Promise.all(retained)).toEqual(Array(64).fill(undefined))
+    const closing = settlements.wait('session-1', 'client-1', { until: 'goal-command' })
+    settlements.closeSession('session-1')
+    expect(await closing).toBeUndefined()
+    const complete = settlements.wait('session-1', 'client-1', { until: 'goal-command' })
+    settlements.publish('session-1', {
+      ...input,
+      itemBody: () => ({
+        kind: 'turn',
+        turnId: 'compact:client-1',
+        state: 'completed',
+        outcome: 'failure'
+      })
+    })
+    expect(await complete).toMatchObject({ value: { submission: { dispatchState: 'accepted' } } })
+  })
+})

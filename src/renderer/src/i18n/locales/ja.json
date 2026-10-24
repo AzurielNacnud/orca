@@ -18672,6 +18672,8 @@
         "compactionFailed": "圧縮に失敗しました。",
         "compactionFailedQuoted": "圧縮に失敗しました: {{detail}}。",
         "compactionUnconfirmed": "圧縮の完了は確認されていません。",
+        "goalActivationFailed": "{{agent}} は目標を有効にできませんでした。続行するには、目標を再設定するか再開してください。",
+        "goalActivationUnconfirmed": "{{agent}} は目標の有効化を確認しませんでした。再設定または再開する前に目標を確認してください。",
         "cancelUnconfirmed": "キャンセルは確認されませんでした。",
         "backgroundTaskNotStopped": "バックグラウンドタスクは停止されませんでした。",
         "backgroundTasksNotStopped": "バックグラウンドタスクは停止されませんでした。",

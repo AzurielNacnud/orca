@@ -1,4 +1,5 @@
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import { agentSessionSavedGoalCommand } from '../../../shared/agent-session-goal-command'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionExecutionOptions } from '../../../shared/agent-session-execution-options'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -31,11 +32,17 @@ export function waitsForCodexTurnOptions(
     return false
   }
   const body = journal.itemBody(agentJournalSubmissionKey(next.clientMessageId))
-  if (body?.kind !== 'message' || body.command) {
+  if (body?.kind !== 'message') {
     return false
   }
   const turn = journal.newestTurn()
   if (turn?.state !== 'running') {
+    return false
+  }
+  if (agentSessionSavedGoalCommand(body)) {
+    return true
+  }
+  if (body.command) {
     return false
   }
   const active = journal.submissions().find((submission) => {

@@ -75,10 +75,7 @@ export function useNativeChatComposerSubmit(args: {
     [caret, draft, setCaret, setDraft, threadGoal]
   )
 
-  // Setting a goal is a host round trip; the draft is cleared only if it is still
-  // the one that was submitted, as with any other host command.
-  // In-flight changes are serialized by the session's goal controller, which
-  // answers false to a second submit while the first is unsettled.
+  // Capable hosts own the objective at send admission; legacy hosts still answer the direct control.
   const setGoal = useCallback(() => {
     const objective = structuredAgentSessionGoalObjective(
       resolveNativeChatPastedText(draftScopeKey, draft)
@@ -98,6 +95,16 @@ export function useNativeChatComposerSubmit(args: {
     structuredTransport.onSubmitted?.()
     const isCurrent = structuredTransport.capturePresentation()
     const submitted = readNativeChatComposerDraft(draftScopeKey)
+    if (threadGoal.sendsGoals) {
+      if (structuredTransport.send(`/goal ${objective}`, [], { goalIntent: 'set' }) === false) {
+        return
+      }
+      if (clearNativeChatComposerDraftIfUnchanged(draftScopeKey, submitted)) {
+        setCaret(0)
+        setEntered(false)
+      }
+      return
+    }
     void threadGoal.setObjective(objective).then((accepted) => {
       if (!accepted) {
         return

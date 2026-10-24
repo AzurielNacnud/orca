@@ -245,6 +245,18 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         COPY.compactionFailedQuoted,
         values
       ),
+    goalActivationFailed: (values) =>
+      translate(
+        'components.native-chat.failureWords.goalActivationFailed',
+        COPY.goalActivationFailed,
+        values
+      ),
+    goalActivationUnconfirmed: (values) =>
+      translate(
+        'components.native-chat.failureWords.goalActivationUnconfirmed',
+        COPY.goalActivationUnconfirmed,
+        values
+      ),
     compactionUnconfirmed: () =>
       translate(
         'components.native-chat.failureWords.compactionUnconfirmed',

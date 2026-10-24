@@ -19615,6 +19615,8 @@
         "compactionFailed": "Falha na compactação.",
         "compactionFailedQuoted": "Falha na compactação: {{detail}}.",
         "compactionUnconfirmed": "A conclusão da compactação não foi confirmada.",
+        "goalActivationFailed": "{{agent}} não conseguiu ativar o objetivo. Defina-o ou retome-o novamente para continuar.",
+        "goalActivationUnconfirmed": "{{agent}} não confirmou a ativação do objetivo. Verifique-o antes de defini-lo ou retomá-lo novamente.",
         "cancelUnconfirmed": "O cancelamento não foi confirmado.",
         "backgroundTaskNotStopped": "A tarefa em segundo plano não foi interrompida.",
         "backgroundTasksNotStopped": "As tarefas em segundo plano não foram interrompidas.",

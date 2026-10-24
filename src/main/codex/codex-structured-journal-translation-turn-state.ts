@@ -75,8 +75,13 @@ export class CodexJournalActiveTurns {
     turnId: string,
     requestOrigin: CodexJournalRequestOrigin
   ): void {
-    if (this.byThread.get(threadId)?.has(turnId)) {
-      this.requestOriginByTurn.set(this.turnKey(threadId, turnId), requestOrigin)
+    this.requestOriginByTurn.set(this.turnKey(threadId, turnId), requestOrigin)
+    // A reply can precede turn/started; retain its origin within the recent-turn budget.
+    for (const key of this.requestOriginByTurn.keys()) {
+      if (this.requestOriginByTurn.size <= MAX_CODEX_RECENT_TURNS) {
+        break
+      }
+      this.requestOriginByTurn.delete(key)
     }
   }
 
