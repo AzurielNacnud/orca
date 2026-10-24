@@ -193,6 +193,28 @@
     },
     "managedProfile": {
       "createFailed": "Couldn't create this workspace's browser profile. Close this tab and open a new one to try again."
+    },
+    "history": {
+      "clear": "Clear browsing history",
+      "clearAllTime": "All time",
+      "clearLastHour": "Last hour",
+      "clearRange": "Clear history from",
+      "clearToday": "Today",
+      "cleared": "Cleared browsing history",
+      "close": "Close",
+      "description": "Search and manage browsing history",
+      "empty": "Pages you visit will show up here",
+      "enterKey": "Enter",
+      "escKey": "Esc",
+      "menuItem": "History",
+      "noMatches": "No pages match your search",
+      "open": "Open",
+      "remove": "Remove from history",
+      "removeShort": "Remove",
+      "search": "Search history",
+      "title": "History",
+      "today": "Today",
+      "yesterday": "Yesterday"
     }
   },
   "editor": {
@@ -8395,6 +8417,11 @@
           "191ac34567": "Agent Orchestration",
           "nestedWorkerDepthTitle": "Nested worker depth",
           "nestedWorkerDepthDescription": "How many generations of dispatched workers may spawn their own workers. 1 keeps the agent tree flat: a coordinator dispatches workers, and those workers do not dispatch.",
+          "chatErrorEscalationTitle": "Tell the coordinator about chat errors",
+          "chatErrorEscalationDescription": "When a dispatched agent hits an error that ends its turn, send the exact error to the coordinator that dispatched it. The task stays assigned to the agent. Only works for agents running in Chat UI.",
+          "chatErrorEscalationNeedsChat": "Turn on Chat UI in Experimental settings to use it.",
+          "chatErrorEscalationKeywordError": "error",
+          "chatErrorEscalationKeywordChat": "chat",
           "7bc082f4de": "Copy install command"
         },
         "OrchestrationSetupCard": {
