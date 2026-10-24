@@ -177,7 +177,6 @@ describe('worktrees:remove in the background', () => {
     expect(rows.find((row) => row.id === featureId)).toBeDefined()
     expect(rows.find((row) => row.id === featureId)?.removing).toBeUndefined()
 
-    // A retry is a fresh removal, not a join onto the failed one.
     removeWorktreeMock.mockResolvedValue({})
     await expect(remove({ worktreeId: featureId })).resolves.not.toHaveProperty('removing')
     expect(removeWorktreeMock).toHaveBeenCalledTimes(2)
@@ -220,7 +219,7 @@ describe('worktrees:remove in the background', () => {
     const first = remove({ worktreeId: featureId })
     const second = remove({ worktreeId: secondId })
     await vi.waitFor(() => expect(runHookMock).toHaveBeenCalledTimes(1))
-    // Let the second request reach the host's acceptance queue before checking it waits there.
+    // Allow the second request to reach acceptance before asserting that it waits.
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(runHookMock).toHaveBeenCalledTimes(1)
 
@@ -259,7 +258,7 @@ describe('worktrees:remove in the background', () => {
     await vi.waitFor(() => expect(runHookMock).toHaveBeenCalledTimes(1))
     const queued = remove({ worktreeId: featureId })
     await new Promise((resolve) => setTimeout(resolve, 20))
-    // Stands in for the runtime path (CLI, paired clients), which coalesces apart from this one.
+    // Runtime callers coalesce independently of desktop IPC.
     let finishOther: ((result: RemoveWorktreeResult) => void) | undefined
     void startBackgroundWorktreeRemoval({
       removal: {

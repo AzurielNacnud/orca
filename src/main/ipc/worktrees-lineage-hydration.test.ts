@@ -273,7 +273,6 @@ describe('registerWorktreeHandlers', () => {
       connectionId: 'conn-1'
     }
     store.getRepos.mockReturnValue([repo])
-    // Why: this process serves no SSH git, so the SSH repo lists its stored rows.
     store.getAllWorktreeMeta.mockReturnValue({
       'repo-ssh::/remote/live-child': {}
     })

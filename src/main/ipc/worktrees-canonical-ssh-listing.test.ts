@@ -70,7 +70,6 @@ function fixture(fields: Pick<Repo, 'connectionId' | 'executionHostId'>) {
     getAllWorkspaceLineage: () => ({}),
     removeWorktreeLineage: vi.fn(),
     captureNativeLocalWorktreeMetadataScanExpectation: () => undefined,
-    // Read by main's switch-on layout purge after a listing.
     getWorkspaceSessionHostIds: () => ['local'],
     getWorkspaceSession: () => getDefaultWorkspaceSession(),
     removeWorkspaceSessionStateForWorktree: vi.fn()
@@ -119,7 +118,6 @@ describe.each([
   { hostEncoding: 'canonical', fields: { executionHostId: 'ssh:host-a' as const } },
   { hostEncoding: 'legacy', fields: { connectionId: 'host-a' } }
 ])('$hostEncoding SSH listing', ({ fields }) => {
-  // An `ssh:` host is not served here: every channel answers from persisted metadata.
   it.each(channels)('answers %s from metadata, never from this machine', async (channel) => {
     fixture(fields)
     const result = await invoke(channel)

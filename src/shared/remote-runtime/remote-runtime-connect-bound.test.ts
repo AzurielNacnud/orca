@@ -1,9 +1,9 @@
-import { pairedRuntimeConnectionFromOffer } from './paired-runtime-connection'
+import { pairedRuntimeConnectionFromOffer } from '../paired-runtime-connection'
 import { createServer, type Server, type Socket } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { generateKeyPair, publicKeyToBase64 } from './e2ee-crypto'
-import type { RemoteRuntimeClientError } from './remote-runtime-client-error'
-import { isRecoverableRemoteRuntimeConnectionError } from './remote-runtime-client-error-classification'
+import { generateKeyPair, publicKeyToBase64 } from '../e2ee-crypto'
+import type { RemoteRuntimeClientError } from '../remote-runtime-client-error'
+import { isRecoverableRemoteRuntimeConnectionError } from '../remote-runtime-client-error-classification'
 import {
   REMOTE_RUNTIME_CONNECT_TIMEOUT_MS,
   WS_HANDSHAKE_TIMEOUT_MESSAGE,
@@ -11,7 +11,7 @@ import {
   remoteRuntimeConnectFailureMessage,
   remoteRuntimeConnectOptions
 } from './remote-runtime-connect-bound'
-import { openRemoteRuntimeWebSocket } from './remote-runtime/requests/remote-runtime-request-websocket'
+import { openRemoteRuntimeWebSocket } from './requests/remote-runtime-request-websocket'
 import { withRemoteRuntimeTailscaleHint } from './remote-runtime-tailscale-hint'
 
 const servers = new Set<Server>()

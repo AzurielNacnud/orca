@@ -196,7 +196,6 @@ describe('authoritative local worktree metadata pruning integration', () => {
       await Promise.resolve()
       return rows
     })
-    // A worktree deleted outside Orca strands its status row unless the prune retires it.
     const stalePane = makePaneKey('tab-stale', '11111111-1111-4111-8111-111111111111')
     const livePane = makePaneKey('tab-live', '22222222-2222-4222-8222-222222222222')
     const working = {
@@ -260,8 +259,7 @@ describe('authoritative local worktree metadata pruning integration', () => {
     await Promise.resolve()
     notifyWorktreesChanged(mainWindow as never, REPO_ID)
     resolveScan([worktree(REPO_PATH), worktree('/workspace/live')])
-    // Why: the overtaken scan is re-run, and the mutation it missed brought the stale checkout back,
-    // so a prune can only come from the overtaken scan's own expectation -- which must not run.
+    // The replacement scan restores the stale checkout; only the overtaken scan could prune it.
     await vi.waitFor(() => expect(listWorktreesMock).toHaveBeenCalledTimes(2))
     resolveScan([worktree(REPO_PATH), worktree('/workspace/live'), worktree('/workspace/stale')])
     await pending
@@ -290,8 +288,7 @@ describe('authoritative local worktree metadata pruning integration', () => {
     await Promise.resolve()
     resolveScan([worktree(REPO_PATH)])
     queueMicrotask(() => notifyWorktreesChanged(mainWindow as never, REPO_ID))
-    // Why: the overtaken scan is re-run; its rows bring the stale checkout back, so only the
-    // overtaken scan's own expectation could prune it.
+    // The fresh scan restores this checkout; stale side effects must not prune it.
     await vi.waitFor(() => expect(listWorktreesMock).toHaveBeenCalledTimes(2))
     resolveScan([worktree(REPO_PATH), worktree('/workspace/stale')])
     await pending
@@ -314,8 +311,7 @@ describe('authoritative local worktree metadata pruning integration', () => {
         createdAt: 0
       }
     })
-    // Why: the detected listing re-runs an overtaken scan, and that re-run finds the orphan alive,
-    // so a lineage removal can only come from the overtaken scan's side effects.
+    // The replacement scan finds the orphan alive, isolating lineage removal to the overtaken scan.
     listWorktreesMock
       .mockImplementationOnce(
         () =>
@@ -332,7 +328,6 @@ describe('authoritative local worktree metadata pruning integration', () => {
     await pending
 
     expect(store.removeWorktreeLineage).not.toHaveBeenCalled()
-    // The detected listing's fresh re-scan is what registers the roots.
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The fixture supplies the local repository rows read by this registry check.
     expect(isRegisteredWorktreePath(REPO_PATH, store as never)).toBe(true)
   })

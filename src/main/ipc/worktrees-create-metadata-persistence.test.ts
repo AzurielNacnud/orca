@@ -47,7 +47,6 @@ const WORKTREE_HANDLER_CHANNELS = [
   'worktrees:getBranchRenameFailureOutput',
   'hooks:check',
   'hooks:inspectSetupScriptImports',
-  'hooks:createIssueCommandRunner',
   'hooks:readIssueCommand',
   'hooks:writeIssueCommand'
 ] as const
@@ -163,8 +162,7 @@ describe('registerWorktreeHandlers', () => {
   it('persistSortOrder only reorders existing worktrees and never mints meta for a stale id', () => {
     const liveId = 'repo-1::/workspace/repo'
     const staleId = 'removed-repo::/workspace/gone'
-    // Only the live worktree has meta; the stale id (e.g. a removed repo the
-    // renderer still lists) has none and must be skipped, not created.
+    // Missing metadata on a stale renderer row must not recreate it.
     store.getWorktreeMeta.mockImplementation((id: string) =>
       id === liveId ? ({ instanceId: 'x' } as never) : undefined
     )
@@ -256,7 +254,7 @@ describe('registerWorktreeHandlers', () => {
       worktreeId: 'repo-1::/workspace/feature-wt',
       updates: { isUnread: false }
     })
-    // Why: per-click isUnread writes must stay event-free (PR #209), while a rename must reach paired remote clients that no longer poll for titles.
+    // Unread clicks stay event-free; renames must reach remote clients without title polling.
     expect(runtimeStub.notifyWorktreesChangedForRemoteClients).not.toHaveBeenCalled()
 
     handlers['worktrees:updateMeta'](null, {
@@ -270,7 +268,6 @@ describe('registerWorktreeHandlers', () => {
     const folderRepo = { ...harnessRepo, kind: 'folder' as const }
     const workspaceId = `${harnessRepo.id}::${harnessRepo.path}::workspace:0b6f6d2e-1c1d-4c55-9a51-3f1c0f4f2a10`
 
-    // Backs the store mocks with one meta table so writes, removal and listing see the same rows.
     function useFolderMetaTable(): Record<string, WorktreeMeta> {
       const table: Record<string, WorktreeMeta> = {}
       store.getRepo.mockReturnValue(folderRepo)
@@ -298,8 +295,7 @@ describe('registerWorktreeHandlers', () => {
 
       await handlers['worktrees:remove'](null, { worktreeId: workspaceId })
       expect(table[workspaceId]).toBeUndefined()
-      // The renderer still lists the row until its teardown runs, so a PTY reattach in that
-      // window stamps activity on the removed id (bumpWorktreeActivity -> updateMeta).
+      // Before renderer teardown, a lingering PTY can still stamp activity on the removed ID.
       handlers['worktrees:updateMeta'](null, {
         worktreeId: workspaceId,
         updates: { lastActivityAt: 2 }
@@ -542,9 +538,6 @@ describe('registerWorktreeHandlers', () => {
     })
   })
 
-  // Was "configures a PR push target during local create": create used to mint the
-  // fork remote up front. It now defers to first sync (#17828); the minting itself is
-  // covered by worktree-remote-push-target-materialization.test.ts.
   it('defers the fork-PR remote during local create and persists the target unmaterialized', async () => {
     listWorktreesMock.mockResolvedValue([
       {
@@ -587,7 +580,6 @@ describe('registerWorktreeHandlers', () => {
       ],
       { cwd: '/workspace/repo' }
     )
-    // Upstream can only be set once the remote exists, so it defers with the remote.
     expect(gitExecFileAsyncMock).not.toHaveBeenCalledWith(
       [
         'branch',
@@ -597,8 +589,7 @@ describe('registerWorktreeHandlers', () => {
       ],
       { cwd: '/workspace/improve-dashboard' }
     )
-    // Exact object, not objectContaining: `remoteCreated` must stay absent until
-    // something actually mints the remote.
+    // Exact equality rejects premature remoteCreated provenance.
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       hostWorktreeTarget({
         id: 'repo-1::/workspace/improve-dashboard',
@@ -614,10 +605,6 @@ describe('registerWorktreeHandlers', () => {
     )
   })
 
-  // Was "keeps the Orca-created marker ...": create used to inherit the marker while
-  // minting. With minting deferred (#17828) create must not claim ownership it has not
-  // earned; marker inheritance now happens at materialization and is covered by
-  // worktree-push-target-setup.test.ts.
   it('does not claim the Orca-created marker at create when a sibling worktree minted the fork remote', async () => {
     listWorktreesMock.mockResolvedValue([
       {

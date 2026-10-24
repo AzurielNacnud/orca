@@ -16,7 +16,7 @@ import {
   toRemoteRuntimeClientErrorLike
 } from '../../remote-runtime-client-error-classification'
 import { subscribeRemoteRuntimeTransport } from './remote-runtime-subscription-transport'
-import { withRemoteRuntimeTailscaleHint } from '../../remote-runtime-tailscale-hint'
+import { withRemoteRuntimeTailscaleHint } from '../remote-runtime-tailscale-hint'
 
 const servers = new Set<Server>()
 const sockets = new Set<Socket>()

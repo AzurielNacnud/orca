@@ -9,6 +9,13 @@ export type TerminalLinkStoreSettings = {
   activeRuntimeEnvironmentId?: string | null
 }
 
+export type TerminalLinkOpenFile = {
+  id?: string
+  filePath: string
+  worktreeId: string
+  readOnly?: boolean
+}
+
 export type TerminalLinkStoreState = Pick<
   AppState,
   'repos' | 'endpointProjects' | 'endpointProjectHostSetups'
@@ -21,7 +28,7 @@ export type TerminalLinkStoreState = Pick<
   setPendingEditorReveal: Mock
   setMarkdownViewMode: Mock
   activeFileIdByWorktree: Record<string, string | null>
-  openFiles: { filePath: string; worktreeId: string }[]
+  openFiles: TerminalLinkOpenFile[]
   groupsByWorktree: Record<string, TabGroup[]>
   unifiedTabsByWorktree: Record<
     string,
@@ -112,7 +119,7 @@ export function createTerminalLinkTestDoubles(): TerminalLinkTestDoubles {
     setPendingEditorReveal: setPendingEditorRevealMock,
     setMarkdownViewMode: setMarkdownViewModeMock,
     activeFileIdByWorktree: {} as Record<string, string | null>,
-    openFiles: [] as { filePath: string; worktreeId: string }[],
+    openFiles: [],
     unifiedTabsByWorktree: {},
     groupsByWorktree: {},
     worktreesByRepo: {},
