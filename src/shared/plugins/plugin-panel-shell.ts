@@ -27,7 +27,7 @@ export const PLUGIN_PANEL_CSP =
 export const PANEL_SHELL_TOKENS_PLACEHOLDER = '/*__ORCA_PANEL_TOKENS__*/'
 export const PANEL_SHELL_COLOR_SCHEME_PLACEHOLDER = '__ORCA_COLOR_SCHEME__'
 
-/** Curated design-token subset injected into panel documents. Deliberately
+/** Curated design-token subset injected into panel documents as `--orca-<name>`. Deliberately
  *  NOT all of main.css (~257 custom properties): freezing every token as
  *  public API would lock future refactors. Grow additively; renaming or
  *  dropping an entry here is a plugin-facing breaking change. */
