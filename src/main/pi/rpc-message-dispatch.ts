@@ -113,12 +113,16 @@ async function submitPiRpcPrompt(
   input: DispatchInput,
   prompt: PiRpcPrompt
 ): Promise<AgentSessionDispatchOutcome> {
-  const ranOptions = Object.fromEntries(session.optionProof.current)
+  let ranOptions: Record<string, string> = {}
   const outcome = await session.submit(
     input.clientMessageId,
     input.requestedAt ?? Date.now(),
     { ...prompt },
-    input.beforeDispatch
+    async () => {
+      await input.beforeDispatch?.()
+      input.onExecutionSnapshot?.()
+      ranOptions = Object.fromEntries(session.optionProof.current)
+    }
   )
   return outcome.state === 'accepted' || outcome.state === 'admitted'
     ? { ...outcome, ranOptions }
