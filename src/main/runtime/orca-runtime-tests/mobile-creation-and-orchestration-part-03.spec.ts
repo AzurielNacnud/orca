@@ -619,18 +619,20 @@ describe('OrcaRuntimeService', () => {
     }
   })
 
-  it('allows only one exclusive mailbox waiter and supports explicit cancellation', async () => {
+  it('keeps sibling mailbox waiters independent and cancels them all explicitly', async () => {
     const runtime = new OrcaRuntimeService(store)
-    const first = runtime.waitForMessage('run:run_1', {
-      timeoutMs: 5000,
-      exclusive: true
-    })
+    const aborted = new AbortController()
+    const first = runtime.waitForMessage('run:run_1', { timeoutMs: 5000, signal: aborted.signal })
+    const second = runtime.waitForMessage('run:run_1', { timeoutMs: 5000 })
+    const third = runtime.waitForMessage('run:run_1', { timeoutMs: 5000 })
 
-    await expect(
-      runtime.waitForMessage('run:run_1', { timeoutMs: 5000, exclusive: true })
-    ).resolves.toBe('waiter_exists')
-    runtime.cancelMessageWaiters('run:run_1')
+    aborted.abort()
     await expect(first).resolves.toBe('cancelled')
+    runtime.notifyMessageArrived('run:run_1')
+    await expect(second).resolves.toBe('notified')
+    const fourth = runtime.waitForMessage('run:run_1', { timeoutMs: 5000 })
+    runtime.cancelMessageWaiters('run:run_1')
+    await expect(Promise.all([third, fourth])).resolves.toEqual(['notified', 'cancelled'])
   })
 
   it('rejects leaf PTY waits when the request signal aborts', async () => {
