@@ -125,7 +125,10 @@ export function isAgentSessionRewindTarget(
   if (item.body.kind !== 'message' || item.body.role !== 'user') {
     return false
   }
-  return item.turnScope?.kind !== 'turn' || turnOpener(item.turnScope.turnItemId) === item.itemId
+  return (
+    item.turnScope?.kind !== 'unknown' &&
+    (item.turnScope?.kind !== 'turn' || turnOpener(item.turnScope.turnItemId) === item.itemId)
+  )
 }
 
 /**

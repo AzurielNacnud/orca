@@ -154,7 +154,7 @@ type PtyCallbacks = {
 }
 
 export type PtyTransportRecoveryState = {
-  reason?: 'ownership'
+  reason?: 'ownership' | 'ssh-sign-in'
   phase:
     | 'connecting'
     | 'connected'

@@ -4,7 +4,10 @@ import type { AgentJournalDispatchRejection } from '../../shared/agent-session-f
 import type { SubmissionRejectionFact } from '../../shared/agent-session-failure'
 import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
-import type { StructuredAgentSessionOptionsReportedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type {
+  StructuredAgentSessionAcquireInput,
+  StructuredAgentSessionOptionsReportedEvent
+} from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type {
   ClaudeStreamJsonConnection,
   openClaudeStreamJsonConnection
@@ -215,6 +218,10 @@ export type ClaudeSession = {
     proof: ClaudeInitProof
     account: ClaudeStructuredLaunch['account']
     resumesTranscript: boolean
+    /** The account home the child writes its transcript in, pinned at launch. */
+    claudeConfigDir: string
+    cwd: string
+    history: { leafUuid: string | null; covered: boolean; contextActivity: number }
     onLateRefusal: (error: Error) => void
   }
 }
@@ -342,6 +349,15 @@ export async function cancelClaudeAcquisitionAttempt(
     exitProven: () => attempt.exitProven,
     finished: attempt.finished
   })
+}
+
+export type ClaudeSessionAcquisitionInput = {
+  input: StructuredAgentSessionAcquireInput
+  deps: ClaudeStructuredSessionAdapterDeps
+  sessions: Map<string, ClaudeSession>
+  acquisitions: ClaudeAcquisitionRegistry
+  exits: Map<string, ClaudeSessionExit>
+  callbacks: ClaudeAcquireCallbacks
 }
 
 export type ClaudeAcquireCallbacks = {
