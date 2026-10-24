@@ -3,9 +3,9 @@ import {
   capabilityKinds,
   type PluginCapabilityKind
 } from '../../shared/plugins/plugin-capabilities'
-import {
-  getPluginActivationState,
-  type PluginConsentLists
+import type {
+  PluginActivationState,
+  PluginConsentLists
 } from '../../shared/plugins/approval/plugin-consent-state'
 import type { PluginPanelActionOutcome } from '../../shared/plugins/plugin-panel-bridge'
 import { createPluginExtensionRegistry } from '../../shared/plugins/plugin-extension-registry'
@@ -32,8 +32,9 @@ import {
 } from './workers/plugin-worker-reconciliation'
 import type { PluginRunState } from './workers/plugin-supervisor'
 import {
-  fullAccessError,
   isPluginApproved,
+  livePluginActivationState,
+  pluginPolicyBlockError,
   snapshotPluginConsentLists
 } from './plugin-activation-policy'
 import { PluginContentPackRegistry } from './contributions/plugin-content-pack-registry'
@@ -135,11 +136,14 @@ export class PluginService {
     const enabled = this.options.isPluginSystemEnabled()
     const devPaths = this.options.getDevPluginPaths()
     const consentLists = snapshotPluginConsentLists(this.options)
-    const refresh = this.refreshChain.then(() =>
-      this.performRefresh(enabled, devPaths, consentLists)
-    )
-    this.refreshChain = refresh.catch(() => undefined)
-    return refresh
+    return this.enqueue(() => this.performRefresh(enabled, devPaths, consentLists))
+  }
+
+  /** Serializes discovery, removal, and reconciliation so none sees another's partial state. */
+  private enqueue(work: () => Promise<void>): Promise<void> {
+    const queued = this.refreshChain.then(work)
+    this.refreshChain = queued.catch(() => undefined)
+    return queued
   }
 
   private async performRefresh(
@@ -201,16 +205,8 @@ export class PluginService {
     return this.installed.findValid(pluginKey)
   }
 
-  activationState(plugin: ValidDiscoveredPlugin): ReturnType<typeof getPluginActivationState> {
-    // The feature flag is an authority boundary, not only a discovery hint:
-    // callers fail closed immediately even before async reconciliation ends.
-    if (!this.options.isPluginSystemEnabled()) {
-      return 'disabled'
-    }
-    return getPluginActivationState(plugin.pluginKey, plugin.consentFingerprint, {
-      pluginConsents: this.options.getPluginConsents(),
-      disabledPlugins: this.options.getDisabledPlugins()
-    })
+  activationState(plugin: ValidDiscoveredPlugin): PluginActivationState {
+    return livePluginActivationState(this.options, plugin)
   }
 
   private canStartPluginWork(plugin: ValidDiscoveredPlugin): boolean {
@@ -222,8 +218,7 @@ export class PluginService {
       this.contentPacksReady &&
       this.activationState(plugin) === 'approved' &&
       !this.contentPacks.error(plugin.pluginKey) &&
-      !this.options.getPluginKillListEntry?.(plugin.pluginKey) &&
-      !fullAccessError(plugin, this.options.isFullAccessAllowed)
+      !pluginPolicyBlockError(this.options, plugin.pluginKey, plugin)
     )
   }
 
@@ -232,10 +227,8 @@ export class PluginService {
   }
 
   activationError(pluginKey: string): string | null {
-    const blocked = this.options.getPluginKillListEntry?.(pluginKey)
     return (
-      (blocked ? `Blocked by Orca's plugin safety list: ${blocked.reason}` : null) ??
-      fullAccessError(this.findValidPlugin(pluginKey), this.options.isFullAccessAllowed) ??
+      pluginPolicyBlockError(this.options, pluginKey, this.findValidPlugin(pluginKey)) ??
       this.contentPacks.error(pluginKey) ??
       this.workerController.activationError(pluginKey)
     )
@@ -304,9 +297,7 @@ export class PluginService {
   }
 
   removePlugin(pluginKey: string, remove: () => Promise<void>): Promise<void> {
-    const removal = this.refreshChain.then(() => this.installed.remove(pluginKey, remove))
-    this.refreshChain = removal.catch(() => undefined)
-    return removal
+    return this.enqueue(() => this.installed.remove(pluginKey, remove))
   }
 
   async deactivatePlugin(pluginKey: string): Promise<void> {
@@ -317,9 +308,7 @@ export class PluginService {
   /** Reconciles live workers and client projections after consent or
    * enablement changes without re-reading plugin files or starting workers. */
   async reconcileActivationState(): Promise<void> {
-    const reconcile = this.refreshChain.then(() => this.performActivationStateReconciliation())
-    this.refreshChain = reconcile.catch(() => undefined)
-    return reconcile
+    return this.enqueue(() => this.performActivationStateReconciliation())
   }
 
   private async performActivationStateReconciliation(): Promise<void> {
