@@ -22,6 +22,7 @@ describe('Claude host-awaited open', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
+  // SDK-typed shape; ordering constructed
   it.each([
     ['bypassPermissions', 'full-access'],
     ['plan', null],
