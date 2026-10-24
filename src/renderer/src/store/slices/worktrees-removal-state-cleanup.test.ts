@@ -206,7 +206,7 @@ describe('removeWorktree state cleanup', () => {
       worktreesByRepo: { repo1: [wt] },
       endpointProjectHostSetups: [orphanedSetup, userSshSetup],
       deleteProjectHostSetup
-    } as unknown as Partial<AppState>)
+    })
     mockApi.ephemeralVm.listRuntimes.mockResolvedValueOnce([
       {
         id: 'runtime-1',
