@@ -8,15 +8,17 @@ export type BrowserAgentCursorSink = {
   hide: () => void
 }
 
+/** The page an agent in a worktree last drove; `revision` orders it against other activity. */
+export type BrowserAgentActivityMark = { pageId: string; revision: number }
+
 const activePageIds = new Set<string>()
-const lastPageIdByWorktree = new Map<string, string>()
+const lastActivityByWorktree = new Map<string, BrowserAgentActivityMark>()
 const lastCursorByPage = new Map<string, BrowserAgentCursorEvent>()
 const sinksByPage = new Map<string, BrowserAgentCursorSink>()
 const listeners = new Set<() => void>()
-let version = 0
+let revision = 0
 
 function notify(): void {
-  version += 1
   for (const listener of listeners) {
     listener()
   }
@@ -29,24 +31,16 @@ function subscribe(listener: () => void): () => void {
   }
 }
 
-const getVersion = (): number => version
-
 export function setBrowserAgentPageActive(
   browserPageId: string,
   active: boolean,
   worktreeId: string | null
 ): void {
   if (active) {
-    // Main repeats this on every agent command; only a change re-renders the tab strip.
-    const known =
-      activePageIds.has(browserPageId) &&
-      (!worktreeId || lastPageIdByWorktree.get(worktreeId) === browserPageId)
-    if (known) {
-      return
-    }
+    revision += 1
     activePageIds.add(browserPageId)
     if (worktreeId) {
-      lastPageIdByWorktree.set(worktreeId, browserPageId)
+      lastActivityByWorktree.set(worktreeId, { pageId: browserPageId, revision })
     }
   } else {
     activePageIds.delete(browserPageId)
@@ -79,15 +73,23 @@ export function attachBrowserAgentCursorSink(
   }
 }
 
+/** Activity that arrives later than this revision happened after the caller looked. */
+export function getBrowserAgentActivityRevision(): number {
+  return revision
+}
+
 export function useBrowserAgentDrivesAnyPage(
   browserPageIds: readonly (string | null | undefined)[]
 ): boolean {
-  useSyncExternalStore(subscribe, getVersion, getVersion)
-  return browserPageIds.some((id) => id != null && activePageIds.has(id))
+  const drives = (): boolean => browserPageIds.some((id) => id != null && activePageIds.has(id))
+  return useSyncExternalStore(subscribe, drives, drives)
 }
 
-/** The page an agent in this worktree drove most recently, while this window has been open. */
-export function useLastBrowserAgentPageId(worktreeId: string | null): string | null {
-  useSyncExternalStore(subscribe, getVersion, getVersion)
-  return worktreeId ? (lastPageIdByWorktree.get(worktreeId) ?? null) : null
+/** What an agent in this worktree drove most recently, while this window has been open. */
+export function useLastBrowserAgentActivity(
+  worktreeId: string | null
+): BrowserAgentActivityMark | null {
+  const read = (): BrowserAgentActivityMark | null =>
+    worktreeId ? (lastActivityByWorktree.get(worktreeId) ?? null) : null
+  return useSyncExternalStore(subscribe, read, read)
 }

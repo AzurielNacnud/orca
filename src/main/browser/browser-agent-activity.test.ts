@@ -50,7 +50,7 @@ function setup() {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the owner reads only id, isDestroyed and send.
     rendererForPage: () => renderer as unknown as Electron.WebContents
   })
-  const agentCommand = (): (() => void) =>
+  const agentCommand = () =>
     runWithActiveRpcCaller({ kind: 'local-cli' }, () => activity.beginCommand(PAGE))
   const cursorEvents = () =>
     sent
@@ -82,19 +82,19 @@ describe('BrowserAgentActivity', () => {
     const { activity, sent } = setup()
     runWithActiveRpcCaller({ kind: 'paired-device', deviceId: 'phone' }, () =>
       activity.beginCommand(PAGE)
-    )()
-    activity.beginCommand(PAGE)()
+    ).end()
+    activity.beginCommand(PAGE).end()
     expect(sent).toEqual([])
   })
 
   it('clears the mark once the agent stays idle, and at once when the page closes', () => {
     const { activity, sent, agentCommand } = setup()
-    agentCommand()()
+    agentCommand().end()
     expect(sent).toEqual([
       { channel: BROWSER_AGENT_ACTIVITY_CHANNEL, data: { browserPageId: PAGE, active: true } }
     ])
     vi.advanceTimersByTime(19_000)
-    agentCommand()()
+    agentCommand().end()
     vi.advanceTimersByTime(19_000)
     expect(sent.at(-1)?.data).toEqual({ browserPageId: PAGE, active: true })
     vi.advanceTimersByTime(1_000)
@@ -107,11 +107,12 @@ describe('BrowserAgentActivity', () => {
 
   it('holds a fresh move until the renderer reports the cursor landed', async () => {
     const { agentCommand, cursorEvents, arrive, show } = setup()
-    agentCommand()
     let landed = false
-    const shown = show({ type: 'mouseMoved', x: 100, y: 50, buttons: 0 }).then(() => {
-      landed = true
-    })
+    const shown = agentCommand()
+      .run(() => show({ type: 'mouseMoved', x: 100, y: 50, buttons: 0 }))
+      .then(() => {
+        landed = true
+      })
     await vi.advanceTimersByTimeAsync(0)
     const [event] = cursorEvents()
     expect(event).toMatchObject({ x: 100, y: 50, viewportWidth: 1000, awaitsArrival: true })
@@ -125,12 +126,11 @@ describe('BrowserAgentActivity', () => {
 
   it('stops waiting after the timeout, or when the page closes', async () => {
     const { activity, agentCommand, show } = setup()
-    agentCommand()
-    const timedOut = show({ type: 'mouseMoved', x: 1, y: 1 })
+    const timedOut = agentCommand().run(() => show({ type: 'mouseMoved', x: 1, y: 1 }))
     await vi.advanceTimersByTimeAsync(1500)
     await expect(timedOut).resolves.toBeUndefined()
 
-    const closed = show({ type: 'mouseMoved', x: 2, y: 2 })
+    const closed = agentCommand().run(() => show({ type: 'mouseMoved', x: 2, y: 2 }))
     await vi.advanceTimersByTimeAsync(0)
     activity.end(PAGE)
     await expect(closed).resolves.toBeUndefined()
@@ -138,12 +138,21 @@ describe('BrowserAgentActivity', () => {
 
   it('never waits for presses, drag steps, or a window nobody can see', async () => {
     const { agentCommand, cursorEvents, show } = setup()
-    agentCommand()
-    await show({ type: 'mousePressed', x: 5, y: 5 })
-    await show({ type: 'mouseMoved', x: 6, y: 5, buttons: 1 })
-    windowState.visible = false
-    await show({ type: 'mouseMoved', x: 300, y: 300 })
+    await agentCommand().run(async () => {
+      await show({ type: 'mousePressed', x: 5, y: 5 })
+      await show({ type: 'mouseMoved', x: 6, y: 5, buttons: 1 })
+      windowState.visible = false
+      await show({ type: 'mouseMoved', x: 300, y: 300 })
+    })
     expect(cursorEvents().map((event) => event.awaitsArrival)).toEqual([false, false, false])
     expect(cursorEvents()[0].press).toBe(true)
+  })
+
+  it('draws no cursor for input that runs while agent commands only wait in the queue', async () => {
+    const { agentCommand, cursorEvents, show } = setup()
+    const queuedAgentCommand = agentCommand()
+    await show({ type: 'mouseMoved', x: 40, y: 40 })
+    expect(cursorEvents()).toEqual([])
+    queuedAgentCommand.end()
   })
 })

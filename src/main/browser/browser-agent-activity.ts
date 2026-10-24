@@ -21,8 +21,17 @@ export type AgentPointerInput = {
 }
 
 type PageActivity = {
+  /** Agent commands queued or running; the tab stays marked while any remain. */
   commands: number
+  /** An agent command is running now; only its pointer input shows the cursor. */
+  executing: boolean
   idleTimer: ReturnType<typeof setTimeout> | null
+}
+
+/** One page-targeted command, held from when it is queued until it settles. */
+export type AgentCommandLease = {
+  run: <T>(execute: () => Promise<T>) => Promise<T>
+  end: () => void
 }
 
 type PendingArrival = {
@@ -37,7 +46,7 @@ type BrowserAgentActivityDeps = {
   rendererForPage: (browserPageId: string) => WebContents | null
 }
 
-const NO_COMMAND = (): void => {}
+const NOT_AN_AGENT: AgentCommandLease = { run: (execute) => execute(), end: () => {} }
 
 /** Which pages an agent drives, and the show-before-act handshake for its pointer. */
 export class BrowserAgentActivity {
@@ -49,13 +58,13 @@ export class BrowserAgentActivity {
   constructor(private readonly deps: BrowserAgentActivityDeps) {}
 
   /** Marks the page as agent-driven for one command; people's relayed input never counts. */
-  beginCommand(browserPageId: string): () => void {
+  beginCommand(browserPageId: string): AgentCommandLease {
     if (getActiveRpcCaller()?.kind !== 'local-cli') {
-      return NO_COMMAND
+      return NOT_AN_AGENT
     }
     let page = this.pages.get(browserPageId)
     if (!page) {
-      page = { commands: 0, idleTimer: null }
+      page = { commands: 0, executing: false, idleTimer: null }
       this.pages.set(browserPageId, page)
     }
     // Every command republishes, so a reloaded or newly attached window catches up.
@@ -67,7 +76,7 @@ export class BrowserAgentActivity {
     page.commands += 1
     const owned = page
     let ended = false
-    return () => {
+    const end = (): void => {
       if (ended || this.pages.get(browserPageId) !== owned) {
         return
       }
@@ -76,6 +85,19 @@ export class BrowserAgentActivity {
       if (owned.commands === 0) {
         owned.idleTimer = setTimeout(() => this.end(browserPageId), ACTIVITY_IDLE_MS)
       }
+    }
+    return {
+      run: async (execute) => {
+        owned.executing = true
+        try {
+          return await execute()
+        } finally {
+          // Settles before the page queue starts its next command, which may be a person's input.
+          owned.executing = false
+          end()
+        }
+      },
+      end
     }
   }
 
@@ -104,7 +126,7 @@ export class BrowserAgentActivity {
       return
     }
     const browserPageId = this.deps.pageIdForGuest(guest.id)
-    if (!browserPageId || !this.pages.get(browserPageId)?.commands) {
+    if (!browserPageId || !this.pages.get(browserPageId)?.executing) {
       return
     }
     const renderer = this.deps.rendererForPage(browserPageId)

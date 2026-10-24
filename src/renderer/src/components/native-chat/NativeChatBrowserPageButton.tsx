@@ -1,9 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserFavicon } from '@/components/browser-favicon'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import { activateBrowserPagePaletteResult } from '@/lib/browser-page-palette-activation'
-import { useLastBrowserAgentPageId } from '../browser-pane/agent-cursor/browser-agent-activity-state'
+import {
+  getBrowserAgentActivityRevision,
+  useLastBrowserAgentActivity
+} from '../browser-pane/agent-cursor/browser-agent-activity-state'
 import { useNativeChatVisualOwner } from './native-chat-visual-owner'
 import { nativeChatToolRunCategory } from '../../../../shared/native-chat-tool-icon'
 import { nativeChatFullCommand } from '../../../../shared/native-chat-tool-input-text'
@@ -43,27 +46,35 @@ function BrowserPageButton({
   runCallId: string | null
 }): React.JSX.Element | null {
   const owner = useNativeChatVisualOwner()
-  const lastAgentPageId = useLastBrowserAgentPageId(owner?.worktreeId ?? null)
+  const latest = useLastBrowserAgentActivity(owner?.worktreeId ?? null)
+  // A row appears before its command reaches the browser, so only later activity can be its own.
+  const [mountedAtRevision] = useState(getBrowserAgentActivityRevision)
+  const ownActivityPageId = latest && latest.revision > mountedAtRevision ? latest.pageId : null
   const rememberedPageId = runCallId ? pageIdByRunCallId.get(runCallId) : undefined
-  const targetPageId = pageId ?? rememberedPageId ?? lastAgentPageId
+  const targetPageId = pageId ?? rememberedPageId ?? latest?.pageId ?? null
   useEffect(() => {
-    if (!runCallId || pageId || rememberedPageId || !lastAgentPageId) {
+    if (!runCallId || pageId || rememberedPageId || !ownActivityPageId) {
       return
     }
-    pageIdByRunCallId.set(runCallId, lastAgentPageId)
+    pageIdByRunCallId.set(runCallId, ownActivityPageId)
     if (pageIdByRunCallId.size > REMEMBERED_RUNS_MAX) {
       const oldest = pageIdByRunCallId.keys().next().value
       if (oldest !== undefined) {
         pageIdByRunCallId.delete(oldest)
       }
     }
-  }, [runCallId, pageId, rememberedPageId, lastAgentPageId])
+  }, [runCallId, pageId, rememberedPageId, ownActivityPageId])
   const page = useAppStore((state) => {
     if (!targetPageId) {
       return null
     }
+    // A remote runtime's `--page` names its own page id, which a local handle maps.
     for (const pages of Object.values(state.browserPagesByWorkspace)) {
-      const match = pages.find((candidate) => candidate.id === targetPageId)
+      const match = pages.find(
+        (candidate) =>
+          candidate.id === targetPageId ||
+          state.remoteBrowserPageHandlesByPageId[candidate.id]?.remotePageId === targetPageId
+      )
       if (match) {
         return match
       }

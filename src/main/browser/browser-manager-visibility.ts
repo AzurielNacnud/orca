@@ -1,7 +1,11 @@
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
 import { BrowserManagerState } from './browser-manager-state'
 import { focusGuardUnavailableError, guardPaneFocusForAgentInput } from './agent-input-focus-guard'
-import { BrowserAgentActivity, type AgentPointerInput } from './browser-agent-activity'
+import {
+  BrowserAgentActivity,
+  type AgentCommandLease,
+  type AgentPointerInput
+} from './browser-agent-activity'
 
 export abstract class BrowserManagerVisibility extends BrowserManagerState {
   private readonly capturePaintHolds = new Map<string, number>()
@@ -11,8 +15,8 @@ export abstract class BrowserManagerVisibility extends BrowserManagerState {
     rendererForPage: (browserPageId) => this.resolveRendererForBrowserTab(browserPageId)
   })
 
-  /** Holds the page's agent marking for one queued command; call the result when it settles. */
-  beginAgentCommand(browserPageId: string): () => void {
+  /** Holds the page's agent marking for one queued command, from queueing until it settles. */
+  beginAgentCommand(browserPageId: string): AgentCommandLease {
     return this.agentActivity.beginCommand(browserPageId)
   }
 
