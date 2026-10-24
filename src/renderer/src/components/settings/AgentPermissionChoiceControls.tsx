@@ -260,18 +260,23 @@ export function AgentPermissionArgsChip({
   flag,
   onRemove,
   disabled,
+  chipRef,
   buttonRef
 }: {
   label: string
   flag: string
   onRemove: () => void
   disabled?: boolean
+  chipRef?: Ref<HTMLSpanElement>
   buttonRef?: Ref<HTMLButtonElement>
 }): React.JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="flex h-5 max-w-[60%] shrink-0 items-center gap-1 rounded bg-muted px-1.5 font-mono text-[11px] text-foreground/80 focus-within:ring-2 focus-within:ring-ring">
+        <span
+          ref={chipRef}
+          className="absolute top-0.5 left-3 flex h-5 max-w-[60%] items-center gap-1 rounded bg-muted px-1.5 font-mono text-xs leading-5 text-foreground/80 focus-within:ring-2 focus-within:ring-ring"
+        >
           <span className="truncate">{flag}</span>
           <button
             ref={buttonRef}

@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Textarea } from '../ui/textarea'
@@ -103,9 +103,29 @@ export function AgentDefaultArgsInput({
 }): React.JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const chipRef = useRef<HTMLSpanElement>(null)
   const chipButtonRef = useRef<HTMLButtonElement>(null)
   const argsDraft = draft ?? argsOverride
   const { pending, write } = useAgentLaunchFieldWrite()
+  useLayoutEffect(() => {
+    const input = inputRef.current
+    const chip = chipRef.current
+    if (!input) {
+      return
+    }
+    input.style.textIndent = ''
+    if (!chip) {
+      return
+    }
+    const measure = (): void => {
+      input.style.textIndent = `calc(${chip.getBoundingClientRect().width}px + var(--spacing) * 2)`
+      chip.style.transform = `translateY(${-input.scrollTop}px)`
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(chip)
+    return () => observer.disconnect()
+  }, [permissionChip?.flag])
   const commitArgs = (): void => {
     if (pending || draft === null) {
       return
@@ -129,7 +149,7 @@ export function AgentDefaultArgsInput({
       </span>
       <div className="flex items-center gap-2">
         <div
-          className="flex min-h-7 min-w-0 flex-1 items-start gap-2 rounded-md border border-input px-3 py-0.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
+          className="relative min-h-7 min-w-0 flex-1 overflow-hidden rounded-md border border-input px-3 py-0.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) {
               commitArgs()
@@ -144,6 +164,7 @@ export function AgentDefaultArgsInput({
           {permissionChip && (
             <AgentPermissionArgsChip
               {...permissionChip}
+              chipRef={chipRef}
               buttonRef={chipButtonRef}
               disabled={pending}
               onRemove={() => {
@@ -161,6 +182,11 @@ export function AgentDefaultArgsInput({
             rows={1}
             value={argsDraft}
             readOnly={pending}
+            onScroll={(event) => {
+              if (chipRef.current) {
+                chipRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`
+              }
+            }}
             onChange={(event) => setDraft(event.target.value.replace(/[\r\n]/g, ''))}
             onKeyDown={(event) => {
               if (
@@ -190,7 +216,7 @@ export function AgentDefaultArgsInput({
               translate('auto.components.settings.AgentsPane.6f99bf5dd0', 'No default arguments')
             }
             spellCheck={false}
-            className="max-h-40 min-h-5 flex-1 [field-sizing:content]"
+            className="block max-h-40 min-h-5 text-xs leading-5 md:text-xs [field-sizing:content]"
           />
         </div>
         {(argsOverride !== defaultArgs || argsDraft !== defaultArgs) && (
