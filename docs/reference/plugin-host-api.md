@@ -8,20 +8,20 @@ Every call is checked against the capabilities the user approved, and params are
 
 ## Methods
 
-| Method                                           | Capability           | Panels | Mutation | Since | Summary                                                                               |
-| ------------------------------------------------ | -------------------- | ------ | -------- | ----- | ------------------------------------------------------------------------------------- |
-| [`workspace.readContext`](#workspacereadcontext) | `workspace:read`     | yes    | no       | 1.0   | Branch, name and terminal ids of the focused workspace, or null when none is focused. |
-| [`terminal.sendText`](#terminalsendtext)         | `terminal:send`      | no     | yes      | 1.0   | Types text into one terminal named by id, optionally pressing Enter.                  |
-| [`notifications.show`](#notificationsshow)       | `notifications:show` | yes    | yes      | 1.0   | Shows a desktop notification.                                                         |
-| [`storage.get`](#storageget)                     | `storage:own`        | no     | no       | 1.0   | Reads a JSON value from the plugin's private store; null when absent.                 |
-| [`storage.set`](#storageset)                     | `storage:own`        | no     | yes      | 1.0   | Writes a JSON value to the plugin's private store.                                    |
-| [`storage.delete`](#storagedelete)               | `storage:own`        | no     | yes      | 1.0   | Removes a key from the plugin's private store.                                        |
-| [`storage.keys`](#storagekeys)                   | `storage:own`        | no     | no       | 1.0   | Lists the keys in the plugin's private store.                                         |
-| [`secrets.get`](#secretsget)                     | `secrets:own`        | no     | no       | 1.0   | Reads a secret from the plugin's encrypted secrets file; null when absent.            |
-| [`secrets.set`](#secretsset)                     | `secrets:own`        | no     | yes      | 1.0   | Stores a secret in the plugin's encrypted secrets file.                               |
-| [`secrets.delete`](#secretsdelete)               | `secrets:own`        | no     | yes      | 1.0   | Removes a secret from the plugin's encrypted secrets file.                            |
-| [`settings.get`](#settingsget)                   | `settings:own`       | no     | no       | 1.0   | Reads every setting the plugin owns.                                                  |
-| [`settings.set`](#settingsset)                   | `settings:own`       | no     | yes      | 1.0   | Writes one setting the plugin owns.                                                   |
+| Method | Capability | Panels | Mutation | Since | Summary |
+| --- | --- | --- | --- | --- | --- |
+| [`workspace.readContext`](#workspacereadcontext) | `workspace:read` | yes | no | 1.0 | Branch, name and terminal ids of the focused workspace, or null when none is focused. |
+| [`terminal.sendText`](#terminalsendtext) | `terminal:send` | no | yes | 1.0 | Types text into one terminal named by id, optionally pressing Enter. |
+| [`notifications.show`](#notificationsshow) | `notifications:show` | yes | yes | 1.0 | Shows a desktop notification. |
+| [`storage.get`](#storageget) | `storage:own` | no | no | 1.0 | Reads a JSON value from the plugin's private store; null when absent. |
+| [`storage.set`](#storageset) | `storage:own` | no | yes | 1.0 | Writes a JSON value to the plugin's private store. |
+| [`storage.delete`](#storagedelete) | `storage:own` | no | yes | 1.0 | Removes a key from the plugin's private store. |
+| [`storage.keys`](#storagekeys) | `storage:own` | no | no | 1.0 | Lists the keys in the plugin's private store. |
+| [`secrets.get`](#secretsget) | `secrets:own` | no | no | 1.0 | Reads a secret from the plugin's encrypted secrets file; null when absent. |
+| [`secrets.set`](#secretsset) | `secrets:own` | no | yes | 1.0 | Stores a secret in the plugin's encrypted secrets file. |
+| [`secrets.delete`](#secretsdelete) | `secrets:own` | no | yes | 1.0 | Removes a secret from the plugin's encrypted secrets file. |
+| [`settings.get`](#settingsget) | `settings:own` | no | no | 1.0 | Reads every setting the plugin owns. |
+| [`settings.set`](#settingsset) | `settings:own` | no | yes | 1.0 | Writes one setting the plugin owns. |
 
 ### `workspace.readContext`
 
@@ -36,9 +36,7 @@ Branch, name and terminal ids of the focused workspace, or null when none is foc
 Types text into one terminal named by id, optionally pressing Enter.
 
 ```ts
-;(params: { terminalId: string; text: string; enter?: boolean }) => {
-  accepted: boolean
-}
+(params: { terminalId: string; text: string; enter?: boolean }) => { accepted: boolean }
 ```
 
 ### `notifications.show`
@@ -46,9 +44,7 @@ Types text into one terminal named by id, optionally pressing Enter.
 Shows a desktop notification.
 
 ```ts
-;(params: { title: string; body?: string }) => {
-  delivered: boolean
-}
+(params: { title: string; body?: string }) => { delivered: boolean }
 ```
 
 ### `storage.get`
@@ -56,9 +52,7 @@ Shows a desktop notification.
 Reads a JSON value from the plugin's private store; null when absent.
 
 ```ts
-;(params: { key: string }) => {
-  value: JSON
-}
+(params: { key: string }) => { value: JSON }
 ```
 
 ### `storage.set`
@@ -66,9 +60,7 @@ Reads a JSON value from the plugin's private store; null when absent.
 Writes a JSON value to the plugin's private store.
 
 ```ts
-;(params: { key: string; value: JSON }) => {
-  ok: true
-}
+(params: { key: string; value: JSON }) => { ok: true }
 ```
 
 ### `storage.delete`
@@ -76,9 +68,7 @@ Writes a JSON value to the plugin's private store.
 Removes a key from the plugin's private store.
 
 ```ts
-;(params: { key: string }) => {
-  ok: true
-}
+(params: { key: string }) => { ok: true }
 ```
 
 ### `storage.keys`
@@ -94,9 +84,7 @@ Lists the keys in the plugin's private store.
 Reads a secret from the plugin's encrypted secrets file; null when absent.
 
 ```ts
-;(params: { key: string }) => {
-  value: string | null
-}
+(params: { key: string }) => { value: string | null }
 ```
 
 ### `secrets.set`
@@ -104,9 +92,7 @@ Reads a secret from the plugin's encrypted secrets file; null when absent.
 Stores a secret in the plugin's encrypted secrets file.
 
 ```ts
-;(params: { key: string; value: string }) => {
-  ok: true
-}
+(params: { key: string; value: string }) => { ok: true }
 ```
 
 ### `secrets.delete`
@@ -114,9 +100,7 @@ Stores a secret in the plugin's encrypted secrets file.
 Removes a secret from the plugin's encrypted secrets file.
 
 ```ts
-;(params: { key: string }) => {
-  ok: true
-}
+(params: { key: string }) => { ok: true }
 ```
 
 ### `settings.get`
@@ -124,9 +108,7 @@ Removes a secret from the plugin's encrypted secrets file.
 Reads every setting the plugin owns.
 
 ```ts
-;(params: {}) => {
-  settings: Record<string, JSON>
-}
+(params: {}) => { settings: Record<string, JSON> }
 ```
 
 ### `settings.set`
@@ -134,9 +116,7 @@ Reads every setting the plugin owns.
 Writes one setting the plugin owns.
 
 ```ts
-;(params: { key: string; value: JSON }) => {
-  ok: true
-}
+(params: { key: string; value: JSON }) => { ok: true }
 ```
 
 ## Errors
