@@ -65,7 +65,10 @@ export function useAgentPermissionResetNotice(): (
             ) : null}
           </div>
         ),
-        actionButtonStyle: { alignSelf: 'flex-start' },
+        classNames: {
+          content: '!basis-0',
+          actionButton: '!m-0 !self-start'
+        },
         ...(undo
           ? {
               action: {
