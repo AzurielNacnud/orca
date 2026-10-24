@@ -126,6 +126,9 @@ export async function initializeMainProcessPlugins(runtime: OrcaRuntimeService):
           console.warn('[plugins] failed to refresh plugin safety list; using cached state:', error)
         )
     }
+    if (app.isPackaged && updates.pluginSystemEnabled !== undefined) {
+      state.pluginKillListService?.syncPeriodicRefresh(updates.pluginSystemEnabled === true)
+    }
   })
   // Why: headless `orca serve` clients reach plugins through the runtime RPC
   // methods, which resolve the service via this module-level setter. Consent
@@ -153,6 +156,7 @@ export async function initializeMainProcessPlugins(runtime: OrcaRuntimeService):
       .catch((error) =>
         console.warn('[plugins] failed to refresh plugin safety list; using cached state:', error)
       )
+    state.pluginKillListService.syncPeriodicRefresh(true)
   }
   state.pluginService.onChanged((event) => {
     if (
