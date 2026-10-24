@@ -13507,6 +13507,10 @@
           "catalogChanged": "The catalog changed since this page opened. Refresh it, then try again.",
           "blocked": "Orca’s safety list blocks this plugin.",
           "downloadFailed": "Couldn’t download this plugin. Check your connection, then try again. Nothing was installed."
+        },
+        "pluginThemeApply": {
+          "nowUsing": "Now using {{value0}}",
+          "switchBack": "Switch back"
         }
       },
       "right": {
