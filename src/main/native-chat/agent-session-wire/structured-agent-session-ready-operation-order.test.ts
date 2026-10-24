@@ -1,10 +1,20 @@
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
+import {
+  closeTestJournalHostDatabase,
+  openTestJournalHostDatabase
+} from '../agent-session-journal/journal-host-database-test-support'
+import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { abandonStructuredAgentSessionHost } from './structured-agent-session-host-test-abandon'
 import { expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   CALLER,
   attach,
   envelope,
-  hostTestState
+  hostTestState,
+  hostTestRecoveryCapsuleSettled,
+  replaceHostTestState
 } from './structured-agent-session-host-test-harness'
 import {
   HOST_TEST_SESSION as SESSION,
@@ -57,8 +67,9 @@ it.each(['send', 'compact'] as const)(
   }
 )
 
-it('keeps an unknown Set unknown after later Pause and Clear, and replays known success without a child', async () => {
-  const { host, store, acquire } = hostTestState()
+it('persists unknown Set objective and receipt across reopen, without replay overriding later actions', async () => {
+  const { root, acquire } = hostTestState()
+  let { host, store } = hostTestState()
   const changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
   host.deps.adapter.changeThreadGoal = changeThreadGoal
   await attach()
@@ -69,19 +80,79 @@ it('keeps an unknown Set unknown after later Pause and Clear, and replays known 
   expect(
     store.getOperationRow(CALLER.callerKey, params.envelope.clientOperationId)?.outcome
   ).toEqual({ status: 'unknown' })
-  const laterActions = [{ kind: 'status', status: 'paused' }, { kind: 'clear' }] as const
+  const attempted = {
+    kind: 'message',
+    role: 'user',
+    sentAs: 'goal',
+    blocks: [{ type: 'text', text: change.objective }]
+  }
+  const originalJournal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
+  await host.close(SESSION, 'evict')
+  await abandonStructuredAgentSessionHost(host)
+  await hostTestRecoveryCapsuleSettled()
+  const database = host.deps.journalDatabase
+  closeTestJournalHostDatabase(root)
+  expect(database.isClosed).toBe(true)
+  store = await openTestAgentSessionRecordStore(root)
+  host = new StructuredAgentSessionHost({
+    ...host.deps,
+    store,
+    journalDatabase: openTestJournalHostDatabase(root)
+  })
+  replaceHostTestState({ host, store })
+  expect((await host.journalSnapshot(SESSION)).items.map((item) => item.body)).toContainEqual(
+    attempted
+  )
+  expect(host.collaboratorsForTests().sessions.get(SESSION)!.journal).not.toBe(originalJournal)
+  expect(
+    store.getOperationRow(CALLER.callerKey, params.envelope.clientOperationId)?.outcome
+  ).toEqual({ status: 'unknown' })
+  expect(await host.changeThreadGoal(CALLER, params)).toMatchObject({
+    ok: false,
+    refusal: { code: 'agent_session_operation_unknown' }
+  })
+  expect(changeThreadGoal).toHaveBeenCalledOnce()
+  const latestGoal = {
+    objective: 'Ship the newer goal',
+    status: 'active',
+    tokenBudget: null,
+    tokensUsed: 0,
+    timeUsedSeconds: 0,
+    createdAt: 1,
+    updatedAt: 2
+  } as const
+  const laterActions = [
+    { kind: 'status', status: 'paused' },
+    { kind: 'clear' },
+    { kind: 'set', objective: latestGoal.objective }
+  ] as const
   const acceptedActions = laterActions.map((later) => ({
     envelope: envelope('agentSession.threadGoal', { change: later }),
     change: later
   }))
   for (const accepted of acceptedActions) {
     expect(await host.changeThreadGoal(CALLER, accepted)).toMatchObject({ ok: true })
+    if (accepted.change.kind === 'set') {
+      acquire.mock.calls
+        .at(-1)![0]
+        .events!.appendItem(
+          { provider: 'orca', clientMessageId: 'reported-newer-goal' },
+          { kind: 'status', text: 'Goal', threadGoal: { state: 'set', goal: latestGoal } },
+          { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+        )
+      await host.flushStreamedEvents(SESSION)
+    }
+    const beforeReplay = await host.journalSnapshot(SESSION)
     expect(await host.changeThreadGoal(CALLER, params)).toMatchObject({
       ok: false,
       refusal: { code: 'agent_session_operation_unknown' }
     })
+    expect(await host.journalSnapshot(SESSION)).toEqual(beforeReplay)
   }
-  expect(changeThreadGoal).toHaveBeenCalledTimes(3)
+  expect(host.collaboratorsForTests().sessions.get(SESSION)!.journal.threadGoal()).toEqual(
+    latestGoal
+  )
+  expect(changeThreadGoal).toHaveBeenCalledTimes(4)
   await host.close(SESSION, 'evict')
   expect(await host.changeThreadGoal(CALLER, acceptedActions[1]!)).toMatchObject({
     ok: true,
@@ -91,8 +162,11 @@ it('keeps an unknown Set unknown after later Pause and Clear, and replays known 
     ok: false,
     refusal: { code: 'agent_session_operation_unknown' }
   })
-  expect(acquire).toHaveBeenCalledTimes(1)
-  expect(changeThreadGoal).toHaveBeenCalledTimes(3)
+  expect(acquire).toHaveBeenCalledTimes(2)
+  expect(changeThreadGoal).toHaveBeenCalledTimes(4)
+  expect(host.collaboratorsForTests().sessions.get(SESSION)!.journal.threadGoal()).toEqual(
+    latestGoal
+  )
 })
 
 it.each([false, true])('keeps a goal behind active dispatch (ready child: %s)', async (ready) => {
