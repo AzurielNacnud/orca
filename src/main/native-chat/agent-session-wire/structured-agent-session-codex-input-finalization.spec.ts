@@ -1,5 +1,5 @@
-import type { codexInputFinalizationFixture } from './structured-agent-session-codex-stop-note-end.test'
-import { expect, it, vi } from 'vitest'
+import type { codexInputFinalizationFixture } from './structured-agent-session-codex-input-host.test'
+import { expect, it, vi, type Mock } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE as turnScope } from '../../../shared/agent-session-journal-types'
 import {
   continuingStructuredAgentSessionInput,
@@ -646,8 +646,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
       const held = Promise.withResolvers<void>()
       const entered = Promise.withResolvers<void>()
       const outcomes: Promise<unknown>[] = []
-      const readyWaits: ReturnType<typeof vi.fn<StructuredAgentSessionStartReadiness['wait']>>[] =
-        []
+      const readyWaits: Mock<StructuredAgentSessionStartReadiness['wait']>[] = []
       const opened = vi.spyOn(adapter, 'open')
       const start = deps.startProviderChild
       vi.spyOn(deps, 'startProviderChild').mockImplementation((...args) => {
@@ -730,6 +729,8 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
       const id = await permissionSend('same original input', { personality: 'friendly' })
       const waiting = host.waitForSendSettlement(SESSION, id)
       const originalBody = hostTestMessage('same original input')
+      // Ready-child exit proof settles before lease release; terminal rows keep that fence.
+      const settlesAtChildFence = boundary === 'readiness' || boundary === 'rebind'
       let boundFence = journal.submission(id)!.fence
       let stopping: Promise<unknown> = Promise.resolve()
       try {
@@ -780,7 +781,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         expect(journal.submission(id)).toMatchObject({
           clientMessageId: id,
           dispatchState: 'rejected',
-          fence: current().conversationFence(),
+          fence: settlesAtChildFence ? boundFence : current().conversationFence(),
           rejection: { kind: boundary === 'starting-exit' ? 'providerStartFailed' : 'cancelled' },
           options: { personality: 'friendly' }
         })
