@@ -51,24 +51,28 @@ export abstract class RuntimeHeadlessTabProperties extends OrcaRuntimeWithCloseH
     const hostTabId = snapshot
       ? (this.resolveMobileSessionHostTabId(snapshot, args.tabId) ?? args.tabId)
       : args.tabId
+    // Switch point: a terminal tab main owns takes its props in main's layout, window or not.
+    if (ORCA_LAYOUT_OWNER_IS_MAIN && (await this.setMainTabProps(worktreeId, hostTabId, args))) {
+      return { updated: true }
+    }
+    const authoritativeWindow = this.getAvailableAuthoritativeWindow()
+    if (
+      authoritativeWindow &&
+      (args.color !== undefined || args.isPinned !== undefined || args.viewMode !== undefined)
+    ) {
+      throw Object.assign(
+        new Error(
+          'Tab color, pin, and view mode edits are unavailable while a desktop window owns the layout'
+        ),
+        { code: 'capability_unsupported' }
+      )
+    }
     args = await renameStructuredSessionTab(snapshot, hostTabId, args, () =>
       this.ensureStructuredAgentSessionHost()
     )
     const customTitle =
       args.customTitle === undefined ? undefined : args.customTitle?.trim() || null
-    // Switch point: a terminal tab main owns takes its props in main's layout, window or not.
-    if (ORCA_LAYOUT_OWNER_IS_MAIN && (await this.setMainTabProps(worktreeId, hostTabId, args))) {
-      return { updated: true }
-    }
-    if (this.getAvailableAuthoritativeWindow()) {
-      if (args.color !== undefined || args.isPinned !== undefined || args.viewMode !== undefined) {
-        throw Object.assign(
-          new Error(
-            'Tab color, pin, and view mode edits are unavailable while a desktop window owns the layout'
-          ),
-          { code: 'capability_unsupported' }
-        )
-      }
+    if (authoritativeWindow) {
       if (customTitle !== undefined) {
         this.notifier?.renameTerminal(hostTabId, customTitle)
       }

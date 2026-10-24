@@ -12,6 +12,7 @@ import {
   type AgentSessionConversationNames
 } from '../../../shared/agent-session-conversation-names'
 import {
+  AgentSessionAssociationObservation,
   foldAgentSessionStatusEvent,
   revokeAgentSessionStatusLive,
   type AgentSessionStatusSnapshot
@@ -27,6 +28,7 @@ export type StructuredAgentSessionStatusFeedOwner = {
   activate: () => () => void
   getSnapshot: () => StructuredAgentSessionStatusSnapshot
   getNamingSnapshot: () => AgentSessionConversationNames
+  getAssociationRevision: () => number
   getSessionSleepState: (sessionId: string) => number | null | undefined
   getNamingActive: (sessionId: string) => boolean | null
   getSessionObservation: (sessionId: string) => 'live' | 'unverifiable'
@@ -47,6 +49,7 @@ export function structuredAgentSessionStatusFeedKey(target: RuntimeClientTarget)
 function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
   let snapshot: StructuredAgentSessionStatusSnapshot = new Map()
   let names: AgentSessionConversationNames = new Map()
+  const associations = new AgentSessionAssociationObservation()
   let namingActiveSessionIds: Set<string> | null = null
   const confirmedSessions = new Set<string>()
   // Disconnect revokes live execution, but each chat's last Sleep answer still holds.
@@ -92,6 +95,7 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
     } else {
       return
     }
+    associations.observe(event)
     names = foldAgentSessionConversationNames(names, event)
     setSnapshot(foldAgentSessionStatusEvent(snapshot, event))
   }
@@ -175,6 +179,7 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
   }
   open = (): void => {
     const candidate = ++generation
+    associations.renew()
     dropHandle()
     if (target.kind !== 'environment') {
       // A local host is this build; only a remote one can predate the method.
@@ -238,6 +243,7 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
     },
     getSnapshot: () => snapshot,
     getNamingSnapshot: () => names,
+    getAssociationRevision: () => associations.revision,
     getSessionSleepState: (sessionId) => {
       const known = knownSleep.get(sessionId)
       return known !== undefined ? known : sleepResolved ? null : undefined

@@ -56,6 +56,7 @@ it('does not interpret piped input as approval', async () => {
   const reclaim = vi.fn().mockResolvedValue({ completed: true })
   await runReclaimCommand([], { ...streams, reclaim })
   expect(reclaim).toHaveBeenCalledTimes(1)
+  expect(reclaim.mock.calls[0][0].apply).toBe(false)
   expect(streams.text()).not.toContain('[y/N]')
 })
 
@@ -73,6 +74,9 @@ it.each([
   ['--release-cache-min-age-days'],
   ['--release-cache-min-age-days', 'NaN'],
   ['--release-cache-min-age-days', '-1'],
+  ['--generated-min-age-days'],
+  ['--generated-min-age-days', 'NaN'],
+  ['--generated-min-age-days', '-1'],
   ['--unknown']
 ])('rejects invalid flags before any sweep: %j', (...args) => {
   expect(() => parseReclaimArguments(args)).toThrow()

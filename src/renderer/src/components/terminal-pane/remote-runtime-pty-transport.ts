@@ -12,13 +12,14 @@ import {
 } from './remote-runtime-input-journal'
 import type { AcceptedInputOptions } from './pty-preconnect-input-buffer'
 import type { TerminalInputKind } from '../../../../shared/terminal-input-kind'
+import { isSshSignInPendingTerminalError } from './terminal-ssh-sign-in-error'
 /* eslint-disable max-lines -- Why: remote PTY transport keeps lifecycle, JSON fallback, and binary stream wiring together so reconnect/destroy ordering stays testable as one behavior surface. */
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 import {
   isRecoverableRemoteRuntimeConnectionError,
   isRuntimeRpcQueueOverloadError,
   toRemoteRuntimeClientErrorLike
-} from '../../../../shared/remote-runtime-client-error-classification'
+} from '../../../../shared/remote-runtime/remote-runtime-client-error-classification'
 import type {
   RuntimeCreateAgentSessionResult,
   RuntimeEnsureAgentSessionResult
@@ -59,6 +60,10 @@ import { getRemoteRuntimeTerminalMultiplexer } from '../../runtime/remote-runtim
 import { REMOTE_TERMINAL_SNAPSHOT_TOO_LARGE } from '../../runtime/remote-runtime-terminal-snapshot-state'
 import { restoredSnapshotPaintsPrintableContent } from './restored-snapshot-coverage'
 import { hostRecordsTerminalExit, sameWhenBothKnown } from './remote-terminal-host-exit-record'
+import {
+  watchHostRebindAfterExit,
+  type HostRebindAfterExitWatch
+} from './remote-terminal-host-rebind-after-exit'
 import type {
   RemoteRuntimeMultiplexedTerminal,
   RemoteRuntimeSnapshotOutcome
@@ -168,10 +173,12 @@ function isRemoteTerminalStaleMessage(message: string): boolean {
   return message.includes('terminal_handle_stale')
 }
 
-// Why: lost contact, host back-pressure, or a re-minted handle all leave the pane resolvable later.
+// Why: lost contact, host back-pressure, a re-minted handle, or a pending SSH sign-in all leave the
+// pane resolvable later; cancelling would drop the parked retry the post-sign-in revival fires (#31942).
 function isRetryableUnboundAttachError(error: unknown): boolean {
   const clientError = toRemoteRuntimeClientErrorLike(error)
   return (
+    isSshSignInPendingTerminalError(runtimeTerminalErrorMessage(error)) ||
     isRecoverableRemoteRuntimeConnectionError(clientError) ||
     isRuntimeRpcQueueOverloadError(clientError) ||
     isRemoteTerminalStaleMessage(runtimeTerminalErrorMessage(error))
@@ -223,6 +230,7 @@ export function createRemoteRuntimePtyTransport(
     onPtyExit,
     onPtySpawn,
     onPtyRebind,
+    onHostReboundExitedPty,
     onTitleChange,
     onBell,
     onAgentBecameIdle,
@@ -268,6 +276,7 @@ export function createRemoteRuntimePtyTransport(
   let recoveryReplacementPolicy: HostHandleReplacementPolicy = 'reuse'
   let recoveryReplacementPolicyHandle: string | null = null
   let stopWaitingForPublishedHandle: (() => void) | null = null
+  let stopWatchingHostRebind: (() => void) | null = null
   let publishedHandleWaitEpoch: number | null = null
   // Why: a spent auto-recovery window is the evidence that licenses reattaching the fenced handle; explicit retries must not erase it.
   let autoRecoveryWindowSpent = false
@@ -2206,6 +2215,8 @@ export function createRemoteRuntimePtyTransport(
     stopWaitingForPublishedHandle?.()
     stopWaitingForPublishedHandle = null
     publishedHandleWaitEpoch = null
+    stopWatchingHostRebind?.()
+    stopWatchingHostRebind = null
   }
 
   function isCurrentRemoteTerminal(targetHandle: string, targetPtyId: string | null): boolean {
@@ -2259,6 +2270,7 @@ export function createRemoteRuntimePtyTransport(
       probeLifecycle === lifecycleEpoch &&
       handle === targetHandle &&
       sameWhenBothKnown(authoritativePtyIncarnationId, exited.incarnationId)
+    let rebindWatch = startHostRebindWatch()
     void (async () => {
       const { terminal } = await callRuntime<{ terminal?: RuntimeTerminalShow }>('terminal.show', {
         terminal: targetHandle
@@ -2273,15 +2285,44 @@ export function createRemoteRuntimePtyTransport(
         return
       }
       remotePtyId ??= exitedPtyId
+      const exitedIncarnationId = terminal.incarnationId ?? authoritativePtyIncarnationId
       const cause = terminal.exitCause
       retireRemoteTerminalId(cause?.kind === 'exited' ? cause.exitCode : undefined)
+      if (rebindWatch && !destroyed) {
+        stopWatchingHostRebind = rebindWatch.dispose
+        const armed = rebindWatch
+        rebindWatch = null
+        armed.arm(targetHandle, exitedIncarnationId)
+      }
     })()
       .catch(() => {})
       .finally(() => {
+        rebindWatch?.dispose()
         if (hostExitProbeHandle === targetHandle) {
           hostExitProbeHandle = null
         }
       })
+  }
+
+  // Why: a restart's new process can land just after the probe read the old one's exit (#31968).
+  function startHostRebindWatch(): HostRebindAfterExitWatch | null {
+    if (destroyed || !onHostReboundExitedPty || !worktreeId || !tabId || !leafId) {
+      return null
+    }
+    if (!isWebTerminalSurfaceTabId(tabId)) {
+      return null
+    }
+    const watchLifecycle = lifecycleEpoch
+    const environmentId = currentRuntimeEnvironmentId
+    return watchHostRebindAfterExit(
+      { environmentId, worktreeId, hostTabId: toHostSessionTabId(tabId), leafId },
+      (nextHandle) => {
+        stopWatchingHostRebind = null
+        if (!destroyed && terminalEnded && watchLifecycle === lifecycleEpoch) {
+          onHostReboundExitedPty(toRemoteRuntimePtyId(nextHandle, environmentId))
+        }
+      }
+    )
   }
 
   async function hostPaneStillHoldsExitedTerminal(

@@ -23,8 +23,7 @@ import {
   type StructuredAgentSessionLogger
 } from './agent-session-wire/structured-agent-session-logger'
 
-/** `null`: this host cannot run the generation (or it was canceled), so there is nothing to retry
- *  and nothing to show. */
+/** null means unavailable/canceled: no failure to display or retry. */
 export type StructuredChatNameGeneration =
   | { name: string }
   | { error: string; failureOutput?: AgentGenerationFailureOutput }
@@ -40,7 +39,6 @@ export type StructuredChatNamingDeps = {
   /** The current context's first prompt, for a name the user asked for again. */
   readJournalFirstPrompt: (sessionId: string) => Promise<string>
   now?: () => number
-  /** An orchestration worker's chat takes its task's title instead of a generated name. */
   workerTaskTitle: (record: AgentSessionRecord) => { title: string } | null
   generate: (
     record: AgentSessionRecord,
@@ -52,7 +50,6 @@ export type StructuredChatNamingDeps = {
   wait?: (ms: number) => Promise<void>
 }
 
-/** Backoff before each retry of a failed first name; the seed stays if every try fails. */
 const GENERATION_RETRY_DELAYS_MS = [2000, 4000]
 const NAMING_ERROR_LIMIT = 1024
 const FAILURE_OUTPUT_ENTRIES = 32
@@ -69,7 +66,7 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     string,
     { context: string | null; failure: StructuredChatNamingFailure }
   >()
-  // Local diagnostics only, like the worktree rename's: never published or saved.
+  // Retain diagnostics locally without publishing or persisting them.
   const failureOutputs = new Map<string, AgentGenerationFailureOutput>()
   const now = deps.now ?? Date.now
   const hostStartedAt = now()
@@ -150,7 +147,6 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     refresh(record.location.workspaceId, record.sessionId)
   }
 
-  /** The generated name, or null after recording why it failed (unless the run was moot). */
   async function generateName(
     record: AgentSessionRecord,
     firstPrompt: string,

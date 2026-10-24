@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from 'react'
 import { mobileStructuredSessionStatusFeed } from '../session/mobile-structured-session-status-feed'
 import type { AgentSessionConversationNames } from '../../../src/shared/agent-session-conversation-names'
 import { useForceReconnect } from '../transport/host-client-hooks'
@@ -96,12 +104,43 @@ export function useMobileAgentHistoryState(params: MobileAgentHistoryStateParams
     [scope, activeWorktree, worktrees]
   )
 
+  const feed = useMemo(() => (client ? mobileStructuredSessionStatusFeed(client) : null), [client])
+  const names = useSyncExternalStore(
+    feed?.subscribe ?? noSubscription,
+    feed?.getNamingSnapshot ?? noNames,
+    noNames
+  )
+
+  const identity = useMemo(
+    () => ({
+      hostId,
+      client,
+      clientGeneration,
+      connState,
+      worktreeId,
+      worktrees,
+      worktreesLoaded,
+      scope
+    }),
+    [hostId, client, clientGeneration, connState, worktreeId, worktrees, worktreesLoaded, scope]
+  )
+  const identityRef = useRef(identity)
+  useLayoutEffect(() => {
+    identityRef.current = identity
+  }, [identity])
+  const activeLoads = useRef(0)
+  const pendingAssociationLoad = useRef<(() => void) | null>(null)
+
   const loadSessions = useCallback(
     async (options: { scope: AiVaultScope; force: boolean }): Promise<void> => {
+      const requestIdentity = identityRef.current
+      const associationRevision = feed?.getAssociationRevision()
       const generation = generationRef.current + 1
       generationRef.current = generation
       const isCurrent = () =>
         mountedRef.current &&
+        identityRef.current === requestIdentity &&
+        associationRevision === feed?.getAssociationRevision() &&
         generationRef.current === generation &&
         (client?.getGeneration?.() ?? 0) === clientGeneration
 
@@ -119,6 +158,7 @@ export function useMobileAgentHistoryState(params: MobileAgentHistoryStateParams
       }
 
       setScreenState((prev) => (prev.kind === 'ready' ? prev : { kind: 'loading' }))
+      activeLoads.current += 1
       try {
         // Gate on the capability so older hosts lacking the method are detected
         // and we never call a missing RPC.
@@ -176,32 +216,51 @@ export function useMobileAgentHistoryState(params: MobileAgentHistoryStateParams
         const message = err instanceof Error ? err.message : 'Unable to load agent sessions'
         setHostStatusProbe(null)
         setScreenState({ kind: 'error', message })
+      } finally {
+        activeLoads.current -= 1
+        if (activeLoads.current === 0) {
+          const followUp = pendingAssociationLoad.current
+          pendingAssociationLoad.current = null
+          followUp?.()
+        }
       }
     },
-    [activeWorktree, client, clientGeneration, connState, hostId, worktrees, worktreesLoaded]
-  )
-
-  const feed = useMemo(() => (client ? mobileStructuredSessionStatusFeed(client) : null), [client])
-  const names = useSyncExternalStore(
-    feed?.subscribe ?? noSubscription,
-    feed?.getNamingSnapshot ?? noNames,
-    noNames
+    [activeWorktree, client, clientGeneration, connState, feed, hostId, worktrees, worktreesLoaded]
   )
 
   // Initial + reconnect load. Why: scope switches reuse the host's 15s cache
   // (force:false) so a tab tap is cheap; only an explicit refresh bypasses it.
   useEffect(() => {
     void loadSessions({ scope, force: false })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- scope handled by onSelectScope
-  }, [loadSessions])
+  }, [loadSessions, scope])
 
-  const onSelectScope = useCallback(
-    (nextScope: AiVaultScope) => {
-      setScope(nextScope)
-      void loadSessions({ scope: nextScope, force: false })
-    },
-    [loadSessions]
-  )
+  useEffect(() => {
+    if (!feed) {
+      return
+    }
+    let revision = feed.getAssociationRevision()
+    const stop = feed.subscribe(() => {
+      const next = feed.getAssociationRevision()
+      if (next === revision) {
+        return
+      }
+      revision = next
+      const reload = () => void loadSessions({ scope, force: false })
+      if (activeLoads.current > 0) {
+        pendingAssociationLoad.current = reload
+      } else {
+        reload()
+      }
+    })
+    return () => {
+      stop()
+      pendingAssociationLoad.current = null
+    }
+  }, [feed, loadSessions, scope])
+
+  const onSelectScope = useCallback((nextScope: AiVaultScope) => {
+    setScope(nextScope)
+  }, [])
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
