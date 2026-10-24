@@ -216,7 +216,7 @@ export function AgentDefaultArgsInput({
               translate('auto.components.settings.AgentsPane.6f99bf5dd0', 'No default arguments')
             }
             spellCheck={false}
-            className="block max-h-40 min-h-5 text-xs leading-5 md:text-xs [field-sizing:content]"
+            className="block max-h-40 min-h-5 [field-sizing:content]"
           />
         </div>
         {(argsOverride !== defaultArgs || argsDraft !== defaultArgs) && (
