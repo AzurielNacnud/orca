@@ -3460,7 +3460,10 @@
       "permissionResetWas": "was {{mode}}",
       "permissionResetOwn": "its own settings",
       "permissionResetMore_one": "and {{count}} more",
-      "permissionResetMore_other": "and {{count}} more"
+      "permissionResetMore_other": "and {{count}} more",
+      "loadingHost": "Loading agent settings…",
+      "permissionChoiceDescription": "Applies where each agent supports this mode. Change one agent below.",
+      "permissionResetsOwnChoices": "Choosing a mode here resets the agents marked as set separately."
     },
     "browser": {
       "clientHostedRemote": {

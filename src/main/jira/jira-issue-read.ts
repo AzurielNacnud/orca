@@ -53,7 +53,7 @@ export async function getIssue(
         entry,
         `${apiBasePath(entry.site)}/issue/${encodeURIComponent(key)}?${params.toString()}`
       )
-      // Why: keep only JSON under the pool; binary downloads fan out after release.
+      // Release the API pool before downloading binary media.
       mediaRequest = collectIssueMediaRequest(issue, mediaFormat)
     } catch (error) {
       if (isAuthError(error)) {

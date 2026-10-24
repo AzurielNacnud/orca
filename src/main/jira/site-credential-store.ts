@@ -189,7 +189,5 @@ export function deleteToken(siteId: string): void {
   tokenFileCache.forget(siteId)
   try {
     unlinkSync(getTokenPath(siteId))
-  } catch {
-    // Token may not exist — safe to ignore.
-  }
+  } catch {}
 }

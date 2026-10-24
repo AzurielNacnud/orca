@@ -156,6 +156,7 @@ export function AgentDefaultArgsInput({
             />
           )}
           <Textarea
+            variant="composite"
             ref={inputRef}
             rows={1}
             value={argsDraft}
@@ -189,7 +190,7 @@ export function AgentDefaultArgsInput({
               translate('auto.components.settings.AgentsPane.6f99bf5dd0', 'No default arguments')
             }
             spellCheck={false}
-            className="max-h-40 min-h-5 flex-1 resize-none rounded-none border-0 p-0 font-mono text-xs shadow-none [field-sizing:content] focus-visible:ring-0 dark:bg-transparent"
+            className="max-h-40 min-h-5 flex-1 [field-sizing:content]"
           />
         </div>
         {(argsOverride !== defaultArgs || argsDraft !== defaultArgs) && (

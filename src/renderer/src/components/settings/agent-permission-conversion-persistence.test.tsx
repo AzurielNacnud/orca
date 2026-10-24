@@ -555,7 +555,7 @@ const envWork = { entries: 0, bytes: 0 }
 
 async function pickGlobalPermission(name: string) {
   const user = userEvent.setup()
-  await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
+  await user.click(screen.getByRole('button', { name: 'Permissions' }))
   await user.click(await screen.findByRole('menuitemradio', { name: new RegExp(name) }))
 }
 
