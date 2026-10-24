@@ -98,11 +98,13 @@ export async function settleStructuredAgentSessionLeftovers(
         ].filter(
           (entry) =>
             !continuingStructuredAgentSessionInput(journal, entry.clientMessageId) &&
-            !finalizingStructuredAgentSessionInput(
-              journal,
-              entry.clientMessageId,
-              input.finalizingOwner
-            )
+            // Exit proof can settle a send now; generic doubt waits for its own result.
+            (entry.state === 'rejected' ||
+              !finalizingStructuredAgentSessionInput(
+                journal,
+                entry.clientMessageId,
+                input.finalizingOwner
+              ))
         )
         planned = mutations.length + dispatches.length
         return { mutations, dispatches }

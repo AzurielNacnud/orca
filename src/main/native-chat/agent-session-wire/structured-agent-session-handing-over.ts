@@ -18,7 +18,7 @@ type Handover = { count: number; input?: HandoverInput }
 const handingOver = new WeakMap<HandoverJournal, Map<string, Handover>>()
 const NONE: ReadonlyMap<string, Handover> = new Map()
 
-/** Outcome responsibility survives cancellation; only its exact owner may bypass delegation. */
+/** Cancellation retains outcome responsibility; its exact owner may bypass doubt delegation. */
 export function finalizingStructuredAgentSessionInput(
   journal: HandoverJournal,
   clientMessageId: string,
