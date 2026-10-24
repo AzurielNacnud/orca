@@ -1,10 +1,14 @@
+import { ProjectSectionCatalogSchema } from '../../../../shared/project-section-catalog-schema'
+import { resolveServedProjectSectionClaims } from '../../../../shared/project-section-catalog-claims'
+import { projectHostSetupProjectionFromRepos } from '../../../../shared/project-host-setup-projection'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { applyManualRepoOrder } from '../../../../shared/manual-repo-order'
 import { mergeFetchedHostProjectCatalog } from '../../../../shared/project-compatibility-host-merge'
 import type { ProjectCatalogRows } from '../../../../shared/project-compatibility-merge'
 import {
   buildProjectGroupingIndex,
-  buildProjectSections
+  buildProjectSections,
+  getProjectGroupingForRepo
 } from '../../../../shared/project-section-grouping'
 import {
   getLogicalRepoOrderRankById,
@@ -201,4 +205,43 @@ describe('the phone groups by Project exactly as the paired desktop sidebar', ()
       expect(phoneHeaders(served)).toEqual(PROJECT_SECTION_PARITY_HEADERS[projectOrderBy])
     }
   )
+})
+
+it('publishes unresolved setups without letting their absent owners demote registered phone checkouts', () => {
+  const repo: Repo = {
+    id: 'a',
+    path: '/a',
+    displayName: 'A',
+    badgeColor: '',
+    addedAt: 1,
+    gitRemoteIdentity: {
+      canonicalKey: 'github.com/acme/app',
+      remoteName: 'origin',
+      remoteUrl: 'https://github.com/acme/app.git'
+    }
+  }
+  const derived = projectHostSetupProjectionFromRepos([repo])
+  const setup = derived.setups[0]
+  if (!setup) {
+    throw new Error('no derived setup')
+  }
+  const published = getProjectSectionCatalogFromState({
+    repos: [repo],
+    endpointProjects: derived.projects,
+    endpointProjectHostSetups: [...derived.setups, { ...setup, id: 'z', repoId: 'z', path: '/z' }],
+    projectOrderBy: 'manual'
+  })
+  const parsed = ProjectSectionCatalogSchema.parse(JSON.parse(JSON.stringify(published)))
+  expect(parsed.setups.map((row) => row.repoId)).toEqual(['a', 'z'])
+  const phone = resolveServedProjectSectionClaims(parsed)
+  expect(
+    getProjectGroupingForRepo(
+      'a',
+      new Map([[repo.id, repo]]),
+      buildProjectGroupingIndex({
+        projects: phone.projects,
+        projectHostSetups: phone.setups
+      })
+    ).key
+  ).toBe(`project:${derived.projects[0].id}`)
 })

@@ -230,7 +230,11 @@ describe('useComposerState integrated lifecycle', () => {
         value: {
           ...window.api,
           gh: { repoSlug: vi.fn().mockResolvedValue(null) },
-          worktrees: { ...window.api.worktrees, create }
+          worktrees: {
+            ...window.api.worktrees,
+            create,
+            updateMeta: vi.fn().mockResolvedValue(undefined)
+          }
         }
       })
       const composer = renderHook(() =>
@@ -242,8 +246,9 @@ describe('useComposerState integrated lifecycle', () => {
             provider: 'linear',
             type: 'issue',
             number: 0,
-            title: 'Typed task',
-            url: ''
+            title: 'Linked task',
+            url: 'https://linear.app/acme/issue/ENG-123',
+            linearIdentifier: 'ENG-123'
           }
         })
       )
@@ -282,11 +287,18 @@ describe('useComposerState integrated lifecycle', () => {
             hostId: 'local',
             path: 'C:/app-b'
           })
-          const quoted = windows ? `'fix it''s "quoted" $HOME'` : `'fix it'"'"'s "quoted" $HOME'`
-          expect(pending.request.startup?.command).toBe(
-            agent === 'claude' ? `claude ${quoted}` : `codex ${quoted}`
-          )
-          expect(pending.request.startupPlan?.launchCommand).toBe(pending.request.startup?.command)
+          const draft = `fix it's "quoted" $HOME\n\nLinked Linear issue: ENG-123\nhttps://linear.app/acme/issue/ENG-123\n`
+          if (agent === 'claude') {
+            const quoted = windows
+              ? '"fix it\'s `"quoted`" `$HOME`n`nLinked Linear issue: ENG-123`nhttps://linear.app/acme/issue/ENG-123"'
+              : `'${draft.trim().replaceAll("'", "'\"'\"'")}'`
+            expect(pending.request.startup?.command).toBe(`claude --prefill ${quoted}`)
+            expect(pending.request.startupPlan?.draftPrompt).toBeUndefined()
+          } else {
+            expect(pending.request.startup).toBeUndefined()
+            expect(pending.request.startupPlan?.launchCommand).toBe('codex')
+            expect(pending.request.startupPlan?.draftPrompt).toBe(draft)
+          }
           act(() => useAppStore.getState().removePendingWorktreeCreation(pending.creationId))
           await act(async () =>
             responses[windows ? 1 : 0].resolve({

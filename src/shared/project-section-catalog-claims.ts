@@ -15,7 +15,9 @@ export function resolveServedProjectSectionClaims(
   )
   const claims = catalog.setups.map((setup) => ({
     ...setup,
-    createdAt: addedAtByOwner.get(`${getRepoSetupOwnerScope(setup)}\0${setup.repoId}`) ?? 0
+    createdAt:
+      addedAtByOwner.get(`${getRepoSetupOwnerScope(setup)}\0${setup.repoId}`) ??
+      Number.POSITIVE_INFINITY
   }))
   const outclaimed = getOutclaimedProjectSetups(claims)
   if (!outclaimed.size) {
