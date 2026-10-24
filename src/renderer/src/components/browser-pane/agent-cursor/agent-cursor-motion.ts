@@ -36,7 +36,7 @@ const lerp = (from: number, to: number, t: number): number => from + (to - from)
 
 export type AgentCursorController = {
   /** Moves to a point in layer px; `onArrived(sequence)` fires once it has landed. */
-  moveTo: (target: CursorPoint, sequence: number, options: { animate: boolean }) => void
+  moveTo: (target: CursorPoint, sequence: number) => void
   /** Plays the press ring at the cursor's tip. */
   press: () => void
   /** Fades in or out without moving. Hidden cursors snap to their next target. */
@@ -231,7 +231,7 @@ export function createAgentCursor(
   render()
 
   return {
-    moveTo(target, sequence, { animate }) {
+    moveTo(target, sequence) {
       markActive()
       wobbleElapsed = null
       const hidden = visibility.target === 0 && visibility.value < 0.001
@@ -242,13 +242,9 @@ export function createAgentCursor(
         finishInstantly(sequence)
         return
       }
-      if (!animate || hidden) {
-        // A hidden cursor appears where the agent acts instead of flying in from a stale spot.
+      if (hidden) {
+        // Appear where the agent acts instead of flying in from a stale spot.
         jumpTo(target)
-        if (!hidden) {
-          finishInstantly(sequence)
-          return
-        }
       } else {
         motion = planCursorMotion(point, target, {
           width: layer.clientWidth,

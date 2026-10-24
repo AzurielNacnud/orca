@@ -63,25 +63,26 @@ export function useBrowserAgentCursor(
       show: (event) => {
         const webview = webviewRef.current
         const host = getHost()
-        if (!webview || !host) {
+        const page = webview?.getBoundingClientRect()
+        if (!webview || !host || !page || !isOnScreen(webview, page)) {
+          // A hidden page has no box to map onto; the cursor returns at the agent's next action there.
+          drawn?.cursor.setVisible(false)
           return false
         }
         const { layer, cursor } = ensureDrawn(host)
-        const page = webview.getBoundingClientRect()
         const layerRect = layer.getBoundingClientRect()
         const point = {
           x: page.left - layerRect.left + (event.x * page.width) / event.viewportWidth,
           y: page.top - layerRect.top + (event.y * page.height) / event.viewportHeight
         }
-        const visible = isOnScreen(webview, page)
-        if (visible && event.awaitsArrival) {
+        if (event.awaitsArrival) {
           awaited.add(event.sequence)
         }
-        cursor.moveTo(point, event.sequence, { animate: visible })
-        if (event.press && visible) {
+        cursor.moveTo(point, event.sequence)
+        if (event.press) {
           cursor.press()
         }
-        return visible
+        return true
       },
       hide: () => drawn?.cursor.setVisible(false)
     })
