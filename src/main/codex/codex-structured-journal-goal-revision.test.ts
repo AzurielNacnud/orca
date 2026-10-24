@@ -113,7 +113,7 @@ describe('codex goal accounting revisions', () => {
       sessionId: IDENTITY.sessionId,
       primaryThreadId: () => threadId
     })
-    const projected = []
+    const projected: ReturnType<typeof currentAgentSessionThreadGoal>[] = []
     for (const { receivedAt, frame } of notifications) {
       expect(
         translator.handle({
