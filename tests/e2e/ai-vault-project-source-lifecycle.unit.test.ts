@@ -107,14 +107,20 @@ afterEach(async () => {
   root = undefined
 })
 
-async function seededStore(name: string, repos: Repo[] = [a, b]) {
+async function seededStore(
+  name: string,
+  repos: Repo[] = [a, b],
+  provisioned: readonly string[] = []
+) {
   root ??= await realpath(await mkdtemp(join(tmpdir(), 'sta10541-source-')))
   const path = join(root, name, 'state.json')
   const state = getDefaultPersistedState(root)
   state.repos = repos
   const raw = projectHostSetupCompatibilityFromRepos(state.repos)
   state.projects = [...raw.projects]
-  state.projectHostSetups = [...raw.setups]
+  state.projectHostSetups = raw.setups.map((setup) =>
+    provisioned.includes(setup.repoId) ? { ...setup, setupMethod: 'provisioned' } : setup
+  )
   state.settings.workspaceDir = join(root, 'workspaces')
   state.settings.nestWorkspaces = false
   writePersistedStateJson(path, JSON.stringify(state))
@@ -461,7 +467,7 @@ it('preserves actual discovered selected-source legacy keys across supported cat
   const cases: Repo[][] = [
     [a],
     [a, b],
-    [a, { ...b, projectHostSetupMethod: 'provisioned' }],
+    [a, b],
     [{ ...a, kind: 'folder' }],
     [{ ...a, upstream: undefined }],
     [a, { ...b, projectGroupId: 'manual-group' }],
@@ -469,9 +475,13 @@ it('preserves actual discovered selected-source legacy keys across supported cat
     [a, { ...b, executionHostId: 'runtime:unresolved-owner' }]
   ]
   for (const [index, repos] of cases.entries()) {
-    const old = await seededStore(`old-ingress-${index}`, repos)
-    const current = await seededStore(`new-ingress-${index}`, repos)
+    const provisioned = index === 2 ? ['b'] : []
+    const old = await seededStore(`old-ingress-${index}`, repos, provisioned)
+    const current = await seededStore(`new-ingress-${index}`, repos, provisioned)
     const raw = projectHostSetupCompatibilityFromRepos(repos)
+    raw.setups = raw.setups.map((setup) =>
+      provisioned.includes(setup.repoId) ? { ...setup, setupMethod: 'provisioned' } : setup
+    )
     const original = vi.spyOn(old, 'getProjectHostSetups').mockReturnValue([...raw.setups])
     const repo = repos.at(-1)!
     const before = caller(old, repo, repo.path)

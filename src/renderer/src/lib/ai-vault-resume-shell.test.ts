@@ -10,7 +10,9 @@ import { buildAiVaultResumeCopyCommandForWorktree } from './ai-vault-resume-comm
 
 type ResumeShellState = Parameters<typeof buildAiVaultResumeCopyCommandForWorktree>[0]['state']
 
-function makeState(worktreeHostId?: string): ResumeShellState {
+function makeState(
+  worktreeHostId?: Parameters<typeof makeWorktree>[0]['hostId']
+): ResumeShellState {
   return {
     activeRepoId: 'repo-1',
     activeWorktreeId: 'repo-1::worktree-1',
@@ -30,6 +32,7 @@ function makeState(worktreeHostId?: string): ResumeShellState {
     ],
     settings: {
       ...getDefaultSettings('/tmp'),
+      agentPermissionOverrides: { codex: 'own' },
       agentDefaultArgs: { codex: '' },
       agentDefaultEnv: { codex: {} }
     },

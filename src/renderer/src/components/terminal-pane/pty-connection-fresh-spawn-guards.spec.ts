@@ -1,5 +1,6 @@
 import { bindPtyConnectionTestMocks } from './pty-connection-mocks.spec'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { TEST_REPO } from '@/store/slices/worktrees-slice-test-fixtures'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { flushAsyncTicks } from './pty-connection-test-async'
 import { sendTerminalInputThroughPane } from './pty-connection-test-dom'
@@ -253,7 +254,22 @@ export function registerPtyConnectionFreshSpawnGuardsTests(): void {
           terminalWindowsWslDistro: 'Debian',
           localWindowsRuntimeDefault: { kind: 'wsl', distro: 'Debian' }
         },
-        projects: [{ id: 'repo1', localWindowsRuntimePreference: { kind: 'windows-host' } }]
+        repos: [{ ...TEST_REPO, id: 'repo1', path: '/tmp/wt-1' }],
+        endpointProjectHostSetups: [
+          {
+            id: 'repo1',
+            projectId: 'repo1',
+            repoId: 'repo1',
+            hostId: 'local',
+            path: '/tmp/wt-1',
+            displayName: 'orca',
+            setupState: 'ready',
+            setupMethod: 'legacy-repo',
+            createdAt: 0,
+            updatedAt: 0
+          }
+        ],
+        endpointProjects: [{ id: 'repo1', localWindowsRuntimePreference: { kind: 'windows-host' } }]
       }
 
       connectPanePty(createPane(1) as never, createManager(1) as never, createDeps() as never)
@@ -307,7 +323,7 @@ export function registerPtyConnectionFreshSpawnGuardsTests(): void {
             { id: 'tab-floating-agent', ptyId: null, launchAgent: 'codex' }
           ]
         },
-        projects: [
+        endpointProjects: [
           { id: 'repo1', localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' } }
         ],
         settings: {

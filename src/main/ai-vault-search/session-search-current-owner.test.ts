@@ -47,12 +47,17 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-function store(repos = [a, b]) {
+function store(repos = [a, b], provisioned: readonly string[] = []) {
   const projection = projectHostSetupCompatibilityFromRepos(repos)
   return {
     getRepos: () => repos,
     getProjects: () => projection.projects,
-    getProjectHostSetups: () => projection.setups,
+    getProjectHostSetups: () =>
+      projection.setups.map((setup) =>
+        provisioned.includes(setup.repoId)
+          ? { ...setup, setupMethod: 'provisioned' as const }
+          : setup
+      ),
     getAllWorktreeMeta: () => ({
       'b::/linked/b': {
         displayName: '',
@@ -177,13 +182,12 @@ it('uses literal nested regions and source namespaces without changing legacy cw
     {
       ...a,
       id: 'drive',
-      projectHostSetupMethod: 'provisioned',
       path: '//wsl.localhost/Ubuntu/mnt/c/Case_%/app'
     },
-    { ...a, id: 'unicode', path: '/repos/Café_%', projectHostSetupMethod: 'provisioned' },
-    { ...a, id: 'native-drive', path: 'C:/Native_%', projectHostSetupMethod: 'provisioned' }
+    { ...a, id: 'unicode', path: '/repos/Café_%' },
+    { ...a, id: 'native-drive', path: 'C:/Native_%' }
   ]
-  const source = store(repos)
+  const source = store(repos, ['drive', 'unicode', 'native-drive'])
   const catalog = { ...sessionSearchScopeCatalogFromStore(source, 'local'), worktreeMeta: {} }
   const project = source.getProjectHostSetups().find((row) => row.repoId === 'ubuntu')!.projectId
   const selection = await compileSessionSearchProjectOwnership(catalog, `project:${project}`)
@@ -344,10 +348,12 @@ it('answers one complete provisioned Project above 64 roots before pressure and 
     ...a,
     id: `eligible-${index}`,
     path: `/roots/eligible-${index}`,
-    addedAt: index,
-    ...(index ? { projectHostSetupMethod: 'provisioned' as const } : {})
+    addedAt: index
   }))
-  const source = store([...eligible, { ...b, path: '/roots/independent', addedAt: 100 }])
+  const source = store(
+    [...eligible, { ...b, path: '/roots/independent', addedAt: 100 }],
+    eligible.slice(1).map((repo) => repo.id)
+  )
   harness = await openSessionSearchHarness('sta10541-whole-union', { sessionCandidateLimit: 81 })
   for (let id = 1; id <= 80; id++) {
     addSyntheticSession(harness.db, {

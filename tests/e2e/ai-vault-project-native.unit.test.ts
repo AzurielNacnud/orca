@@ -84,12 +84,14 @@ it('bounds actual panel-to-IPC canonical preparation and native cwd seeks at N a
         displayName: 'app',
         badgeColor: '',
         addedAt: index,
-        upstream: { owner: 'acme', repo: 'app' },
-        ...(index ? { projectHostSetupMethod: 'provisioned' } : {})
+        upstream: { owner: 'acme', repo: 'app' }
       })
     }
     repos.push({ ...repos[0], id: 'independent', path: join(root, 'independent'), addedAt: 1000 })
     const raw = projectHostSetupCompatibilityFromRepos(repos)
+    raw.setups = raw.setups.map((setup, index) =>
+      index > 0 && index < size ? { ...setup, setupMethod: 'provisioned' } : setup
+    )
     const source = {
       getRepos: () => repos,
       getProjects: () => raw.projects,
@@ -230,10 +232,12 @@ it('does not revisit one SQL cwd range per WSL namespace at N and 10N', async ()
       displayName: 'app',
       badgeColor: '',
       addedAt: index,
-      upstream: { owner: 'acme', repo: 'app' },
-      ...(index ? { projectHostSetupMethod: 'provisioned' as const } : {})
+      upstream: { owner: 'acme', repo: 'app' }
     }))
     const raw = projectHostSetupCompatibilityFromRepos(repos)
+    raw.setups = raw.setups.map((setup, index) =>
+      index ? { ...setup, setupMethod: 'provisioned' } : setup
+    )
     harness = await openSessionSearchHarness('sta10541-namespace-union')
     for (let id = 1; id <= 20; id++) {
       addSyntheticSession(harness.db, {

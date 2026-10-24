@@ -3,7 +3,7 @@ import {
   normalizeRuntimePathForComparison,
   isRuntimePathAbsolute
 } from '../../shared/cross-platform-path'
-import { getRepoExecutionHostId } from '../../shared/execution-host'
+import { getRepoExecutionHostId, getRepoRoutingConnectionId } from '../../shared/execution-host'
 import { resolveProjectHostSetupProjection } from '../../shared/project-catalog-canonical-projection'
 import { getProjectHostSetupLookup } from '../../shared/project-host-setup-lookup'
 import { toAiVaultProjectKey } from '../../shared/ai-vault-project-key'
@@ -65,8 +65,9 @@ export function materializeSessionSearchOwnership(
     }
   }
   for (const repo of catalog.repos) {
-    const host = repo.connectionId
-      ? `ssh:${encodeURIComponent(repo.connectionId)}`
+    const connectionId = getRepoRoutingConnectionId(repo)
+    const host = connectionId
+      ? `ssh:${encodeURIComponent(connectionId)}`
       : getRepoExecutionHostId(repo)
     if (!local(host)) {
       continue

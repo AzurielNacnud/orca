@@ -372,8 +372,8 @@ describe('openHttpLink', () => {
       localhostWorktreeLabelsEnabled: true
     }
     storeState.repos = [
-      { id: 'repo-local', displayName: 'Local' },
-      { id: 'repo-remote', displayName: 'Remote' }
+      { id: 'repo-local', displayName: 'Local', path: '/local', badgeColor: '', addedAt: 0 },
+      { id: 'repo-remote', displayName: 'Remote', path: '/remote', badgeColor: '', addedAt: 0 }
     ]
     storeState.worktreesByRepo = {
       'repo-local': [{ id: 'wt-local', projectId: 'repo-local' }],

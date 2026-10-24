@@ -17,12 +17,12 @@ import {
 
 function legacySettings() {
   const settings = getDefaultSettings('/tmp')
-  delete settings.localWindowsRuntimeDefault
+  Reflect.deleteProperty(settings, 'localWindowsRuntimeDefault')
   return settings
 }
 
 type PreflightState = Parameters<typeof getLocalPreflightContext>[0] &
-  Pick<AppState, 'endpointProjects' | 'endpointProjectHostSetups'>
+  Pick<AppState, 'repos' | 'endpointProjects' | 'endpointProjectHostSetups'>
 function project(overrides: Pick<Project, 'id'> & Partial<Project>): Project {
   return {
     displayName: '',
@@ -152,7 +152,7 @@ describe('local preflight context', () => {
   })
 
   it('keys preflight by the focused worktree host over the default host', () => {
-    const localFocused: AppState = {
+    const localFocused: PreflightState = {
       ...makeState({
         repoPath: '/Users/alice/repo',
         worktreePath: '/Users/alice/repo',
@@ -586,7 +586,6 @@ describe('local preflight context', () => {
       ...makeState({ repoPath: 'C:\\Users\\alice\\repo' }),
       detectedWorktreesByRepo: {
         'repo-1': {
-          repoId: 'repo-1',
           worktrees: [
             makeWorktree({ id: 'repo-1::detected', repoId: 'repo-1', path: 'C:\\detected' })
           ]

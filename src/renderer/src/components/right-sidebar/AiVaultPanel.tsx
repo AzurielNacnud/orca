@@ -186,7 +186,7 @@ export default function AiVaultPanel({
         repos,
         worktrees: allWorktrees,
         projectHostSetupProjection,
-        settings,
+        settings: settings ?? undefined,
         sessions
       }),
     [allWorktrees, projectHostSetupProjection, repos, sessions, settings]

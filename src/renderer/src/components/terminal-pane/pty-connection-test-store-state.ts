@@ -55,6 +55,7 @@ export type StoreState = {
     displayName?: string
     executionHostId?: string | null
   }[]
+  endpointProjectHostSetups: AppState['endpointProjectHostSetups']
   endpointProjects: {
     id: string
     localWindowsRuntimePreference?:

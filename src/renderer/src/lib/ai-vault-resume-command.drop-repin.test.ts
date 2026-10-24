@@ -19,6 +19,7 @@ function makeState(): DropRepinState {
     folderWorkspaces: [],
     projectGroups: [],
     repos: [{ ...TEST_REPO, id: 'repo-1', path: '/Users/ada/repo' }],
+    endpointProjectHostSetups: [],
     endpointProjects: [
       {
         id: 'repo-1',
