@@ -438,11 +438,13 @@
       }
     },
     "agents": {
+      "permissionResetMoved": "Moved {{count}} agents to {{mode}}",
       "permissionResetMoved_one": "Moved {{count}} agent to {{mode}}",
       "permissionResetMoved_other": "Moved {{count}} agents to {{mode}}",
       "permissionResetUndo": "Undo",
       "permissionResetWas": "was {{mode}}",
       "permissionResetOwn": "its own settings",
+      "permissionResetMore": "and {{count}} more",
       "permissionResetMore_one": "and {{count}} more",
       "permissionResetMore_other": "and {{count}} more",
       "permissionsTitle": "Permissions",
