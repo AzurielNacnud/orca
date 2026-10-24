@@ -92,10 +92,7 @@ export function NativeChatThreadGoalBanner(props: {
             <GoalAction
               label={translate('components.native-chat.goal.clear', 'Clear goal')}
               // Claude's `/goal clear` must enter a fresh turn, like a composer send.
-              disabled={
-                pending ||
-                (!props.hostChanges && (props.sendUnavailable || props.startsHeld === true))
-              }
+              disabled={!props.hostChanges && (props.sendUnavailable || props.startsHeld === true)}
               onClick={() => onChange({ kind: 'clear' })}
             >
               <Trash2 className="size-3.5" />
@@ -103,7 +100,7 @@ export function NativeChatThreadGoalBanner(props: {
             {statusChange === 'paused' ? (
               <GoalAction
                 label={translate('components.native-chat.goal.pause', 'Pause goal')}
-                disabled={pending}
+                disabled={false}
                 onClick={() => onChange({ kind: 'status', status: 'paused' })}
               >
                 <Pause className="size-3.5" />

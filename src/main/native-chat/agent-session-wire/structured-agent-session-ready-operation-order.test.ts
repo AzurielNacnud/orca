@@ -1,4 +1,6 @@
 import { expect, it, vi } from 'vitest'
+import { changeCodexThreadGoal } from '../../codex/codex-structured-thread-goal'
+import type { CodexSession } from '../../codex/codex-structured-session-state'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   CALLER,
@@ -57,43 +59,41 @@ it.each(['send', 'compact'] as const)(
   }
 )
 
-it('rechecks a goal retry settled during startup, and replays it later without a child', async () => {
+it('keeps an unknown Set unknown after later Pause and Clear, and replays known success without a child', async () => {
   const { host, store, acquire } = hostTestState()
   const changeThreadGoal = vi.fn(async () => ({ ok: true as const }))
   host.deps.adapter.changeThreadGoal = changeThreadGoal
   await attach()
   const change = { kind: 'set' as const, objective: 'Ship the parser' }
-  let params = { envelope: envelope('agentSession.threadGoal', { change }), change }
-  changeThreadGoal.mockRejectedValueOnce(new Error('not applied'))
-  await expect(host.changeThreadGoal(CALLER, params)).rejects.toThrow('not applied')
-  expect(await host.changeThreadGoal(CALLER, params)).toMatchObject({ ok: true, replayed: false })
-  params = { envelope: envelope('agentSession.threadGoal', { change }), change }
-  changeThreadGoal.mockRejectedValueOnce(new Error('not applied'))
-  await expect(host.changeThreadGoal(CALLER, params)).rejects.toThrow('not applied')
-  await host.close(SESSION, 'evict')
-  let ready!: () => void
-  const open = vi.fn(
-    () =>
-      new Promise<{ reportedOptions: { model: string } }>((resolve) => {
-        ready = () => resolve({ reportedOptions: { model: 'default' } })
-      })
-  )
-  host.deps.adapter.open = open
-  const retry = host.changeThreadGoal(CALLER, params)
-  await vi.waitFor(() => expect(open).toHaveBeenCalledOnce())
+  const params = { envelope: envelope('agentSession.threadGoal', { change }), change }
+  changeThreadGoal.mockRejectedValueOnce(new Error('reply lost'))
+  await expect(host.changeThreadGoal(CALLER, params)).rejects.toThrow('reply lost')
+  expect(
+    store.getOperationRow(CALLER.callerKey, params.envelope.clientOperationId)?.outcome
+  ).toEqual({ status: 'unknown' })
+  const laterActions = [{ kind: 'status', status: 'paused' }, { kind: 'clear' }] as const
+  const acceptedActions = laterActions.map((later) => ({
+    envelope: envelope('agentSession.threadGoal', { change: later }),
+    change: later
+  }))
+  for (const accepted of acceptedActions) {
+    expect(await host.changeThreadGoal(CALLER, accepted)).toMatchObject({ ok: true })
+    expect(await host.changeThreadGoal(CALLER, params)).toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_operation_unknown' }
+    })
+  }
   expect(changeThreadGoal).toHaveBeenCalledTimes(3)
-  await store.recordOperationOutcome({
-    callerKey: CALLER.callerKey,
-    operationId: params.envelope.clientOperationId,
-    outcome: { status: 'succeeded', sessionId: SESSION }
+  await host.close(SESSION, 'evict')
+  expect(await host.changeThreadGoal(CALLER, acceptedActions[1]!)).toMatchObject({
+    ok: true,
+    replayed: true
   })
-  ready()
-  expect(await retry).toMatchObject({ ok: true, replayed: true })
-  expect(changeThreadGoal).toHaveBeenCalledTimes(3)
-  expect(acquire).toHaveBeenCalledTimes(2)
-  await host.close(SESSION, 'evict')
-  expect(await host.changeThreadGoal(CALLER, params)).toMatchObject({ ok: true, replayed: true })
-  expect(acquire).toHaveBeenCalledTimes(2)
+  expect(await host.changeThreadGoal(CALLER, params)).toMatchObject({
+    ok: false,
+    refusal: { code: 'agent_session_operation_unknown' }
+  })
+  expect(acquire).toHaveBeenCalledTimes(1)
   expect(changeThreadGoal).toHaveBeenCalledTimes(3)
 })
 
@@ -185,3 +185,44 @@ it.each(['append', 'wait'] as const)(
     }
   }
 )
+
+it('finishes stopped activation compensation before a newer goal can run', async () => {
+  const { host } = hostTestState()
+  const activation = Promise.withResolvers<unknown>()
+  const request = vi.fn().mockReturnValueOnce(activation.promise).mockResolvedValue({ goal: null })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: goal changes read only threadId and connection.request.
+  const session = { threadId: 'thread-1', connection: { request } } as unknown as Pick<
+    CodexSession,
+    'threadId' | 'connection'
+  >
+  let signal: AbortSignal | undefined
+  host.deps.adapter.changeThreadGoal = (input) => {
+    signal = input.signal
+    return changeCodexThreadGoal(session, input.change, input.replacesGoal, undefined, input.signal)
+  }
+  await attach()
+  const first = { kind: 'set' as const, objective: 'First goal' }
+  const old = host
+    .changeThreadGoal(CALLER, {
+      envelope: envelope('agentSession.threadGoal', { change: first }),
+      change: first
+    })
+    .catch((error: unknown) => error)
+  await vi.waitFor(() => expect(request).toHaveBeenCalledOnce())
+  const stopped = host.cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
+  await vi.waitFor(() => expect(signal?.aborted).toBe(true))
+  const next = { kind: 'set' as const, objective: 'Newer goal' }
+  const newer = host.changeThreadGoal(CALLER, {
+    envelope: envelope('agentSession.threadGoal', { change: next }),
+    change: next
+  })
+  activation.resolve({ goal: { status: 'active' } })
+  expect(await old).toBeInstanceOf(Error)
+  expect(await stopped).toMatchObject({ ok: true })
+  expect(await newer).toMatchObject({ ok: true })
+  expect(request.mock.calls.map(([, params]) => params)).toEqual([
+    { threadId: 'thread-1', objective: 'First goal', status: 'active', origin: 'user' },
+    { threadId: 'thread-1', status: 'paused', origin: 'automatic' },
+    { threadId: 'thread-1', objective: 'Newer goal', status: 'active', origin: 'user' }
+  ])
+})
