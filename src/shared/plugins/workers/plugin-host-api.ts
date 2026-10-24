@@ -26,7 +26,7 @@ const workspaceReadContextResult = z
   .object({
     branch: z.string().max(PLUGIN_WORKSPACE_LABEL_MAX_LENGTH),
     displayName: z.string().max(PLUGIN_WORKSPACE_LABEL_MAX_LENGTH),
-    /** Terminals of the focused worktree, so callers can address a specific
+    /** Terminals of the focused workspace, so callers can address a specific
      *  terminal id — the API has no "active terminal" write target. */
     terminals: z
       .array(
@@ -98,7 +98,7 @@ export type PluginHostMethodSpec = {
   /** pluginApi minor that deprecated it; it keeps working until the next major. */
   deprecatedSince?: string
   /** Machine-readable resource boundary enforced by the host binding. */
-  scope: 'active-worktree' | 'explicit-terminal' | 'plugin-private' | 'desktop'
+  scope: 'active-workspace' | 'explicit-terminal' | 'plugin-private' | 'desktop'
   capability: PluginCapabilityKind
   /** Mutations are audit-logged with actor `plugin:<id>`. */
   mutation: boolean
@@ -116,9 +116,10 @@ const spec = <P extends z.ZodTypeAny, R extends z.ZodTypeAny>(
 export const PLUGIN_HOST_API_V0: readonly PluginHostMethodSpec[] = [
   spec({
     name: 'workspace.readContext',
-    summary: 'Branch, name and terminal ids of the focused worktree, or null when none is focused.',
+    summary:
+      'Branch, name and terminal ids of the focused workspace, or null when none is focused.',
     since: '1.0',
-    scope: 'active-worktree',
+    scope: 'active-workspace',
     capability: 'workspace:read',
     mutation: false,
     panel: true,

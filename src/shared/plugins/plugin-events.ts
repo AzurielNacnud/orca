@@ -2,14 +2,20 @@ import { z } from 'zod'
 import type { PluginEventName } from './manifest/plugin-manifest'
 
 /**
- * Payload contracts for the v0 plugin event set (worktree lifecycle + agent
+ * Payload contracts for the v0 plugin event set (workspace lifecycle + agent
  * status only). Payloads are bounded projections — never raw runtime
  * objects — so nothing sensitive (absolute repo paths beyond the worktree's
  * own, remotes, credentials) can leak through the event stream.
  */
 
-export const worktreeCreatedPayloadSchema = z.object({
-  worktreeId: z.string().min(1).max(2048),
+const workspaceIdentity = {
+  workspaceId: z.string().min(1).max(2048),
+  /** Folder workspaces have no branch; only worktrees emit lifecycle events today. */
+  kind: z.enum(['worktree', 'folder'])
+}
+
+export const workspaceCreatedPayloadSchema = z.object({
+  ...workspaceIdentity,
   path: z
     .string()
     .min(1)
@@ -17,8 +23,8 @@ export const worktreeCreatedPayloadSchema = z.object({
   branch: z.string().max(1024)
 })
 
-export const worktreeRemovedPayloadSchema = z.object({
-  worktreeId: z.string().min(1).max(2048),
+export const workspaceRemovedPayloadSchema = z.object({
+  ...workspaceIdentity,
   path: z
     .string()
     .min(1)
@@ -26,7 +32,7 @@ export const worktreeRemovedPayloadSchema = z.object({
 })
 
 export const agentStatusChangedPayloadSchema = z.object({
-  worktreeId: z.string().min(1).max(2048).nullable(),
+  workspaceId: z.string().min(1).max(2048).nullable(),
   paneKey: z.string().min(1).max(2048),
   /** The combined status the user sees: `working` while the main agent or any live child works. */
   state: z.string().min(1).max(256),
@@ -48,11 +54,11 @@ export const agentStatusChangedPayloadSchema = z.object({
 })
 
 export const PLUGIN_EVENT_PAYLOAD_SCHEMAS: Record<PluginEventName, z.ZodTypeAny> = {
-  'worktree.created': worktreeCreatedPayloadSchema,
-  'worktree.removed': worktreeRemovedPayloadSchema,
+  'workspace.created': workspaceCreatedPayloadSchema,
+  'workspace.removed': workspaceRemovedPayloadSchema,
   'agent.status.changed': agentStatusChangedPayloadSchema
 }
 
-export type PluginWorktreeCreatedPayload = z.infer<typeof worktreeCreatedPayloadSchema>
-export type PluginWorktreeRemovedPayload = z.infer<typeof worktreeRemovedPayloadSchema>
+export type PluginWorkspaceCreatedPayload = z.infer<typeof workspaceCreatedPayloadSchema>
+export type PluginWorkspaceRemovedPayload = z.infer<typeof workspaceRemovedPayloadSchema>
 export type PluginAgentStatusChangedPayload = z.infer<typeof agentStatusChangedPayloadSchema>
