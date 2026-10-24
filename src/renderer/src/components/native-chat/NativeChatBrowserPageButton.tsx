@@ -47,9 +47,18 @@ function BrowserPageButton({
 }): React.JSX.Element | null {
   const owner = useNativeChatVisualOwner()
   const latest = useLastBrowserAgentActivity(owner?.worktreeId ?? null)
-  // A row appears before its command reaches the browser, so only later activity can be its own.
-  const [mountedAtRevision] = useState(getBrowserAgentActivityRevision)
-  const ownActivityPageId = latest && latest.revision > mountedAtRevision ? latest.pageId : null
+  // A call appears before its command reaches the browser, so only later activity is its own.
+  const [baseline, setBaseline] = useState(() => ({
+    runCallId,
+    revision: getBrowserAgentActivityRevision()
+  }))
+  if (baseline.runCallId !== runCallId) {
+    setBaseline({ runCallId, revision: getBrowserAgentActivityRevision() })
+  }
+  const ownActivityPageId =
+    latest && baseline.runCallId === runCallId && latest.revision > baseline.revision
+      ? latest.pageId
+      : null
   const rememberedPageId = runCallId ? pageIdByRunCallId.get(runCallId) : undefined
   const targetPageId = pageId ?? rememberedPageId ?? latest?.pageId ?? null
   useEffect(() => {

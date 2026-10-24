@@ -40,9 +40,7 @@ function setup() {
   const guest = {
     id: 42,
     debugger: {
-      sendCommand: vi.fn(async () => ({
-        cssLayoutViewport: { clientWidth: 1000, clientHeight: 800 }
-      }))
+      sendCommand: vi.fn(async () => ({ result: { value: [1000, 800] } }))
     }
   }
   const activity = new BrowserAgentActivity({
