@@ -1038,6 +1038,7 @@
       },
       "webRuntimeSession": {
         "remoteHostDisconnected": "O espaço de trabalho não está conectado a um host Orca remoto.",
+        "splitSourceUnpublished": "O painel não foi dividido: o terminal ainda não foi iniciado no host.",
         "terminalCreateUnconfirmed": "O Orca não conseguiu confirmar que o novo terminal foi aberto no host."
       },
       "gitlabJobTraceClient": {
@@ -7699,6 +7700,11 @@
           "191ac34567": "Orquestração de Agentes",
           "nestedWorkerDepthTitle": "Profundidade de worker aninhado",
           "nestedWorkerDepthDescription": "Quantas gerações de workers despachados podem gerar seus próprios workers. 1 mantém a árvore de agentes plana: um coordenador despacha workers, e esses workers não despacham.",
+          "chatErrorEscalationTitle": "Avisar o coordenador sobre erros do chat",
+          "chatErrorEscalationDescription": "Quando um agente atribuído encontra um erro que encerra seu turno, envia o erro exato ao coordenador que o atribuiu. A tarefa continua atribuída ao agente. Funciona apenas para agentes executados na interface de chat.",
+          "chatErrorEscalationNeedsChat": "Ative a interface de chat nas configurações experimentais para usar.",
+          "chatErrorEscalationKeywordError": "erro",
+          "chatErrorEscalationKeywordChat": "chat",
           "7bc082f4de": "Copiar comando de instalação"
         },
         "RuntimeAccessGrantList": {
@@ -15647,7 +15653,10 @@
             "disconnectedBody": "As tentativas automáticas foram interrompidas. Reconecte para retomar esta sessão de terminal.",
             "reconnectButton": "Reconectar",
             "pairingRefusedTitle": "Este host não aceita mais este computador",
-            "pairingRefusedBody": "O Orca não conseguiu parear com ele novamente via SSH. Nada no host foi interrompido. Reconecte para tentar novamente."
+            "pairingRefusedBody": "O Orca não conseguiu parear com ele novamente via SSH. Nada no host foi interrompido. Reconecte para tentar novamente.",
+            "signInTitle": "Aguardando login SSH",
+            "signInBody": "Este terminal continua sozinho quando você entrar no host.",
+            "signInButton": "Entrar"
           },
           "TerminalPane": {
             "ac112e9036": "Remover título",

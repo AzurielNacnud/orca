@@ -181,10 +181,16 @@ export async function beginSubmissionHandover(
           markStructuredAgentSessionInputUnadmitted(ctx.journal, clientMessageId, released, false)
           attempt?.end()
         }
+        // Provider proof must precede the host tail that may be closing its child.
+        if (!unwritten) {
+          await resolveHandover(ctx, clientMessageId, outcome)
+        }
         await commit(async () => {
-          await (closing && unwritten && ctx.holdClosedInput
-            ? ctx.holdClosedInput(clientMessageId, ctx.fence)
-            : resolveHandover(ctx, clientMessageId, outcome))
+          if (unwritten) {
+            await (closing && ctx.holdClosedInput
+              ? ctx.holdClosedInput(clientMessageId, ctx.fence)
+              : resolveHandover(ctx, clientMessageId, outcome))
+          }
           if (!outcome || outcome.state === 'admitted') {
             await ctx.settleEndedInput?.(released)
           }

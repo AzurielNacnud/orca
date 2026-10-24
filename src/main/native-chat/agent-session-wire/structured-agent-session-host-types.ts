@@ -1,3 +1,4 @@
+import type { StructuredAgentSessionRequestFailure } from './structured-agent-session-request-failures'
 import type { StructuredAgentSessionCommandHandoverContext } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
 import type { StructuredAgentSessionDeliveryOrder } from './structured-agent-session-delivery-order'
@@ -152,6 +153,7 @@ export type StructuredAgentSessionHostDeps = {
   onSessionTabHidden?: (sessionId: string) => void
   /** Required to report failures that never reach the UI. */
   logger: StructuredAgentSessionLogger
+  onRequestFailure?: (failure: StructuredAgentSessionRequestFailure) => void
   /** replay distinguishes restored/projected state from fresh journal events. */
   onSessionStatusChanged?: (
     summary: AgentSessionStatusSummary,

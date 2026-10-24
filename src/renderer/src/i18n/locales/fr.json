@@ -3695,7 +3695,10 @@
             "disconnectedTitle": "Runtime distant déconnecté",
             "retryingBody": "Orca réessaie automatiquement. Ce terminal reprendra si la connexion revient.",
             "disconnectedBody": "Les tentatives automatiques sont interrompues. Reconnectez-vous pour reprendre cette session de terminal.",
-            "reconnectButton": "Reconnecter"
+            "reconnectButton": "Reconnecter",
+            "signInTitle": "En attente de la connexion SSH",
+            "signInBody": "Ce terminal reprend tout seul dès que vous vous connectez à l’hôte.",
+            "signInButton": "Se connecter"
           },
           "TerminalQuickCommandsSubmenu": {
             "3ccc7981bb": "Hôte indisponible",
@@ -8264,6 +8267,11 @@
           "191ac34567": "Orchestration d'agents",
           "nestedWorkerDepthTitle": "Profondeur du travailleur imbriqué",
           "nestedWorkerDepthDescription": "Combien de générations de travailleurs détachés peuvent engendrer leurs propres travailleurs. 1 maintient l'arborescence des agents à plat : un coordinateur répartit les travailleurs, et ces travailleurs ne répartissent pas.",
+          "chatErrorEscalationTitle": "Prévenir le coordinateur des erreurs du chat",
+          "chatErrorEscalationDescription": "Quand un agent assigné rencontre une erreur qui met fin à son tour, envoie l'erreur exacte au coordinateur qui l'a assigné. La tâche reste assignée à l'agent. Fonctionne uniquement pour les agents dans l'interface de chat.",
+          "chatErrorEscalationNeedsChat": "Activez l'interface de chat dans les paramètres expérimentaux pour l'utiliser.",
+          "chatErrorEscalationKeywordError": "erreur",
+          "chatErrorEscalationKeywordChat": "chat",
           "7bc082f4de": "Copier la commande d'installation"
         },
         "OrchestrationSetupCard": {
@@ -18643,6 +18651,7 @@
       },
       "webRuntimeSession": {
         "remoteHostDisconnected": "L'espace de travail n'est pas connecté à un hôte Orca distant.",
+        "splitSourceUnpublished": "Le volet n'a pas été divisé : son terminal n'a pas encore démarré sur l'hôte.",
         "terminalCreateUnconfirmed": "Orca n'a pas pu confirmer que le nouveau terminal s'est ouvert sur l'hôte."
       },
       "gitlabJobTraceClient": {

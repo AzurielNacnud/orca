@@ -3526,7 +3526,10 @@
             "disconnectedTitle": "Remote runtime disconnected",
             "retryingBody": "Orca está reintentando automáticamente. Este terminal se reanudará si vuelve la conexión.",
             "disconnectedBody": "Se detuvieron los reintentos automáticos. Vuelva a conectarse para reanudar esta sesión de terminal.",
-            "reconnectButton": "Reconnect"
+            "reconnectButton": "Reconnect",
+            "signInTitle": "Esperando el inicio de sesión SSH",
+            "signInBody": "Este terminal continuará por sí solo cuando inicie sesión en el host.",
+            "signInButton": "Iniciar sesión"
           },
           "TerminalRestoringPlaceholder": {
             "restoring": "Restaurando terminal…"
@@ -8088,6 +8091,11 @@
           "191ac34567": "Orquestación de agentes",
           "nestedWorkerDepthTitle": "Profundidad del trabajador anidado",
           "nestedWorkerDepthDescription": "¿Cuántas generaciones de trabajadores despedidos pueden engendrar sus propios trabajadores? 1 mantiene el árbol de agentes plano: un coordinador envía trabajadores y esos trabajadores no envían.",
+          "chatErrorEscalationTitle": "Avisar al coordinador de los errores del chat",
+          "chatErrorEscalationDescription": "Cuando un agente asignado encuentra un error que termina su turno, envía el error exacto al coordinador que lo asignó. La tarea sigue asignada al agente. Solo funciona con agentes que se ejecutan en la interfaz de chat.",
+          "chatErrorEscalationNeedsChat": "Activa la interfaz de chat en la configuración experimental para usarlo.",
+          "chatErrorEscalationKeywordError": "error",
+          "chatErrorEscalationKeywordChat": "chat",
           "7bc082f4de": "Copiar comando de instalación"
         },
         "OrchestrationSetupCard": {
@@ -18503,6 +18511,7 @@
       },
       "webRuntimeSession": {
         "remoteHostDisconnected": "El espacio de trabajo no está conectado a un host Orca remoto.",
+        "splitSourceUnpublished": "El panel no se dividió: su terminal aún no se ha iniciado en el host.",
         "terminalCreateUnconfirmed": "Orca no pudo confirmar que la nueva terminal se abrió en el host."
       },
       "gitlabJobTraceClient": {
