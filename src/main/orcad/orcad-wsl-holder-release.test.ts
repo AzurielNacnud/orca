@@ -17,6 +17,7 @@ import {
 import { installOrcadManagedIdleExit } from './orcad-managed-idle-exit'
 import type * as ManagedIdleExit from './orcad-managed-idle-exit'
 import { orcadWslHolderReleasePath } from './orcad-wsl-holder-release'
+import { ORCAD_WSL_HOST_ENV } from '../ipc/wsl-guest-windows-drive-path'
 
 vi.mock('../native-chat/agent-session-wire/structured-agent-session-registry', () => ({
   getStructuredAgentSessionHost: () => ({ hasLoadedProviders: () => false })
@@ -32,7 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   root = mkdtempSync(join(tmpdir(), 'orcad-wsl-holder-release-'))
   vi.stubEnv(ORCAD_MANAGED_ACTIVATION_ROOT_ENV, join(root, 'fence'))
-  vi.stubEnv('WSL_DISTRO_NAME', 'Ubuntu')
+  vi.stubEnv(ORCAD_WSL_HOST_ENV, '1')
   vi.spyOn(console, 'error').mockImplementation(() => {})
   setAppEnvironment({
     getPath: () => root,
@@ -101,8 +102,8 @@ it('keeps the distro held when a client returned during the stop', async () => {
   expect(existsSync(orcadWslHolderReleasePath(root))).toBe(false)
 })
 
-it('never writes the request outside WSL', async () => {
-  vi.stubEnv('WSL_DISTRO_NAME', '')
+it('never writes the request for an orcad no WSL host launched', async () => {
+  vi.stubEnv(ORCAD_WSL_HOST_ENV, '')
   await idleStop({ state: 'retiring' })
 
   expect(existsSync(orcadWslHolderReleasePath(root))).toBe(false)

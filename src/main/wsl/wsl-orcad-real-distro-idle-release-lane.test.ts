@@ -197,7 +197,13 @@ async function idleReleasePhase(): Promise<void> {
     `${PLAIN} to stop after orcad idle-exits`,
     async () => ((await plainRunning()) ? null : true),
     RELEASE_BUDGET_MS
-  )
+  ).catch(async (error: unknown) => {
+    // The distro is still running, so this boots nothing: record what kept it.
+    receipt.stillRunning = await guest(
+      'ls -la "$HOME/.orca/wsl-holder-release" 2>&1; ps -eo pid,args | grep -v grep | grep -E "orca|node" || true'
+    ).catch(String)
+    throw error
+  })
   receipt.secondsFromLastClientToDistroStop = Math.round((performance.now() - closedAt) / 1000)
   // Nothing here called release: the holder ended itself.
   expect(await holder.holderState(PLAIN)).toBe('exited')

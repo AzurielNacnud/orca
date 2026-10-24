@@ -6,18 +6,22 @@ import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { ORCAD_WSL_HOLDER_RELEASE_FILENAME } from '../../shared/orcad-idle-exit'
 import { writeSecureFile } from '../../shared/secure-file'
+import { ORCAD_WSL_HOST_ENV } from '../ipc/wsl-guest-windows-drive-path'
 import type { OrcadDaemonRetirement } from './orcad-daemon-retirement'
 
 export function orcadWslHolderReleasePath(userDataPath: string): string {
   return join(userDataPath, ORCAD_WSL_HOLDER_RELEASE_FILENAME)
 }
 
-/** Only a daemon that proved itself empty and left shows no terminal would die with the distro. */
+/**
+ * Only a WSL-host launch has a holder, and only a daemon that proved itself empty and left shows
+ * no terminal would die with the distro. Why the launch marker: a setsid'd orcad may lack WSL_DISTRO_NAME.
+ */
 export function idleStopMayReleaseWslHolder(
   env: NodeJS.ProcessEnv,
   daemon: OrcadDaemonRetirement
 ): boolean {
-  return Boolean(env.WSL_DISTRO_NAME) && daemon.retirement === 'retired'
+  return env[ORCAD_WSL_HOST_ENV] === '1' && daemon.retirement === 'retired'
 }
 
 export function requestOrcadWslHolderRelease(userDataPath: string, pid = process.pid): void {
