@@ -211,13 +211,17 @@ export function beginStructuredAgentSessionInputHandover(
           return { kind: 'ready', isCurrent }
         } catch (error) {
           if (signal?.aborted) {
-            const ended = session.lastEndedChild
-            return failed(
-              (ended?.cause === 'exit' ? structuredAgentSessionEndedChildFailure(ended) : null) ?? {
-                failure: agentSessionFailureFact('cancelled')
-              },
-              ended?.fence ?? binding.fence
-            )
+            return deps.serialize(sessionId, () => {
+              const ended = session.lastEndedChild
+              return failed(
+                (ended?.cause === 'exit'
+                  ? structuredAgentSessionEndedChildFailure(ended)
+                  : null) ?? {
+                  failure: agentSessionFailureFact('cancelled')
+                },
+                deps.conversationFence(sessionId)
+              )
+            })
           }
           return deps.serialize(sessionId, () =>
             failed(

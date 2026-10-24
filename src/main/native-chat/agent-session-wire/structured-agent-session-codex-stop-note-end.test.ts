@@ -11,6 +11,7 @@ import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal
 import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
 import { CodexAppServerRequestError } from '../../codex/codex-app-server-connection'
 import { codexStructuredPermissionPolicy } from '../../codex/codex-structured-permission-policy'
+import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
 // What a Stop's row says when Codex took the interrupt, against the real host, journal and Codex
@@ -121,12 +122,15 @@ beforeEach(async () => {
   // The runtime's wiring: an echo accepts its send, and every exit reaches the host.
   launch = {}
   adapter = adapterFor(codex, launch, [], {
-    resolveLaunch: async ({ permissionMode }) => ({
+    resolveLaunch: async ({ permissionMode, identity }) => ({
       command: 'codex',
       args: ['app-server'],
       cwd: '/work/repo',
       codexHome: null,
-      resumeThreadId: launch.resumeThreadId ?? null,
+      resumeThreadId:
+        launch.resumeThreadId ??
+        store.getRecord(identity.sessionId)?.providerHandleChain.at(-1)?.handle.nativeId ??
+        null,
       permissionPolicy: codexStructuredPermissionPolicy(permissionMode ?? 'ask')
     }),
     onDispatchSettledLate: (settlement) => void host.settleLateDispatch(settlement),
@@ -153,6 +157,7 @@ beforeEach(async () => {
       hostTestAttachParams(null, { options: { permissionMode: 'full-access' } })
     )
   ).toMatchObject({ ok: true })
+  await vi.waitFor(() => expect(host['sessions'].get(SESSION)?.child?.phase).toBe('ready'))
   await host.subscribe({
     id: 'stop-note-live',
     sessionId: SESSION,
@@ -348,6 +353,7 @@ async function permissionSend(text: string, options?: Record<string, string>) {
   const fields = { body: hostTestMessage(text), ...(options ? { options } : {}) }
   const result = await host.send(CALLER, {
     envelope: envelope('agentSession.send', fields),
+    userSend: true,
     ...fields
   })
   if (!result.ok) {
@@ -417,6 +423,8 @@ it.each(['config', 'order', 'initial'] as const)(
     order?.release()
     await vi.waitFor(() => expect(codex.connections).toHaveLength(2))
     const acquiring = codex.connections[1]!
+    const replacement = host['sessions'].get(SESSION)!.child!
+    expect(replacement.fence).toBe(host['deps'].store.getRecord(SESSION)!.lease.runtimeFence)
     await vi.waitFor(() =>
       expect(acquiring.calls.some((r) => r.method.startsWith('thread/'))).toBe(true)
     )
@@ -449,11 +457,14 @@ it.each(['config', 'order', 'initial'] as const)(
     expect(answered).toBe(false)
     turns.start()
     turns.echo(id)
-    expect((await settled)?.value.submission).toMatchObject({ dispatchState: 'accepted', fence: 2 })
+    expect((await settled)?.value.submission).toMatchObject({
+      dispatchState: 'accepted',
+      fence: replacement.fence
+    })
     await vi.waitFor(() =>
       expect(recorded).toHaveBeenCalledWith(
         SESSION,
-        2,
+        replacement.fence,
         expect.objectContaining({ message: { personality: 'friendly' } })
       )
     )
@@ -531,8 +542,20 @@ it.each([
           turnScope: { kind: 'thread' },
           carries: [stopped]
         })
+        await journal.appendSubmission({
+          clientMessageId: 'other-carrier',
+          payloadFingerprint: 'other-carrier',
+          body: hostTestMessage('history delivered elsewhere'),
+          fence: 1
+        })
         await journal.resolveDispatch({
-          clientMessageId: stopped,
+          clientMessageId: 'other-carrier',
+          state: 'pending',
+          fence: 1,
+          carries: [stopped]
+        })
+        await journal.resolveDispatch({
+          clientMessageId: 'other-carrier',
           state: 'accepted',
           fence: 1,
           providerIdentity: null
@@ -607,6 +630,7 @@ it.each([
   Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
   const uncertain = failure.startsWith('lost-') || failure === 'post-write-stop'
   const journal = host.collaboratorsForTests().sessions.get(SESSION)!.journal
+  const persisted = vi.spyOn(journal, 'resolveDispatch')
   if (failure === 'lost-steer') {
     await began(await permissionSend('running'))
   }
@@ -659,11 +683,20 @@ it.each([
       expect(await stop()).toMatchObject({ ok: true })
     }
   }
+  await vi.waitFor(() => expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false))
+  const writes = await Promise.allSettled(persisted.mock.results.map((result) => result.value))
+  expect(writes.filter((result) => result.status === 'rejected')).toEqual([])
   await vi.waitFor(async () =>
     expect((await row(id))?.dispatchState).toBe(uncertain ? 'unknown' : 'rejected')
   )
   if (failure === 'unproven-exit') {
-    expect((await row(id))?.rejection?.kind).toBe('previousExitUnverifiable')
+    expect((await row(id))?.rejection).toMatchObject({
+      kind: 'restartFailed',
+      refusal: {
+        code: 'agent_session_ownership_unknown',
+        details: { reason: 'previousExitUnverifiable' }
+      }
+    })
   }
   expect(continuingStructuredAgentSessionInput(journal, id)).toBe(false)
   expect(starts()).toHaveLength(uncertain ? 1 : 0)
@@ -781,6 +814,9 @@ export function codexInputFinalizationFixture() {
     row,
     starts,
     assertInputRecoveredAfterSnapshot,
+    conversationFence: () => host['deps'].store.getRecord(SESSION)!.lease.runtimeFence,
+    waitForInputFinalization: (journal: AgentSessionJournal, id: string) =>
+      vi.waitFor(() => expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false)),
     measureInputWork: (kind: 'history' | 'close', population: number) =>
       measureCodexInputWork(host, events, kind, population)
   }

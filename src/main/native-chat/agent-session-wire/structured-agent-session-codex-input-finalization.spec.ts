@@ -153,7 +153,10 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         await stopping
         const answered = (await settled)?.value.submission
         await vi.waitFor(() => expect(journal.submission(id)?.dispatchState).toBe('rejected'))
-        expect(answered).toMatchObject({ dispatchState: 'rejected', fence: 1 })
+        expect(answered).toMatchObject({
+          dispatchState: 'rejected',
+          fence: closing ? current().conversationFence() : 1
+        })
         expect(answered).toEqual(journal.submission(id))
         expect(answered?.reason).toMatch(
           /before (this message was sent|the agent started it)|provider_cancelled_before_start/
@@ -188,17 +191,13 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
           })
         }
         expect(starts()).toHaveLength(0)
-        await vi.waitFor(() =>
-          expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false)
-        )
+        await current().waitForInputFinalization(journal, id)
       } finally {
         paused.resolve(config)
         held.resolve()
         await blocking
         await stopping
-        await vi.waitFor(() =>
-          expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false)
-        )
+        await current().waitForInputFinalization(journal, id)
         await measured?.()
       }
     }
@@ -297,9 +296,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         expect(starts()).toHaveLength(0)
         paused.resolve(config)
         await Promise.allSettled(lateReads)
-        await vi.waitFor(() =>
-          expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false)
-        )
+        await current().waitForInputFinalization(journal, id)
         expect(session.permissions).toBe(permissions)
         expect(permissions).toEqual(before)
         expect([...session.options]).toEqual(options)
@@ -307,9 +304,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
       } finally {
         paused.resolve(config)
         await Promise.allSettled(lateReads)
-        await vi.waitFor(() =>
-          expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false)
-        )
+        await current().waitForInputFinalization(journal, id)
       }
     }
   )
@@ -370,28 +365,43 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
     })
     let retirement = Promise.resolve()
     const begin = lifetime.beginFinalizedStructuredAgentSessionClose
-    const helper = vi
-      .spyOn(lifetime, 'beginFinalizedStructuredAgentSessionClose')
-      .mockImplementation((context, ...args) => {
-        if (!closeCompletion) {
-          return begin(context, ...args)
-        }
-        closeDecision.mockImplementation(context.closeConversation)
-        return begin(
-          {
-            ...context,
-            closeConversation: closeDecision,
-            serialize: (id, task) => {
-              entered.resolve()
-              retirement = held.promise.then(() => context.serialize(id, task))
-              return retirement
-            }
-          },
-          ...args
-        )
-      })
+    const helper = vi.spyOn(lifetime, 'beginFinalizedStructuredAgentSessionClose')
+    helper.mockImplementation((context, ...args) => {
+      if (!closeCompletion) {
+        return begin(context, ...args)
+      }
+      closeDecision.mockImplementation(context.closeConversation)
+      return begin(
+        {
+          ...context,
+          closeConversation: closeDecision,
+          serialize: (id, task) => {
+            entered.resolve()
+            retirement = held.promise.then(() => context.serialize(id, task))
+            return retirement
+          }
+        },
+        ...args
+      )
+    })
     const response = Promise.withResolvers<unknown>()
     codex.routes['turn/start'] = () => response.promise
+    if (failsBoth) {
+      await serialize(SESSION, async () => {
+        expect(journal.submissions()).toEqual([])
+        for (const fence of [0, 1]) {
+          const clientMessageId = `unrelated-${fence}`
+          await journal.appendSubmission({
+            clientMessageId,
+            payloadFingerprint: clientMessageId,
+            body: hostTestMessage('unrelated pending input'),
+            fence,
+            handoverRecorded: true
+          })
+          await journal.resolveDispatch({ clientMessageId, state: 'pending', fence })
+        }
+      })
+    }
     const id = await permissionSend('outcome owed after exit')
     const waiting = host.waitForSendSettlement(SESSION, id)
     let answered = false
@@ -409,6 +419,12 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         expect(answered).toBe(false)
       }
       return settle(sessionId, owner)
+    })
+    const recover = journal.appendPlannedLifecycleBatch.bind(journal)
+    const recovered = vi.spyOn(journal, 'appendPlannedLifecycleBatch')
+    recovered.mockImplementation((batch) => {
+      expect(batch.fence).toBe(current().conversationFence())
+      return recover(batch)
     })
     const resolve = journal.resolveDispatch.bind(journal)
     const wake = conversationDelivery.loop.wake.bind(conversationDelivery.loop)
@@ -438,19 +454,6 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
           expect(journal.submission(id)).toMatchObject({ dispatchState: 'accepted' })
         )
       }
-      if (failsBoth) {
-        for (const fence of [0, 1]) {
-          const clientMessageId = `unrelated-${fence}`
-          await journal.appendSubmission({
-            clientMessageId,
-            payloadFingerprint: clientMessageId,
-            body: hostTestMessage('unrelated pending input'),
-            fence,
-            handoverRecorded: true
-          })
-          await journal.resolveDispatch({ clientMessageId, state: 'pending', fence })
-        }
-      }
       const cutoff = journal.cursor().sequence
       if (closing) {
         closeStarted = true
@@ -476,7 +479,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         assertStoppedHandle()
       }
       if (failsBoth) {
-        const fence = host['deps'].store.getRecord(SESSION)!.lease.runtimeFence
+        const fence = recovered.mock.calls.at(-1)![0].fence
         for (const previous of [0, 1]) {
           expect(journal.submission(`unrelated-${previous}`)).toMatchObject({
             clientMessageId: `unrelated-${previous}`,
@@ -550,9 +553,9 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
           )
           expect(await claim.outcome).toMatchObject({ ok: true })
           const child = old.child!
-          await runtimeState.startupAttempts.readiness(SESSION, child)?.wait()
+          expect(await runtimeState.startupAttempts.readiness(SESSION, child)?.wait()).toBe('ready')
           expect(child.phase).toBe('ready')
-          expect(child.fence).toBe(2)
+          expect(child.fence).toBe(current().conversationFence())
           expect(child.generation).not.toBe(ended?.generation)
           if (result === 'new-ended-child') {
             expect(await adapter.closeSession(SESSION)).toBe(true)
@@ -572,7 +575,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
       }
       held.resolve()
       await retirement
-      await vi.waitFor(() => expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false))
+      await fixture.waitForInputFinalization(journal, id)
       expect(starts()).toHaveLength(result === 'null' ? 0 : 1)
       expect(deps.deliveryOrder?.hasActiveSend(SESSION)).toBe(false)
       expect(leftovers).toHaveBeenCalledTimes(
@@ -613,7 +616,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
       response.resolve({})
       held.resolve()
       await stopping
-      await vi.waitFor(() => expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false))
+      await fixture.waitForInputFinalization(journal, id)
       if (closeCompletion && closeStarted) {
         await entered.promise
       }
@@ -638,6 +641,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
       await pick('auto')
       const { sessions, conversationDelivery, runtimeState } = host.collaboratorsForTests()
       const journal = sessions.get(SESSION)!.journal
+      const original = sessions.get(SESSION)!.child!
       const deps = conversationDelivery.loop['deps']
       const held = Promise.withResolvers<void>()
       const entered = Promise.withResolvers<void>()
@@ -686,7 +690,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         }
         const wait = vi.fn(async (...budget: Parameters<typeof ready.wait>) => {
           const result = await ready.wait(...budget)
-          if (boundary === 'readiness') {
+          if (boundary === 'readiness' && args[1] !== original) {
             entered.resolve()
             await held.promise
           }
@@ -698,7 +702,12 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
       const resolve = journal.resolveDispatch.bind(journal)
       let reboundFence: number | undefined
       const rebound = vi.spyOn(journal, 'resolveDispatch').mockImplementation(async (...args) => {
-        if (boundary === 'rebind' && args[0].state === 'pending' && args[0].fence === 2) {
+        if (
+          boundary === 'rebind' &&
+          args[0].state === 'pending' &&
+          args[0].fence !== original.fence &&
+          args[0].fence === sessions.get(SESSION)?.child?.fence
+        ) {
           reboundFence = args[0].fence
           entered.resolve()
           await held.promise
@@ -739,10 +748,11 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         }
         if (child) {
           expect(child).toMatchObject({
-            fence: boundary === 'retire' ? 1 : 2,
+            fence: current().conversationFence(),
             generation: boundary === 'retire' ? 'generation-1' : 'generation-2'
           })
         }
+        expect(boundFence).toBe(boundary === 'retire' ? original.fence : original.fence + 2)
         if (boundary === 'starting-exit') {
           const abort = runtimeState.acquireAborts.abort.bind(runtimeState.acquireAborts)
           let observed = false
@@ -766,16 +776,11 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         held.resolve()
         await stopping
         await drainForwarded()
-        await vi.waitFor(() =>
-          expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false)
-        )
+        await current().waitForInputFinalization(journal, id)
         expect(journal.submission(id)).toMatchObject({
           clientMessageId: id,
           dispatchState: 'rejected',
-          fence:
-            boundary === 'starting-exit'
-              ? sessions.get(SESSION)?.lastEndedChild?.fence
-              : boundFence,
+          fence: current().conversationFence(),
           rejection: { kind: boundary === 'starting-exit' ? 'providerStartFailed' : 'cancelled' },
           options: { personality: 'friendly' }
         })
@@ -791,9 +796,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         held.resolve()
         await stopping
         await drainForwarded()
-        await vi.waitFor(() =>
-          expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(false)
-        )
+        await current().waitForInputFinalization(journal, id)
         vi.restoreAllMocks()
       }
     }
