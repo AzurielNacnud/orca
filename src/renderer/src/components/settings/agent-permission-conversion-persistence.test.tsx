@@ -539,7 +539,7 @@ it('reports one direct local permission action failure without changing saved in
   persist.mockRejectedValueOnce(new Error('private error'))
   render(<AgentsHarness />)
   const user = userEvent.setup()
-  await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
+  await user.click(screen.getByRole('button', { name: 'Permissions' }))
   await user.click(await screen.findByRole('menuitemradio', { name: /Full access/ }))
   await waitFor(() =>
     expect(toast.error).toHaveBeenCalledExactlyOnceWith(
