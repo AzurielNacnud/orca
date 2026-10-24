@@ -111,6 +111,7 @@ export const mainProcessState = {
   pluginKillListService: null as PluginKillListService | null,
   pluginMarketplaceService: null as PluginMarketplaceService | null,
   pluginMarketplaceInstaller: null as PluginMarketplaceInstaller | null,
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: widens the null initial value; assigned once plugins start.
   pluginAutoUpdater: null as PluginAutoUpdater | null,
   keybindings: null as KeybindingService | null,
   // Why: a reload intent must not leak to a later load; the recovery reload re-fires did-finish-load, so its flag spares live PTYs from the orphan sweep (#5787).
