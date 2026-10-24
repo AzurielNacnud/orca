@@ -17,6 +17,8 @@ import { PANEL_PING_TYPE, PANEL_PONG_TYPE } from './plugin-panel-bridge'
  * panel HTML through this one function.
  */
 
+// Residual shared with doc preview: Electron 43 resolves `<link rel="dns-prefetch">` outside CSP
+// and session hooks (see browser-route-dns-prefetch.electron.test.ts), so DNS labels can still leak.
 export const PLUGIN_PANEL_CSP =
   "default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; " +
   "style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'"
@@ -72,6 +74,11 @@ export function buildPluginPanelShellHtml(pluginHtml: string): string {
     '    if (event.cancelable) event.preventDefault()\n' +
     '  })\n' +
     '}\n' +
+    '// Why: CSP has no WebRTC directive, so a peer connection would be an open outbound channel.\n' +
+    "['RTCPeerConnection', 'webkitRTCPeerConnection'].forEach(function (name) {\n" +
+    '  try { Object.defineProperty(window, name, { value: undefined, writable: false, configurable: false }) }\n' +
+    '  catch (_) {}\n' +
+    '})\n' +
     "try { Object.defineProperty(window, 'open', { value: function () { return null }, writable: false, configurable: false }) }\n" +
     'catch (_) { try { window.open = function () { return null } } catch (_) {} }\n' +
     "window.addEventListener('click', function (event) {\n" +
