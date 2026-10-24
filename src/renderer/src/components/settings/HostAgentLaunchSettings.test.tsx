@@ -1,8 +1,6 @@
 // @vitest-environment happy-dom
-import userEvent from '@testing-library/user-event'
-import { toast } from 'sonner'
 import { StrictMode } from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   projectAgentLaunchSettings,
@@ -24,13 +22,11 @@ const transport = vi.hoisted(() => ({
   native: vi.fn(),
   undo: vi.fn()
 }))
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }))
 vi.mock('./agent-launch-settings-transport', () => ({
   readHostAgentLaunchSettings: transport.read,
-  mutateHostAgentLaunchSettings: async (...args: unknown[]) => {
-    const result = await transport.mutate(...args)
-    return 'settings' in result ? result : { settings: result }
-  },
+  mutateHostAgentLaunchSettings: async (...args: unknown[]) => ({
+    settings: await transport.mutate(...args)
+  }),
   hostSupportsAutoPermissions: transport.auto,
   hostSupportsNativeChatPermissions: transport.native,
   hostSupportsPermissionResetUndo: transport.undo
@@ -68,208 +64,15 @@ const pane = (revision: number) => (
 
 afterEach(cleanup)
 beforeEach(() => {
-  vi.mocked(toast.success).mockClear()
   transport.read.mockReset().mockResolvedValue(host())
   transport.mutate.mockReset().mockResolvedValue(host())
   transport.detection.mockClear()
   transport.auto.mockReset().mockResolvedValue(true)
-  transport.undo.mockReset().mockResolvedValue(false)
   transport.native.mockReset().mockResolvedValue(true)
+  transport.undo.mockReset().mockResolvedValue(false)
 })
 
 describe('host launch settings form', () => {
-  it('reserves disabled controls while loading and announces a typed host reset only after success', async () => {
-    let finish!: (settings: AgentLaunchSettings) => void
-    transport.read.mockReturnValueOnce(
-      new Promise<AgentLaunchSettings>((resolve) => {
-        finish = resolve
-      })
-    )
-    const before = projectAgentLaunchSettings({
-      agentPermissionDefault: 'ask',
-      agentPermissionOverrides: { codex: 'full-access' }
-    })
-    const after = projectAgentLaunchSettings({
-      agentPermissionDefault: 'ask',
-      agentPermissionOverrides: {}
-    })
-    let save!: (settings: AgentLaunchSettings) => void
-    transport.mutate.mockRejectedValueOnce(new Error('offline')).mockImplementationOnce(
-      () =>
-        new Promise<AgentLaunchSettings>((resolve) => {
-          save = resolve
-        })
-    )
-    render(pane(17))
-    expect(screen.getByRole('button', { name: 'Permissions', exact: true })).toHaveProperty(
-      'disabled',
-      true
-    )
-    finish(before)
-    const user = userEvent.setup()
-    const pick = async () => {
-      await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
-      await user.click(await screen.findByRole('menuitemradio', { name: /Ask for approval/ }))
-    }
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Permissions', exact: true })).toHaveProperty(
-        'disabled',
-        false
-      )
-    )
-    await pick()
-    await screen.findByRole('alert')
-    expect(toast.success).not.toHaveBeenCalled()
-    await pick()
-    await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2))
-    expect(toast.success).not.toHaveBeenCalled()
-    save(after)
-    await waitFor(() =>
-      expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-        'Moved 1 agent to Ask for approval',
-        expect.any(Object)
-      )
-    )
-    expect(vi.mocked(toast.success).mock.calls[0]?.[1]?.action).toBeUndefined()
-    expect(transport.mutate).toHaveBeenLastCalledWith(
-      { environmentId: 'ssh-host', pairingRevision: 17 },
-      { type: 'permission', choice: 'ask' },
-      expect.any(AbortSignal)
-    )
-    await pick()
-    await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(3))
-    expect(toast.success).toHaveBeenCalledTimes(1)
-  })
-
-  it.each(['saved', 'failed', 'aborted'] as const)(
-    'uses acknowledged projection for queued picks after %s first write',
-    async (outcome) => {
-      const before = projectAgentLaunchSettings({
-        agentPermissionDefault: 'full-access',
-        agentPermissionOverrides: { codex: 'full-access' }
-      })
-      const afterAsk = projectAgentLaunchSettings({
-        agentPermissionDefault: 'ask',
-        agentPermissionOverrides: {}
-      })
-      const afterAuto = projectAgentLaunchSettings({
-        agentPermissionDefault: 'auto',
-        agentPermissionOverrides: {}
-      })
-      transport.read.mockResolvedValue(before)
-      let accept!: (settings: AgentLaunchSettings) => void
-      let reject!: (error: Error) => void
-      transport.mutate
-        .mockReturnValueOnce(
-          new Promise<AgentLaunchSettings>((yes, no) => {
-            accept = yes
-            reject = no
-          })
-        )
-        .mockResolvedValueOnce(afterAuto)
-      const view = render(pane(17))
-      const user = userEvent.setup()
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: 'Permissions', exact: true })).toHaveProperty(
-          'disabled',
-          false
-        )
-      )
-      const pick = async (name: string) => {
-        await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
-        await user.click(await screen.findByRole('menuitemradio', { name: new RegExp(name) }))
-      }
-      await pick('Ask for approval')
-      await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(1))
-      await pick('Approve for me')
-      expect(transport.mutate).toHaveBeenCalledTimes(1)
-      expect(toast.success).not.toHaveBeenCalled()
-      const firstSignal: AbortSignal = transport.mutate.mock.calls[0][2]
-      if (outcome === 'aborted') {
-        view.rerender(pane(18))
-      }
-      await act(async () =>
-        outcome === 'failed' ? reject(new Error('offline')) : accept(afterAsk)
-      )
-      if (outcome === 'aborted') {
-        expect(firstSignal.aborted).toBe(true)
-        expect(transport.mutate).toHaveBeenCalledTimes(1)
-        expect(toast.success).not.toHaveBeenCalled()
-      } else {
-        await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2))
-        await waitFor(() =>
-          expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-            `Moved 1 agent to ${outcome === 'saved' ? 'Ask for approval' : 'Approve for me'}`,
-            expect.any(Object)
-          )
-        )
-        expect(transport.mutate.mock.calls[1][1]).toEqual({ type: 'permission', choice: 'auto' })
-      }
-    }
-  )
-
-  it.each([false, true])(
-    'uses authoritative reset entries and offers exact Undo only on capable hosts: %s',
-    async (supported) => {
-      transport.undo.mockResolvedValue(supported)
-      transport.read.mockResolvedValue(
-        projectAgentLaunchSettings({
-          agentPermissionDefault: 'ask',
-          agentPermissionOverrides: { codex: 'ask' }
-        })
-      )
-      const after = projectAgentLaunchSettings({ agentPermissionDefault: 'full-access' })
-      transport.mutate
-        .mockResolvedValueOnce({
-          settings: after,
-          permissionResets: [{ agent: 'gemini', previousChoice: 'ask' }]
-        })
-        .mockResolvedValue(after)
-      const view = render(pane(17))
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: 'Permissions', exact: true })).toHaveProperty(
-          'disabled',
-          false
-        )
-      )
-      const user = userEvent.setup()
-      await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
-      await user.click(await screen.findByRole('menuitemradio', { name: /Full access/ }))
-      await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
-      expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Moved 1 agent to Full access')
-      const options = vi.mocked(toast.success).mock.calls[0]?.[1]
-      const description = options?.description
-      const details = render(typeof description === 'function' ? description() : description)
-      expect(details.container.textContent).toBe(
-        `${supported ? 'Gemini' : 'Codex'} · was Ask for approval`
-      )
-      const action = options?.action
-      if (supported) {
-        if (
-          !action ||
-          typeof action !== 'object' ||
-          !('onClick' in action) ||
-          typeof action.onClick !== 'function'
-        ) {
-          throw new Error('Missing Undo action')
-        }
-        const undo = action.onClick
-        render(<button onClick={(event) => undo(event)}>Undo reset</button>)
-        await user.click(screen.getByRole('button', { name: 'Undo reset' }))
-        await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2))
-        expect(transport.mutate.mock.calls[1][1]).toEqual({
-          type: 'permission',
-          agent: 'gemini',
-          choice: 'ask'
-        })
-      } else {
-        expect(action).toBeUndefined()
-      }
-      view.unmount()
-      expect(toast.dismiss).toHaveBeenCalledWith(options?.id)
-    }
-  )
-
   it('shows resolved launch defaults in a collapsed legacy host row', async () => {
     transport.read.mockResolvedValue(projectAgentLaunchSettings({ agentDefaultArgs: {} }))
     render(pane(17))

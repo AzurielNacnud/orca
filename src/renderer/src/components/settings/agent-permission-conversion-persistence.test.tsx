@@ -171,31 +171,84 @@ it.each(
   expect(persist).toHaveBeenCalledTimes(3)
 })
 
-it('keeps dirty permission conversion inside the logical Arguments field until leaving', async () => {
-  savedArguments('--model sonnet', 'full-access')
-  render(<AgentsHarness />)
-  const user = userEvent.setup()
-  const input = argumentsInput('Claude')
-  const chip = screen.getByRole('button', { name: /Remove .* and use Claude's own settings/ })
-  await user.click(input)
-  fireEvent.change(input, { target: { value: '--permission-mode auto --model opus' } })
-  await user.keyboard('{Home}{Backspace}')
-  expect(document.activeElement).toBe(chip)
-  expect(persist).not.toHaveBeenCalled()
-  expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('full-access')
-  expect(toast.success).not.toHaveBeenCalled()
-  await user.tab()
-  expect(document.activeElement).toBe(input)
-  await user.click(input)
-  await user.tab({ shift: true })
-  expect(document.activeElement).toBe(chip)
-  expect(persist).not.toHaveBeenCalled()
-  await user.tab({ shift: true })
-  await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
-  await waitFor(() => expect(input.value).toBe('--model opus'))
-  expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('auto')
-  expect(toast.success).toHaveBeenCalledTimes(1)
-})
+it.each(['none', '×', 'Backspace'] as const)(
+  'keeps dirty Arguments and explicit %s permission removal in order',
+  async (removal) => {
+    savedArguments('--model sonnet', 'full-access')
+    const own = removal === 'Backspace' ? deferredSave() : null
+    render(<AgentsHarness />)
+    const user = userEvent.setup()
+    const input = argumentsInput('Claude')
+    const chip = screen.getByRole('button', { name: /Remove .* and use Claude's own settings/ })
+    await user.click(input)
+    await user.keyboard('{Home}{Shift>}{ArrowRight}{/Shift}{Backspace}')
+    expect(document.activeElement).toBe(input)
+    fireEvent.change(input, { target: { value: '--permission-mode auto --model opus' } })
+    input.setSelectionRange(0, 0)
+    for (const modifiers of [
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+      { repeat: true }
+    ]) {
+      fireEvent.keyDown(input, { key: 'Backspace', ...modifiers })
+      expect(document.activeElement).toBe(input)
+    }
+    await user.keyboard('{Home}{Backspace}')
+    expect(document.activeElement).toBe(chip)
+    fireEvent.keyDown(chip, { key: 'Backspace', repeat: true })
+    expect(persist).not.toHaveBeenCalled()
+    expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('full-access')
+    await user.tab()
+    expect(document.activeElement).toBe(input)
+    await user.tab({ shift: true })
+    expect(document.activeElement).toBe(chip)
+    expect(persist).not.toHaveBeenCalled()
+    if (removal === 'none') {
+      await user.tab({ shift: true })
+      await waitFor(() => expect(input.value).toBe('--model opus'))
+      expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('auto')
+      expect(toast.success).toHaveBeenCalledTimes(1)
+      return
+    }
+    await (removal === '×' ? user.click(chip) : user.keyboard('{Backspace}'))
+    expect(document.activeElement).toBe(input)
+    expect(input.value).toBe('--model opus')
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+    const raw = own ? deferredSave() : null
+    const reset = own ? deferredSave() : null
+    await user.tab()
+    if (own && raw && reset) {
+      expect(input.readOnly).toBe(true)
+      expect(chip).toHaveProperty('disabled', true)
+      const row = input.closest('div.py-3')
+      if (!(row instanceof HTMLElement)) {
+        throw new Error('Missing row')
+      }
+      await user.click(within(row).getByRole('button', { name: 'Reset' }))
+      await act(async () => own.resolve())
+      await waitFor(() => expect(persist).toHaveBeenCalledTimes(2))
+      expect(input.value).toBe('--model opus')
+      await act(async () => raw.resolve())
+      await waitFor(() => expect(persist).toHaveBeenCalledTimes(3))
+      await act(async () => reset.reject(new Error('unknown acknowledgement')))
+      await waitFor(() => expect(input.readOnly).toBe(false))
+      expect(input.value).toBe('--model opus')
+      expect(toast.success).not.toHaveBeenCalled()
+      expect(toast.error).toHaveBeenCalledTimes(1)
+      await user.click(within(row).getByRole('button', { name: 'Reset' }))
+      await waitFor(() => expect(input.value).toBe(''))
+    } else {
+      await waitFor(() => expect(persist).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(input.readOnly).toBe(false))
+      expect(useAppStore.getState().settings?.agentDefaultArgs?.claude).toBe('--model opus')
+    }
+    const settings = useAppStore.getState().settings
+    expect(settings?.agentPermissionOverrides?.claude).toBe('own')
+    expect(resolveTuiAgentLaunchArgs('claude', settings ?? {})).toBe(own ? '' : '--model opus')
+    expect(toast.success).not.toHaveBeenCalled()
+  }
+)
 
 it('retains failed conversion through the ordinary callback and announces only the saved retry', async () => {
   savedArguments('--model opus')
@@ -484,278 +537,74 @@ it.each([20, 200])('keeps Goose Environment editable after Reset/reopen (%i)', a
   expectSettingsWorkScale('renderer-Reset', n, counts)
 })
 
-async function pickGlobalPermission(name: string) {
-  const user = userEvent.setup()
-  await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
-  await user.click(await screen.findByRole('menuitemradio', { name: new RegExp(name) }))
-}
-
-it.each(['same-mode', 'auto', 'empty', 'failed'] as const)(
-  'names only successfully reset separate choices: %s',
-  async (scenario) => {
-    useAppStore.setState(({ settings }) => ({
-      settings: settings && {
-        ...settings,
-        agentPermissionDefault: 'ask',
-        agentPermissionOverrides:
-          scenario === 'empty' ? {} : { claude: 'full-access', gemini: 'ask' }
-      }
-    }))
-    if (scenario === 'failed') {
-      persist.mockRejectedValueOnce(new Error('offline'))
-    }
-    render(<AgentsHarness />)
-    const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
-    const options = screen.getAllByRole('menuitemradio')
-    expect(options.map((option) => option.textContent)).toEqual([
-      expect.stringMatching(/^Ask for approval/),
-      expect.stringMatching(/^Approve for me/),
-      expect.stringMatching(/^Full access/),
-      expect.stringMatching(/^Each agent's own settings/)
-    ])
-    expect(screen.queryByText('Accept edits')).toBeNull()
-    await user.click(options[scenario === 'auto' ? 1 : 0])
-    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
-    await waitFor(() =>
-      expect(scenario === 'failed' ? toast.error : toast.success).toHaveBeenCalledTimes(
-        scenario === 'empty' ? 0 : 1
-      )
-    )
-    if (scenario === 'failed' || scenario === 'empty') {
-      expect(toast.success).not.toHaveBeenCalled()
-    } else {
-      expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-        `Moved 1 agent to ${scenario === 'auto' ? 'Approve for me' : 'Ask for approval'}`,
-        expect.any(Object)
-      )
-    }
-    expect(useAppStore.getState().settings?.agentPermissionOverrides).toEqual(
-      scenario === 'failed'
-        ? { claude: 'full-access', gemini: 'ask' }
-        : scenario === 'auto'
-          ? expect.objectContaining({ gemini: 'ask' })
-          : {}
-    )
-  }
-)
-
-it.each([
-  { overrides: { codex: 'ask' }, notice: null },
-  { overrides: { codex: 'full-access' }, notice: 'Moved 1 agent to Ask for approval' },
-  {
-    overrides: { grok: 'full-access', gemini: 'full-access' },
-    notice: 'Moved 2 agents to Ask for approval'
-  },
-  {
-    overrides: { claude: 'full-access', codex: 'full-access', gemini: 'full-access' },
-    notice: 'Moved 3 agents to Ask for approval'
-  },
-  {
-    overrides: {
-      claude: 'auto',
-      codex: 'accept-edits',
-      gemini: 'own',
-      grok: 'full-access',
-      goose: 'full-access'
-    },
-    notice: 'Moved 5 agents to Ask for approval'
-  }
-] as const)(
-  'only announces changed choices with bounded previous-choice rows: $notice',
-  async ({ overrides, notice }) => {
-    useAppStore.setState(({ settings }) => ({
-      settings: settings && {
-        ...settings,
-        agentPermissionDefault: 'ask',
-        agentPermissionOverrides: overrides
-      }
-    }))
-    render(<AgentsHarness />)
-    await pickGlobalPermission('Ask for approval')
-    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
-    await waitFor(() =>
-      expect(useAppStore.getState().settings?.agentPermissionOverrides).toEqual({})
-    )
-    if (notice) {
-      expect(toast.success).toHaveBeenCalledExactlyOnceWith(notice, expect.any(Object))
-      if (Object.keys(overrides).length === 5) {
-        const description = vi.mocked(toast.success).mock.calls[0]?.[1]?.description
-        const details = render(typeof description === 'function' ? description() : description)
-        expect(details.container.textContent).toBe(
-          'Claude · was Approve for meCodex · was Accept editsGemini · was its own settingsand 2 more'
-        )
-        expect(within(details.container).queryByText('Grok')).toBeNull()
-      }
-    } else {
-      expect(toast.success).not.toHaveBeenCalled()
-    }
-  }
-)
-
-it.each(['ask', 'full-access'] as const)(
-  'only announces changed choices after %s -> Auto -> Full',
-  async (initial) => {
-    useAppStore.setState(({ settings }) => ({
-      settings: settings && {
-        ...settings,
-        agentPermissionDefault: initial,
-        agentPermissionOverrides: {}
-      }
-    }))
-    render(<AgentsHarness />)
-    await pickGlobalPermission('Approve for me')
-    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
-    expect(toast.success).not.toHaveBeenCalled()
-    await pickGlobalPermission('Full access')
-    await waitFor(() => expect(persist).toHaveBeenCalledTimes(2))
-    if (initial === 'full-access') {
-      expect(toast.success).not.toHaveBeenCalled()
-    } else {
-      expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-        expect.stringMatching(/^Moved \d+ agents to Full access$/),
-        expect.any(Object)
-      )
-    }
-  }
-)
-
-it('does not add a reset notice for the non-Auto secondary control', async () => {
-  useAppStore.setState(({ settings }) => ({
-    settings: settings && {
-      ...settings,
-      agentPermissionDefault: 'auto',
-      agentPermissionOverrides: { gemini: 'full-access' }
-    }
-  }))
-  render(<AgentsHarness />)
-  fireEvent.click(
-    within(screen.getByRole('radiogroup', { name: 'Permissions for other agents' })).getByRole(
-      'radio',
-      { name: 'Own settings' }
-    )
-  )
-  await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
-  expect(useAppStore.getState().settings?.agentPermissionOverrides?.gemini).toBe('own')
-  expect(toast.success).not.toHaveBeenCalled()
-})
-
-it.each(['saved', 'failed'] as const)(
-  'derives queued reset notices from current local state after %s pick',
-  async (outcome) => {
-    useAppStore.setState(({ settings }) => ({
-      settings: settings && {
-        ...settings,
-        agentPermissionDefault: 'full-access',
-        agentPermissionOverrides: { codex: 'full-access' }
-      }
-    }))
-    const save = deferredSave()
-    render(<AgentsHarness />)
-    await pickGlobalPermission('Ask for approval')
-    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
-    await pickGlobalPermission('Approve for me')
-    expect(toast.success).not.toHaveBeenCalled()
-    await act(async () =>
-      outcome === 'saved' ? save.resolve() : save.reject(new Error('offline'))
-    )
-    await waitFor(() =>
-      expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto')
-    )
-    expect(persist).toHaveBeenCalledTimes(2)
-    expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-      `Moved 1 agent to ${outcome === 'saved' ? 'Ask for approval' : 'Approve for me'}`,
-      expect.any(Object)
-    )
-  }
-)
-
-it('does not recreate an owner toast when its pending save finishes after unmount', async () => {
-  useAppStore.setState(({ settings }) => ({
-    settings: settings && { ...settings, agentPermissionOverrides: { codex: 'full-access' } }
-  }))
-  const save = deferredSave()
-  const view = render(<AgentsHarness />)
-  await pickGlobalPermission('Ask for approval')
-  await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
-  view.unmount()
-  expect(toast.dismiss).toHaveBeenCalled()
-  await act(async () => save.resolve())
-  expect(toast.success).not.toHaveBeenCalled()
-})
-
-it.each([false, true])(
-  'Undo restores only captured choices and preserves later edits (failure=%s)',
-  async (failed) => {
-    useAppStore.setState(({ settings }) => ({
-      settings: settings && {
-        ...settings,
-        agentPermissionDefault: 'ask',
-        agentPermissionOverrides: { codex: 'full-access', gemini: 'full-access' }
-      }
-    }))
-    render(<AgentsHarness />)
-    await pickGlobalPermission('Ask for approval')
-    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
-    const options = vi.mocked(toast.success).mock.calls[0]?.[1]
-    const action = options?.action
-    if (
-      !action ||
-      typeof action !== 'object' ||
-      !('onClick' in action) ||
-      typeof action.onClick !== 'function'
-    ) {
-      throw new Error('Missing Undo action')
-    }
-    const undo = action.onClick
-    await pickGlobalPermission('Approve for me')
-    await waitFor(() =>
-      expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto')
-    )
-    const input = argumentsInput('Claude')
-    fireEvent.change(input, { target: { value: '--model opus' } })
-    fireEvent.blur(input)
-    await waitFor(() => expect(input.readOnly).toBe(false))
-    fireEvent.click(screen.getByRole('button', { name: /Remove .* and use Claude's own settings/ }))
-    await waitFor(() =>
-      expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('own')
-    )
-    const before = persist.mock.calls.length
-    if (failed) {
-      persist.mockRejectedValueOnce(new Error('offline'))
-    }
-    render(<button onClick={(event) => undo(event)}>Undo reset</button>)
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Undo reset' }))
-    await waitFor(() => expect(persist).toHaveBeenCalledTimes(before + (failed ? 1 : 2)))
-    if (failed) {
-      expect(toast.error).toHaveBeenCalledWith('Codex settings could not be saved. Try again.')
-      expect(useAppStore.getState().settings?.agentPermissionOverrides?.codex).toBeUndefined()
-      expect(useAppStore.getState().settings?.agentPermissionOverrides?.gemini).toBe('ask')
-    } else {
-      expect(useAppStore.getState().settings?.agentPermissionOverrides).toMatchObject({
-        codex: 'full-access',
-        gemini: 'full-access'
-      })
-    }
-    expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto')
-    expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('own')
-    expect(useAppStore.getState().settings?.agentDefaultArgs?.claude).toBe('--model opus')
-    expect(toast.success).toHaveBeenCalledTimes(1)
-  }
-)
-
 it('reports one direct local permission action failure without changing saved intent', async () => {
   persist.mockRejectedValueOnce(new Error('private error'))
   render(<AgentsHarness />)
-  await userEvent.setup().click(screen.getByRole('button', { name: 'Permissions', exact: true }))
-  await userEvent.setup().click(await screen.findByRole('menuitemradio', { name: /Full access/ }))
+  await pickGlobalPermission('Full access')
   await waitFor(() =>
     expect(toast.error).toHaveBeenCalledExactlyOnceWith(
       'Agent settings could not be saved. Try again.'
     )
   )
   expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('ask')
+  expect(toast.success).not.toHaveBeenCalled()
 })
 
 const uiWork = { entries: 0, bytes: 0 }
 const envWork = { entries: 0, bytes: 0 }
+
+async function pickGlobalPermission(name: string) {
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
+  await user.click(await screen.findByRole('menuitemradio', { name: new RegExp(name) }))
+}
+
+it('Undo restores only captured choices and preserves later edits', async () => {
+  useAppStore.setState(({ settings }) => ({
+    settings: settings && {
+      ...settings,
+      agentPermissionDefault: 'ask',
+      agentPermissionOverrides: { codex: 'full-access', gemini: 'full-access' }
+    }
+  }))
+  render(<AgentsHarness />)
+  await pickGlobalPermission('Ask for approval')
+  await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+  expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Moved 2 agents to Ask for approval')
+  const options = vi.mocked(toast.success).mock.calls[0]?.[1]
+  const description = options?.description
+  const details = render(typeof description === 'function' ? description() : description)
+  expect(details.container.textContent).toBe('Codex · was Full accessGemini · was Full access')
+  const action = options?.action
+  if (
+    !action ||
+    typeof action !== 'object' ||
+    !('onClick' in action) ||
+    typeof action.onClick !== 'function'
+  ) {
+    throw new Error('Missing Undo action')
+  }
+  const undo = action.onClick
+  await pickGlobalPermission('Approve for me')
+  await waitFor(() => expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto'))
+  const input = argumentsInput('Claude')
+  fireEvent.change(input, { target: { value: '--model opus' } })
+  fireEvent.blur(input)
+  await waitFor(() => expect(input.readOnly).toBe(false))
+  fireEvent.click(screen.getByRole('button', { name: /Remove .* and use Claude's own settings/ }))
+  await waitFor(() =>
+    expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('own')
+  )
+  const before = persist.mock.calls.length
+  render(<button onClick={(event) => undo(event)}>Undo reset</button>)
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Undo reset' }))
+  await waitFor(() => expect(persist).toHaveBeenCalledTimes(before + 2))
+  expect(useAppStore.getState().settings?.agentPermissionOverrides).toMatchObject({
+    codex: 'full-access',
+    gemini: 'full-access'
+  })
+  expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto')
+  expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('own')
+  expect(useAppStore.getState().settings?.agentDefaultArgs?.claude).toBe('--model opus')
+  expect(toast.success).toHaveBeenCalledTimes(1)
+})

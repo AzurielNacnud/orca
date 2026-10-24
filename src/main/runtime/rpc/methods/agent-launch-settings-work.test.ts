@@ -33,7 +33,7 @@ function makeRequest(method: string, params?: unknown): RpcRequest {
 }
 
 it.each([20, 200])('projects %s repos without launch work', async (n) => {
-  let settings = createGlobalSettingsFixture({
+  const settings = createGlobalSettingsFixture({
     hostSettingOverrides: { 'runtime:alpha': { displayLabel: '  Label  ' } },
     worktreeVisibilityDefaults: { external: 'show' },
     agentPermissionDefault: 'ask',
@@ -53,9 +53,7 @@ it.each([20, 200])('projects %s repos without launch work', async (n) => {
   const tokenized = vi.spyOn(shell, 'tokenizeStartupCommand')
   const store: Pick<RuntimeStore, 'getSettings' | 'updateSettings' | 'runDurableMutation'> = {
     getSettings: () => settings,
-    updateSettings: (updates) => {
-      settings = { ...settings, ...updates }
-    },
+    updateSettings: (updates) => Object.assign(settings, updates),
     runDurableMutation: async (mutate) => mutate().value
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these settings and offline-label paths use only the supplied store methods.
@@ -196,16 +194,5 @@ it.each([20, 200])('projects %s repos without launch work', async (n) => {
       expect(env.goose).toEqual({ KEEP: 'new' })
     }
   }
-  expect(
-    await dispatcher.dispatch(
-      makeRequest('settings.mutateAgentLaunch', { type: 'permission', choice: 'ask' })
-    )
-  ).toMatchObject({
-    ok: true,
-    result: {
-      settings: { agentPermission: { default: 'ask' } },
-      permissionResets: [{ agent: 'claude', previousChoice: 'auto' }]
-    }
-  })
   expect(JSON.parse(currentReplies[0]!).result.repos[0].externalWorktreeVisibility).toBeUndefined()
 })

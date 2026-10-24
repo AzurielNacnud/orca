@@ -93,7 +93,12 @@ export function AgentDefaultArgsInput({
   defaultArgs: string
   argsOverride: string
   onSaveArgs: (value: string) => void | Promise<void>
-  permissionChip?: { label: string; flag: string; onRemove: () => void }
+  permissionChip?: {
+    label: string
+    flag: string
+    removeRecipe: (text: string) => string | null
+    onRemove: () => void
+  }
   note?: string
 }): React.JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
@@ -140,7 +145,11 @@ export function AgentDefaultArgsInput({
             <AgentPermissionArgsChip
               {...permissionChip}
               buttonRef={chipButtonRef}
+              disabled={pending}
               onRemove={() => {
+                if (draft !== null) {
+                  setDraft(permissionChip.removeRecipe(draft) ?? draft)
+                }
                 inputRef.current?.focus()
                 permissionChip.onRemove()
               }}

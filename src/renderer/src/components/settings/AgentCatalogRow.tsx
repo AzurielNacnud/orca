@@ -10,6 +10,7 @@ import type { AgentSessionSourceHomeControl } from './codex-session-source-home-
 import { AgentSessionSourceHomeInput } from './codex-session-source-home-control'
 import { resolveTuiAgentPermissionMode } from '../../../../shared/tui-agent-permissions'
 import { stringifyAgentDefaultEnvDraft } from './agent-default-env-draft'
+import { liftAgentPermissionArgs } from '../../../../shared/tui-agent-permission-lift'
 import {
   AgentPermissionExceptionBadge,
   AgentRowPermissionControl,
@@ -303,6 +304,10 @@ export function AgentCatalogRow({
                       ? {
                           label,
                           flag: permissionChoice.flag,
+                          removeRecipe: (text) => {
+                            const lifted = liftAgentPermissionArgs(agentId, text)
+                            return lifted.choice !== null ? lifted.args : null
+                          },
                           onRemove: () => permissionChoice.onSelect('own')
                         }
                       : undefined

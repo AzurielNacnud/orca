@@ -253,11 +253,13 @@ export function AgentPermissionArgsChip({
   label,
   flag,
   onRemove,
+  disabled,
   buttonRef
 }: {
   label: string
   flag: string
   onRemove: () => void
+  disabled?: boolean
   buttonRef?: Ref<HTMLButtonElement>
 }): React.JSX.Element {
   return (
@@ -268,6 +270,7 @@ export function AgentPermissionArgsChip({
           <button
             ref={buttonRef}
             type="button"
+            disabled={disabled}
             onClick={onRemove}
             onKeyDown={(event) => {
               if (event.key === 'Backspace') {
@@ -282,7 +285,7 @@ export function AgentPermissionArgsChip({
               "Remove {{flag}} and use {{agent}}'s own settings",
               { flag, agent: label }
             )}
-            className="rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
           >
             <X className="size-3" />
           </button>
