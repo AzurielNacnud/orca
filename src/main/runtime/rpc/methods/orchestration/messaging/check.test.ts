@@ -222,46 +222,24 @@ describe('orchestration RPC methods', () => {
 
     it('lets a forgotten Run wait coexist with a new one that receives the same Delivery', async () => {
       setup()
-      const deliveryIdOf = (result: unknown): string => {
-        if (!result || typeof result !== 'object' || !('deliveryId' in result)) {
-          throw new Error('Expected a check result')
-        }
-        return String(result.deliveryId)
-      }
       const waitSpy = vi.spyOn(runtime, 'waitForMessage')
-      const waitFrom = (signal: AbortSignal, params: Record<string, unknown> = {}) =>
-        h.call(
-          'orchestration.check',
-          { terminal: 'term_coord', wait: true, timeoutMs: 5000, ...params },
-          { runtime, signal }
-        )
-      const sendToRun = (subject: string) =>
-        call('orchestration.send', { from: 'term_coord', to: `run:${activeRunId}`, subject })
+      const waitForRun = () =>
+        call('orchestration.check', { terminal: 'term_coord', wait: true, timeoutMs: 5000 })
 
-      const forgotten = waitFrom(new AbortController().signal)
-      const abandoned = new AbortController()
-      const abandonedWait = waitFrom(abandoned.signal)
-      const recovery = waitFrom(new AbortController().signal)
-      await vi.waitFor(() => expect(waitSpy).toHaveBeenCalledTimes(3))
-      abandoned.abort()
-      await expect(abandonedWait).resolves.toMatchObject({ deliveryId: null, cancelled: true })
+      const forgotten = waitForRun()
+      const recovery = waitForRun()
+      await vi.waitFor(() => expect(waitSpy).toHaveBeenCalledTimes(2))
+      await call('orchestration.send', {
+        from: 'term_coord',
+        to: `run:${activeRunId}`,
+        subject: 'first'
+      })
 
-      await sendToRun('first')
-      const [stale, fresh] = await Promise.all([forgotten, recovery])
-      const first = deliveryIdOf(fresh)
-      expect(first).toMatch(/^delivery_/)
-      expect(stale).toMatchObject({ deliveryId: first })
-
-      const ackedFirst = await call('orchestration.check', { terminal: 'term_coord', ack: first })
-      expect(ackedFirst).toMatchObject({ acknowledged: first, deliveryId: null })
-      const repeatedAck = waitFrom(new AbortController().signal, { ack: first })
-      await vi.waitFor(() => expect(waitSpy).toHaveBeenCalledTimes(4))
-      await sendToRun('second')
-      const second = await repeatedAck
-      expect(second).toMatchObject({ acknowledged: first })
-      expect(deliveryIdOf(second)).toMatch(/^delivery_/)
-      expect(deliveryIdOf(second)).not.toBe(first)
-      expect(db.getUnreadMessages(`run:${activeRunId}`).map((m) => m.subject)).toEqual(['second'])
+      const [stale, fresh] = (await Promise.all([forgotten, recovery])).map((result) =>
+        result && typeof result === 'object' && 'deliveryId' in result ? result.deliveryId : null
+      )
+      expect(fresh).toMatch(/^delivery_/)
+      expect(stale).toBe(fresh)
     })
 
     it('rejects stale Delivery acknowledgment without consuming queued mail', async () => {

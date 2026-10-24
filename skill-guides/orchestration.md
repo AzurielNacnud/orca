@@ -121,12 +121,9 @@ it works for, without `run-create`; the helpers report to that worker.
 
 A consuming `check` names its caller with `--terminal <handle>`, never `--from`;
 omit it inside the coordinator's own Orca terminal. It returns the bound Run's
-oldest FIFO Delivery and replays that batch until acknowledged or all its
-messages are marked read. Waiting reserves nothing: concurrent waits share the
-same batch, so a stopped or lost listener never blocks a new `check --wait`.
-Process every message: reply to questions, validate each `worker_done` against
-the expected active Dispatch, and decide each settled terminal's next owner
-before the ack:
+oldest FIFO Delivery and replays that batch until acknowledged. Process every
+message: reply to questions, validate each `worker_done` against the expected
+active Dispatch, and decide each settled terminal's next owner before the ack:
 
 ```text
 ORCA orchestration reply --id <message_id> --body "<answer>" --json

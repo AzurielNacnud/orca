@@ -113,8 +113,7 @@ orca orchestration dispatch --task <taskId> --to <workerHandle> --inject --json
 
 ## Messaging notes
 
-- Default `check` is the bound Run's oldest unacked Delivery (FIFO). Replay until `--ack` or until all its messages are marked read.
-- Several `check --wait` calls may wait on one Run inbox. They share the outstanding Delivery and reserve nothing; process every message before `--ack`, and a repeated `--ack` is a no-op.
+- Default `check` is the bound Run's oldest unacked Delivery (FIFO). Replay until `--ack`.
 - `--peek` / `--all` do not consume mail.
 - Group addresses: `@all`, `@idle`, `@claude`, `@codex`, `@opencode`, `@gemini`, `@droid`, `@grok`, `@cursor`, `@worktree:<id>` — never for `worker_done` / heartbeat.
 - Every group except `@worktree:<id>` means the live Dispatches of the sender's own Run, delivered to their Dispatch mailboxes (or child Run mailboxes for nested coordinators). A sender in no Run is refused; `--run` must match the audience and never grants membership.
