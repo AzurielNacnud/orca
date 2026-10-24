@@ -22,6 +22,54 @@ describe('Claude host-awaited open', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
+  it.each([
+    ['bypassPermissions', 'full-access'],
+    ['plan', null],
+    [undefined, 'accept-edits']
+  ] as const)(
+    'preserves the startup status permission report %s over init',
+    async (mode, expected) => {
+      const claude = fakeClaude()
+      const adapter = adapterAtPublishFor({
+        ...claude,
+        openConnection: async (...args) => {
+          const connection = await claude.openConnection(...args)
+          const observed = claude.connections[0]
+          if (!observed) {
+            throw new Error('missing test connection')
+          }
+          claudeFrame(observed, {
+            type: 'system',
+            subtype: 'init',
+            permissionMode: 'acceptEdits',
+            model: 'claude-sonnet-5'
+          })
+          claudeFrame(observed, {
+            type: 'system',
+            subtype: 'status',
+            status: null,
+            ...(mode === undefined ? {} : { permissionMode: mode })
+          })
+          return connection
+        }
+      })
+      await adapter.acquire({ ...ACQUIRE, options: { permissionMode: 'own' } })
+      const opened = await claudeOpened(adapter, 'session-1')
+      expect(opened.reportedOptions?.reportedPermissionMode).toBe(expected)
+      expect(
+        (await adapter.readOptions({ sessionId: 'session-1', fence: 7 })).current
+          .reportedPermissionMode
+      ).toBe(expected)
+      const connection = claude.connections[0]
+      if (!connection) {
+        throw new Error('missing test connection')
+      }
+      expect(connection.launch.options.permissionMode).toBeUndefined()
+      expect(connection.calls.some((call) => call.subtype === 'set_permission_mode')).toBe(false)
+      await adapter.closeAll()
+    }
+  )
+
   it('refreshes only present owned permission reports through the existing options signal', async () => {
     const claude = fakeClaude()
     const { adapter, events } = adapterFor(claude)
