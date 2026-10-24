@@ -98,7 +98,7 @@ export type BrowserApi = {
   onPagePromptRequest: (callback: (request: BrowserPagePromptRequest) => void) => () => void
   onPagePromptClosed: (callback: (event: { requestId: string }) => void) => () => void
   respondPagePrompt: (response: BrowserPagePromptResponse) => Promise<BrowserPagePromptResult>
-  /** Docks DevTools in the pane unless `detach`; `inspectAt` (guest viewport coordinates) selects the element there. */
+  /** Docks DevTools in the pane unless `detach`; `inspectAt` (the context-menu point, in window coordinates) selects the element there. */
   openDevTools: (args: {
     browserPageId: string
     inspectAt?: { x: number; y: number }

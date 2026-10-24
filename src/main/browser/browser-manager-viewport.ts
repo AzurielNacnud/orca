@@ -30,7 +30,7 @@ export abstract class BrowserManagerViewport extends BrowserManagerDownloadLifec
       guest.openDevTools({ mode: 'detach' })
     }
     if (inspectAt) {
-      // Open first: inspectElement alone uses the saved dock mode, unsupported by guests (#7399).
+      // Open first: inspectElement alone opens Electron's own DevTools and bypasses the dock.
       guest.inspectElement(inspectAt.x, inspectAt.y)
     }
     return true
