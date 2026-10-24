@@ -6,7 +6,6 @@ import {
   PLUGIN_WORKSPACE_TERMINAL_LIMIT,
   type PluginHostMethodSpec
 } from '../../../shared/plugins/workers/plugin-host-api'
-import type { PluginEventName } from '../../../shared/plugins/manifest/plugin-manifest'
 
 export type PluginWorktreeContext = {
   worktreeId: string
@@ -46,7 +45,6 @@ export type PluginHostServices = {
     getAll(pluginId: string): Record<string, unknown>
     set(pluginId: string, key: string, value: unknown): { ok: true } | { ok: false; error: string }
   }
-  subscribeEvents(pluginId: string, events: PluginEventName[]): PluginEventName[]
 }
 
 export type BoundPluginHostMethod = {
@@ -163,10 +161,6 @@ const HANDLERS = new Map<string, BoundPluginHostMethod>([
       throw new Error(result.error)
     }
     return { ok: true }
-  }),
-  definePluginMethod('events.subscribe', async (params, { pluginId, services }) => {
-    const { events } = params as { events: PluginEventName[] }
-    return { subscribed: services.subscribeEvents(pluginId, events) }
   })
 ])
 

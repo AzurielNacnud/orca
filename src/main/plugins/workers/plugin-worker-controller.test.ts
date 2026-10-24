@@ -80,8 +80,7 @@ function controller(options: {
     invokeCommand: vi.fn(async () => null),
     executeHostCall: vi.fn(async () => ({ ok: true as const, value: null })),
     log: (key) => options.logs?.capture(key) ?? vi.fn(),
-    onStateChanged: vi.fn(),
-    onWorkerGone: vi.fn()
+    onStateChanged: vi.fn()
   })
 }
 
