@@ -16,7 +16,7 @@ import { PLUGIN_V1_EVENT_ALIASES } from '../../../shared/plugins/plugin-event-co
 
 export type PluginHostCallError = Error & { code?: string }
 
-/** API surface handed to a plugin's `activate(orca)` export (host API v0, pluginApi 1). */
+/** API surface handed to a plugin's `activate(orca)` export (host API 1). */
 export type PluginWorkerOrcaApi = {
   /** Register the handler for a command declared in the manifest. */
   commands: {

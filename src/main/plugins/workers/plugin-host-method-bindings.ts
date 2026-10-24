@@ -1,6 +1,6 @@
 import {
   getPluginHostMethodSpec,
-  PLUGIN_HOST_API_V0,
+  PLUGIN_HOST_API,
   PLUGIN_TERMINAL_ID_MAX_LENGTH,
   PLUGIN_WORKSPACE_LABEL_MAX_LENGTH,
   PLUGIN_WORKSPACE_TERMINAL_LIMIT,
@@ -166,7 +166,7 @@ const HANDLERS = new Map<string, BoundPluginHostMethod>([
 
 // Why: adding a facade schema without a binding must fail at module load,
 // before a plugin can observe transport-specific behavior.
-if (HANDLERS.size !== PLUGIN_HOST_API_V0.length) {
+if (HANDLERS.size !== PLUGIN_HOST_API.length) {
   throw new Error('plugin host API spec table and handler bindings are out of sync')
 }
 
