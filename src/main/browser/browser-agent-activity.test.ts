@@ -13,6 +13,7 @@ vi.mock('electron', () => ({
   },
   BrowserWindow: {
     fromWebContents: () => ({
+      isDestroyed: () => false,
       isVisible: () => windowState.visible,
       isMinimized: () => false
     })
@@ -39,6 +40,8 @@ function setup() {
   }
   const guest = {
     id: 42,
+    isDestroyed: () => false,
+    isCrashed: () => false,
     debugger: {
       sendCommand: vi.fn(async () => ({ result: { value: [1000, 800] } }))
     }
@@ -46,7 +49,8 @@ function setup() {
   const activity = new BrowserAgentActivity({
     pageIdForGuest: (id) => (id === guest.id ? PAGE : null),
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the owner reads only id, isDestroyed and send.
-    rendererForPage: () => renderer as unknown as Electron.WebContents
+    rendererForPage: () => renderer as unknown as Electron.WebContents,
+    worktreeForPage: () => 'wt-1'
   })
   const agentCommand = () =>
     runWithActiveRpcCaller({ kind: 'local-cli' }, () => activity.beginCommand(PAGE))
@@ -89,18 +93,21 @@ describe('BrowserAgentActivity', () => {
     const { activity, sent, agentCommand } = setup()
     agentCommand().end()
     expect(sent).toEqual([
-      { channel: BROWSER_AGENT_ACTIVITY_CHANNEL, data: { browserPageId: PAGE, active: true } }
+      {
+        channel: BROWSER_AGENT_ACTIVITY_CHANNEL,
+        data: { browserPageId: PAGE, worktreeId: 'wt-1', active: true }
+      }
     ])
     vi.advanceTimersByTime(19_000)
     agentCommand().end()
     vi.advanceTimersByTime(19_000)
-    expect(sent.at(-1)?.data).toEqual({ browserPageId: PAGE, active: true })
+    expect(sent.at(-1)?.data).toEqual({ browserPageId: PAGE, worktreeId: 'wt-1', active: true })
     vi.advanceTimersByTime(1_000)
-    expect(sent.at(-1)?.data).toEqual({ browserPageId: PAGE, active: false })
+    expect(sent.at(-1)?.data).toEqual({ browserPageId: PAGE, worktreeId: 'wt-1', active: false })
 
     agentCommand()
     activity.end(PAGE)
-    expect(sent.at(-1)?.data).toEqual({ browserPageId: PAGE, active: false })
+    expect(sent.at(-1)?.data).toEqual({ browserPageId: PAGE, worktreeId: 'wt-1', active: false })
   })
 
   it('holds a fresh move until the renderer reports the cursor landed', async () => {

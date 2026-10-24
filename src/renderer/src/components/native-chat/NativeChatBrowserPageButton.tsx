@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { BrowserFavicon } from '@/components/browser-favicon'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
+import { findPage } from '@/store/slices/browser-page-records'
+import { findBrowserWorkspaceForRemotePage } from '@/runtime/web-session-tabs-sync/mirrored-browser-tabs'
 import { activateBrowserPagePaletteResult } from '@/lib/browser-page-palette-activation'
 import {
   getBrowserAgentActivityRevision,
@@ -55,10 +57,7 @@ function BrowserPageButton({
   if (baseline.runCallId !== runCallId) {
     setBaseline({ runCallId, revision: getBrowserAgentActivityRevision() })
   }
-  const ownActivityPageId =
-    latest && baseline.runCallId === runCallId && latest.revision > baseline.revision
-      ? latest.pageId
-      : null
+  const ownActivityPageId = latest && latest.revision > baseline.revision ? latest.pageId : null
   const rememberedPageId = runCallId ? pageIdByRunCallId.get(runCallId) : undefined
   const targetPageId = pageId ?? rememberedPageId ?? latest?.pageId ?? null
   useEffect(() => {
@@ -77,18 +76,19 @@ function BrowserPageButton({
     if (!targetPageId) {
       return null
     }
-    // A remote runtime's `--page` names its own page id, which a local handle maps.
-    for (const pages of Object.values(state.browserPagesByWorkspace)) {
-      const match = pages.find(
-        (candidate) =>
-          candidate.id === targetPageId ||
-          state.remoteBrowserPageHandlesByPageId[candidate.id]?.remotePageId === targetPageId
-      )
-      if (match) {
-        return match
-      }
+    const localPage = findPage(state.browserPagesByWorkspace, targetPageId)
+    if (localPage || owner?.target.kind !== 'environment') {
+      return localPage
     }
-    return null
+    // A remote runtime's `--page` names its own page id, which a local handle maps.
+    return (
+      findBrowserWorkspaceForRemotePage(
+        state,
+        owner.worktreeId,
+        owner.target.environmentId,
+        targetPageId
+      )?.page ?? null
+    )
   })
   if (!page) {
     return null

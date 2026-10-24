@@ -3,13 +3,13 @@ import { useSyncExternalStore } from 'react'
 import type { BrowserAgentCursorEvent } from '../../../../../shared/browser-agent-activity-contract'
 
 /** A mounted page draws the cursor and returns whether it will report the arrival itself. */
-export type BrowserAgentCursorSink = {
+type BrowserAgentCursorSink = {
   show: (event: BrowserAgentCursorEvent) => boolean
   hide: () => void
 }
 
 /** The page an agent in a worktree last drove; `revision` orders it against other activity. */
-export type BrowserAgentActivityMark = { pageId: string; revision: number }
+type BrowserAgentActivityMark = { pageId: string; revision: number }
 
 const activePageIds = new Set<string>()
 const lastActivityByWorktree = new Map<string, BrowserAgentActivityMark>()

@@ -1,11 +1,7 @@
 import { useEffect, type RefObject } from 'react'
 import { createAgentCursor, type AgentCursorController } from './agent-cursor-motion'
 import { attachBrowserAgentCursorSink } from './browser-agent-activity-state'
-
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
-
-const prefersReducedMotion = (): boolean =>
-  typeof window.matchMedia === 'function' && window.matchMedia(REDUCED_MOTION_QUERY).matches
+import { readPrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 
 /** Whether a person could see the page right now; hidden pages take the cursor without waiting. */
 function isOnScreen(webview: Electron.WebviewTag, rect: DOMRect): boolean {
@@ -52,10 +48,10 @@ export function useBrowserAgentCursor(
       layer.setAttribute('aria-hidden', 'true')
       host.appendChild(layer)
       const cursor = createAgentCursor(layer, {
-        reducedMotion: prefersReducedMotion,
+        reducedMotion: readPrefersReducedMotion,
         onArrived: (sequence) => {
           if (awaited.delete(sequence)) {
-            window.api.browser.agentCursorArrived?.(sequence)
+            window.api.browser.agentCursorArrived(sequence)
           }
         }
       })

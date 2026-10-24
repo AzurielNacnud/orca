@@ -12,7 +12,8 @@ export abstract class BrowserManagerVisibility extends BrowserManagerState {
   protected readonly agentActivity = new BrowserAgentActivity({
     pageIdForGuest: (guestWebContentsId) =>
       this.resolveBrowserTabIdForGuestWebContentsId(guestWebContentsId),
-    rendererForPage: (browserPageId) => this.resolveRendererForBrowserTab(browserPageId)
+    rendererForPage: (browserPageId) => this.resolveRendererForBrowserTab(browserPageId),
+    worktreeForPage: (browserPageId) => this.worktreeIdByTabId.get(browserPageId) ?? null
   })
 
   /** Holds the page's agent marking for one queued command, from queueing until it settles. */

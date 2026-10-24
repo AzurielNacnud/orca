@@ -1,4 +1,5 @@
 import {
+  clamp,
   planCursorPath,
   type CursorBounds,
   type CursorPath,
@@ -24,11 +25,7 @@ export type CursorMotion =
       end: CursorPoint
       axisDeg: number
       leanDeg: number
-      position: SpringConfig
     }
-
-const clamp = (value: number, min: number, max: number): number =>
-  Math.max(min, Math.min(max, value))
 
 export function planCursorMotion(
   from: CursorPoint,
@@ -47,8 +44,7 @@ export function planCursorMotion(
       start: { ...from },
       end: { ...to },
       axisDeg: (Math.atan2(dy, dx) * 180) / Math.PI,
-      leanDeg: clamp(dx * 0.75 - dy * 0.62, -1, 1) * LEAN_DEG,
-      position: POSITION
+      leanDeg: clamp(dx * 0.75 - dy * 0.62, -1, 1) * LEAN_DEG
     }
   }
   const planned = planCursorPath(from, to, bounds)

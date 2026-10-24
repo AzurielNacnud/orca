@@ -6,6 +6,7 @@ export const BROWSER_AGENT_CURSOR_ARRIVED_CHANNEL = 'browser:agentCursorArrived'
 
 export type BrowserAgentActivityEvent = {
   browserPageId: string
+  worktreeId: string | null
   active: boolean
 }
 

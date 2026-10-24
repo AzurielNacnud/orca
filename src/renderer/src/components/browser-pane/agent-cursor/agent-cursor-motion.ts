@@ -1,6 +1,7 @@
 // Spring-driven agent cursor. Writes only transform/opacity/filter, runs on rAF
 // while something moves, and stops the loop once every spring settles.
 import {
+  clamp,
   CURSOR_REST_HEADING_DEG,
   projectedProgress,
   samplePath,
@@ -31,8 +32,6 @@ const APPEARED_VISIBILITY = 0.9
 const IDLE_DIM_DELAY_MS = 1500
 const IDLE_OPACITY = '0.5'
 
-const clamp = (value: number, min: number, max: number): number =>
-  Math.max(min, Math.min(max, value))
 const lerp = (from: number, to: number, t: number): number => from + (to - from) * t
 
 export type AgentCursorController = {
@@ -82,6 +81,13 @@ export function createAgentCursor(
     squash.snap(1)
     stretch.snap(1)
     squashAxisDeg = 0
+  }
+
+  const jumpTo = (target: CursorPoint): void => {
+    motion = null
+    setPosition(target)
+    settleShape()
+    heading.snap(CURSOR_REST_HEADING_DEG)
   }
 
   const markActive = (): void => {
@@ -231,40 +237,28 @@ export function createAgentCursor(
       const hidden = visibility.target === 0 && visibility.value < 0.001
       visibility.target = 1
       if (options.reducedMotion()) {
-        motion = null
-        setPosition(target)
-        settleShape()
-        heading.snap(CURSOR_REST_HEADING_DEG)
+        jumpTo(target)
         visibility.snap(1)
         finishInstantly(sequence)
         return
       }
-      if (!animate) {
-        motion = null
-        setPosition(target)
-        settleShape()
-        heading.snap(CURSOR_REST_HEADING_DEG)
+      if (!animate || hidden) {
+        // A hidden cursor appears where the agent acts instead of flying in from a stale spot.
+        jumpTo(target)
         if (!hidden) {
           finishInstantly(sequence)
           return
         }
-      }
-      pendingArrival = sequence
-      if (hidden) {
-        // Appear where the agent acts instead of flying in from a stale spot.
-        motion = null
-        setPosition(target)
-        settleShape()
-        heading.snap(CURSOR_REST_HEADING_DEG)
-      } else if (animate) {
+      } else {
         motion = planCursorMotion(point, target, {
           width: layer.clientWidth,
           height: layer.clientHeight
         })
-        x.config = motion?.position ?? POSITION
-        y.config = motion?.position ?? POSITION
+        x.config = motion?.mode === 'path' ? motion.position : POSITION
+        y.config = x.config
         squashAxisDeg = motion?.mode === 'scoot' ? motion.axisDeg : 0
       }
+      pendingArrival = sequence
       start()
     },
     press() {

@@ -1,4 +1,7 @@
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
+import { isResourceWindowVisible } from '../window/resource-view-admission'
+import { sendGuestCdpCommand } from './guest-cdp-command'
+import { isAgentRpcCaller } from '../runtime/rpc/rpc-caller-identity'
 import {
   BROWSER_AGENT_ACTIVITY_CHANNEL,
   BROWSER_AGENT_CURSOR_ARRIVED_CHANNEL,
@@ -44,6 +47,7 @@ type PendingArrival = {
 type BrowserAgentActivityDeps = {
   pageIdForGuest: (guestWebContentsId: number) => string | null
   rendererForPage: (browserPageId: string) => WebContents | null
+  worktreeForPage: (browserPageId: string) => string | null
 }
 
 const NOT_AN_AGENT: AgentCommandLease = { run: (execute) => execute(), end: () => {} }
@@ -59,7 +63,7 @@ export class BrowserAgentActivity {
 
   /** Marks the page as agent-driven for one command; people's relayed input never counts. */
   beginCommand(browserPageId: string): AgentCommandLease {
-    if (getActiveRpcCaller()?.kind !== 'local-cli') {
+    if (!isAgentRpcCaller(getActiveRpcCaller())) {
       return NOT_AN_AGENT
     }
     let page = this.pages.get(browserPageId)
@@ -138,8 +142,7 @@ export class BrowserAgentActivity {
       return
     }
     // Drag steps and the press after a move follow without waiting; only a fresh move is shown first.
-    const window = BrowserWindow.fromWebContents(renderer)
-    const watchable = !!window && window.isVisible() && !window.isMinimized()
+    const watchable = isResourceWindowVisible(BrowserWindow.fromWebContents(renderer))
     const awaitsArrival = watchable && !press && !input.buttons
     const sequence = ++this.sequence
     const event: BrowserAgentCursorEvent = {
@@ -194,7 +197,11 @@ export class BrowserAgentActivity {
   private publish(browserPageId: string, active: boolean): void {
     const renderer = this.deps.rendererForPage(browserPageId)
     if (renderer && !renderer.isDestroyed()) {
-      const event: BrowserAgentActivityEvent = { browserPageId, active }
+      const event: BrowserAgentActivityEvent = {
+        browserPageId,
+        worktreeId: this.deps.worktreeForPage(browserPageId),
+        active
+      }
       renderer.send(BROWSER_AGENT_ACTIVITY_CHANNEL, event)
     }
   }
@@ -210,7 +217,7 @@ async function readPageViewport(
   guest: WebContents
 ): Promise<{ width: number; height: number } | null> {
   try {
-    const response: unknown = await guest.debugger.sendCommand('Runtime.evaluate', {
+    const response: unknown = await sendGuestCdpCommand(guest, 'Runtime.evaluate', {
       expression: '[innerWidth, innerHeight]',
       returnByValue: true
     })

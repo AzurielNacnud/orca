@@ -32,7 +32,7 @@ const ARC_DISTANCE_SCALES = [0.55, 0.8, 1.05]
 const ARC_HANDLE_SCALES = [0.65, 1, 1.35]
 const SAMPLES_PER_SEGMENT = 24
 
-const clamp = (value: number, min: number, max: number): number =>
+export const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value))
 
 const distance = (a: CursorPoint, b: CursorPoint): number => Math.hypot(b.x - a.x, b.y - a.y)
@@ -48,7 +48,7 @@ function headingVector(degrees: number): CursorPoint {
 }
 
 /** Degrees clockwise from straight up for a direction vector. */
-export function headingOf(direction: CursorPoint): number {
+function headingOf(direction: CursorPoint): number {
   if (Math.hypot(direction.x, direction.y) < 0.001) {
     return CURSOR_REST_HEADING_DEG
   }
@@ -235,7 +235,7 @@ function candidatePaths(start: CursorPoint, end: CursorPoint, bounds: CursorBoun
   return candidates
 }
 
-export type PlannedCursorPath = {
+type PlannedCursorPath = {
   path: CursorPath
   /** Spring response, in seconds, for travelling the whole path. */
   response: number

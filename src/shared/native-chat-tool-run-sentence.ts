@@ -10,8 +10,11 @@
 // Built on the category vocabulary that already picks each row's glyph, so the
 // sentence and the icon beside it can never claim different things.
 
-import { nativeChatToolCategory, type NativeChatToolCategory } from './native-chat-tool-icon'
-import type { NativeChatMcpIdentity } from './native-chat-tool-identity'
+import {
+  nativeChatToolCategory,
+  type NativeChatToolCategory,
+  type NativeChatToolCategoryCall
+} from './native-chat-tool-icon'
 import { toolInputCommand } from './native-chat-tool-summary'
 import { isToolCallBlock, type NativeChatBlock } from './native-chat-types'
 
@@ -69,7 +72,7 @@ export type NativeChatToolRunClause = {
  *  calls it made. First-use order rather than a count ranking: the sentence then
  *  reads in the order the work happened. */
 export function nativeChatToolRunClauses(
-  calls: readonly { name: string; mcpIdentity?: NativeChatMcpIdentity; input?: unknown }[]
+  calls: readonly NativeChatToolCategoryCall[]
 ): NativeChatToolRunClause[] {
   const counts = new Map<NativeChatToolCategory, number>()
   for (const call of calls) {

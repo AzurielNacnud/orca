@@ -33,16 +33,6 @@ function isClientHostedBrowserPage(browserPageId: string): boolean {
   )
 }
 
-function worktreeIdForBrowserPage(browserPageId: string): string | null {
-  for (const pages of Object.values(useAppStore.getState().browserPagesByWorkspace)) {
-    const page = pages.find((candidate) => candidate.id === browserPageId)
-    if (page) {
-      return page.worktreeId
-    }
-  }
-  return null
-}
-
 export function registerBrowserStateIpcBridge(
   unsubs: (() => void)[],
   isRuntimeEnvironmentActive: () => boolean
@@ -137,8 +127,8 @@ export function registerBrowserStateIpcBridge(
     })
   }
   const unsubscribeAgentActivity = window.api.browser.onAgentActivity?.(
-    ({ browserPageId, active }) => {
-      setBrowserAgentPageActive(browserPageId, active, worktreeIdForBrowserPage(browserPageId))
+    ({ browserPageId, worktreeId, active }) => {
+      setBrowserAgentPageActive(browserPageId, active, worktreeId)
     }
   )
   if (unsubscribeAgentActivity) {
