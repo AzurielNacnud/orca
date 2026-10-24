@@ -119,7 +119,6 @@ export function AgentDefaultArgsInput({
     }
     const measure = (): void => {
       input.style.textIndent = `calc(${chip.getBoundingClientRect().width}px + var(--spacing) * 2)`
-      chip.style.transform = `translateY(${-input.scrollTop}px)`
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -149,7 +148,7 @@ export function AgentDefaultArgsInput({
       </span>
       <div className="flex items-center gap-2">
         <div
-          className="relative min-h-7 min-w-0 flex-1 overflow-hidden rounded-md border border-input px-3 py-0.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
+          className="scrollbar-sleek relative max-h-[calc(var(--spacing)*41+2px)] min-h-7 min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-md border border-input px-3 py-0.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) {
               commitArgs()
@@ -182,11 +181,6 @@ export function AgentDefaultArgsInput({
             rows={1}
             value={argsDraft}
             readOnly={pending}
-            onScroll={(event) => {
-              if (chipRef.current) {
-                chipRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`
-              }
-            }}
             onChange={(event) => setDraft(event.target.value.replace(/[\r\n]/g, ''))}
             onKeyDown={(event) => {
               if (
@@ -216,7 +210,7 @@ export function AgentDefaultArgsInput({
               translate('auto.components.settings.AgentsPane.6f99bf5dd0', 'No default arguments')
             }
             spellCheck={false}
-            className="block max-h-40 min-h-5 [field-sizing:content]"
+            className="block min-h-5 [field-sizing:content]"
           />
         </div>
         {(argsOverride !== defaultArgs || argsDraft !== defaultArgs) && (

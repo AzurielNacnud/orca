@@ -275,7 +275,7 @@ export function AgentPermissionArgsChip({
       <TooltipTrigger asChild>
         <span
           ref={chipRef}
-          className="absolute top-0.5 left-3 flex h-5 max-w-[60%] items-center gap-1 rounded bg-muted px-1.5 font-mono text-xs leading-5 text-foreground/80 focus-within:ring-2 focus-within:ring-ring"
+          className="relative z-10 -mb-5 flex h-5 w-fit max-w-[60%] items-center gap-1 rounded bg-muted px-1.5 font-mono text-xs leading-5 text-foreground/80 focus-within:ring-2 focus-within:ring-ring"
         >
           <span className="truncate">{flag}</span>
           <button
