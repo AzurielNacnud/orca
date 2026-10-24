@@ -2,7 +2,15 @@ import { ChildProcess } from 'node:child_process'
 import { PassThrough } from 'node:stream'
 import { expect, vi } from 'vitest'
 
-export function createMockDiscoveryChild() {
+export type MockDiscoveryChild = ChildProcess & {
+  pid: number
+  kill: ReturnType<typeof vi.fn<() => boolean>>
+  stdout: PassThrough
+  stderr: PassThrough
+  stdin: PassThrough & { end: ReturnType<typeof vi.fn> }
+}
+
+export function createMockDiscoveryChild(): MockDiscoveryChild {
   return Object.assign(new ChildProcess(), {
     pid: 123,
     kill: vi.fn(() => true),
@@ -11,7 +19,6 @@ export function createMockDiscoveryChild() {
     stdin: Object.assign(new PassThrough(), { end: vi.fn() })
   })
 }
-export type MockDiscoveryChild = ReturnType<typeof createMockDiscoveryChild>
 
 export function withPlatform<T>(platform: NodeJS.Platform, fn: () => T): T {
   const original = process.platform
