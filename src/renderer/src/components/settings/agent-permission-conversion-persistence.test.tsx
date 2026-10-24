@@ -16,7 +16,9 @@ import {
 } from '../../../../shared/global-settings-test-fixture'
 import { resolveTuiAgentLaunchArgs } from '../../../../shared/tui-agent-launch-defaults'
 
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }))
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), dismiss: vi.fn() }
+}))
 vi.mock('@/hooks/useDetectedAgents', () => ({
   useDetectedAgents: () => ({
     detectedIds: ['claude', 'gemini', 'goose'],
@@ -524,7 +526,8 @@ it.each(['same-mode', 'auto', 'empty', 'failed'] as const)(
       expect(toast.success).not.toHaveBeenCalled()
     } else {
       expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-        "Claude's separate permission was reset."
+        `Moved 1 agent to ${scenario === 'auto' ? 'Approve for me' : 'Ask for approval'}`,
+        expect.any(Object)
       )
     }
     expect(useAppStore.getState().settings?.agentPermissionOverrides).toEqual(
@@ -539,27 +542,27 @@ it.each(['same-mode', 'auto', 'empty', 'failed'] as const)(
 
 it.each([
   { overrides: { codex: 'ask' }, notice: null },
-  { overrides: { codex: 'full-access' }, notice: "Codex's separate permission was reset." },
+  { overrides: { codex: 'full-access' }, notice: 'Moved 1 agent to Ask for approval' },
   {
     overrides: { grok: 'full-access', gemini: 'full-access' },
-    notice: 'Separate permissions were reset for Gemini and Grok.'
+    notice: 'Moved 2 agents to Ask for approval'
   },
   {
     overrides: { claude: 'full-access', codex: 'full-access', gemini: 'full-access' },
-    notice: 'Separate permissions were reset for Claude, Codex, and Gemini.'
+    notice: 'Moved 3 agents to Ask for approval'
   },
   {
     overrides: {
-      claude: 'full-access',
-      codex: 'full-access',
-      gemini: 'full-access',
+      claude: 'auto',
+      codex: 'accept-edits',
+      gemini: 'own',
       grok: 'full-access',
       goose: 'full-access'
     },
-    notice: 'Separate permissions were reset for Claude, Codex, and 3 other agents.'
+    notice: 'Moved 5 agents to Ask for approval'
   }
 ] as const)(
-  'only announces changed choices with bounded neutral names: $notice',
+  'only announces changed choices with bounded previous-choice rows: $notice',
   async ({ overrides, notice }) => {
     useAppStore.setState(({ settings }) => ({
       settings: settings && {
@@ -575,7 +578,15 @@ it.each([
       expect(useAppStore.getState().settings?.agentPermissionOverrides).toEqual({})
     )
     if (notice) {
-      expect(toast.success).toHaveBeenCalledExactlyOnceWith(notice)
+      expect(toast.success).toHaveBeenCalledExactlyOnceWith(notice, expect.any(Object))
+      if (Object.keys(overrides).length === 5) {
+        const description = vi.mocked(toast.success).mock.calls[0]?.[1]?.description
+        const details = render(typeof description === 'function' ? description() : description)
+        expect(details.container.textContent).toBe(
+          'Claude · was Approve for meCodex · was Accept editsGemini · was its own settingsand 2 more'
+        )
+        expect(within(details.container).queryByText('Grok')).toBeNull()
+      }
     } else {
       expect(toast.success).not.toHaveBeenCalled()
     }
@@ -602,9 +613,8 @@ it.each(['ask', 'full-access'] as const)(
       expect(toast.success).not.toHaveBeenCalled()
     } else {
       expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-        expect.stringMatching(
-          /^Separate permissions were reset for CodeBuddy, OpenClaude, and \d+ other agents\.$/
-        )
+        expect.stringMatching(/^Moved \d+ agents to Full access$/),
+        expect.any(Object)
       )
     }
   }
@@ -653,7 +663,84 @@ it.each(['saved', 'failed'] as const)(
       expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto')
     )
     expect(persist).toHaveBeenCalledTimes(2)
-    expect(toast.success).toHaveBeenCalledExactlyOnceWith("Codex's separate permission was reset.")
+    expect(toast.success).toHaveBeenCalledExactlyOnceWith(
+      `Moved 1 agent to ${outcome === 'saved' ? 'Ask for approval' : 'Approve for me'}`,
+      expect.any(Object)
+    )
+  }
+)
+
+it('does not recreate an owner toast when its pending save finishes after unmount', async () => {
+  useAppStore.setState(({ settings }) => ({
+    settings: settings && { ...settings, agentPermissionOverrides: { codex: 'full-access' } }
+  }))
+  const save = deferredSave()
+  const view = render(<AgentsHarness />)
+  await pickGlobalPermission('Ask for approval')
+  await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+  view.unmount()
+  expect(toast.dismiss).toHaveBeenCalled()
+  await act(async () => save.resolve())
+  expect(toast.success).not.toHaveBeenCalled()
+})
+
+it.each([false, true])(
+  'Undo restores only captured choices and preserves later edits (failure=%s)',
+  async (failed) => {
+    useAppStore.setState(({ settings }) => ({
+      settings: settings && {
+        ...settings,
+        agentPermissionDefault: 'ask',
+        agentPermissionOverrides: { codex: 'full-access', gemini: 'full-access' }
+      }
+    }))
+    render(<AgentsHarness />)
+    await pickGlobalPermission('Ask for approval')
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    const options = vi.mocked(toast.success).mock.calls[0]?.[1]
+    const action = options?.action
+    if (
+      !action ||
+      typeof action !== 'object' ||
+      !('onClick' in action) ||
+      typeof action.onClick !== 'function'
+    ) {
+      throw new Error('Missing Undo action')
+    }
+    const undo = action.onClick
+    await pickGlobalPermission('Approve for me')
+    await waitFor(() =>
+      expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto')
+    )
+    const input = argumentsInput('Claude')
+    fireEvent.change(input, { target: { value: '--model opus' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(input.readOnly).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: /Remove .* and use Claude's own settings/ }))
+    await waitFor(() =>
+      expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('own')
+    )
+    const before = persist.mock.calls.length
+    if (failed) {
+      persist.mockRejectedValueOnce(new Error('offline'))
+    }
+    render(<button onClick={(event) => undo(event)}>Undo reset</button>)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Undo reset' }))
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(before + (failed ? 1 : 2)))
+    if (failed) {
+      expect(toast.error).toHaveBeenCalledWith('Codex settings could not be saved. Try again.')
+      expect(useAppStore.getState().settings?.agentPermissionOverrides?.codex).toBeUndefined()
+      expect(useAppStore.getState().settings?.agentPermissionOverrides?.gemini).toBe('ask')
+    } else {
+      expect(useAppStore.getState().settings?.agentPermissionOverrides).toMatchObject({
+        codex: 'full-access',
+        gemini: 'full-access'
+      })
+    }
+    expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto')
+    expect(useAppStore.getState().settings?.agentPermissionOverrides?.claude).toBe('own')
+    expect(useAppStore.getState().settings?.agentDefaultArgs?.claude).toBe('--model opus')
+    expect(toast.success).toHaveBeenCalledTimes(1)
   }
 )
 

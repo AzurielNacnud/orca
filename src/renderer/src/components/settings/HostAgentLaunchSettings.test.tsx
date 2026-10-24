@@ -21,14 +21,19 @@ const transport = vi.hoisted(() => ({
   mutate: vi.fn(),
   detection: vi.fn(),
   auto: vi.fn(),
-  native: vi.fn()
+  native: vi.fn(),
+  undo: vi.fn()
 }))
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }))
 vi.mock('./agent-launch-settings-transport', () => ({
   readHostAgentLaunchSettings: transport.read,
-  mutateHostAgentLaunchSettings: transport.mutate,
+  mutateHostAgentLaunchSettings: async (...args: unknown[]) => {
+    const result = await transport.mutate(...args)
+    return 'settings' in result ? result : { settings: result }
+  },
   hostSupportsAutoPermissions: transport.auto,
-  hostSupportsNativeChatPermissions: transport.native
+  hostSupportsNativeChatPermissions: transport.native,
+  hostSupportsPermissionResetUndo: transport.undo
 }))
 vi.mock('@/hooks/useDetectedAgents', () => ({
   useDetectedAgents: (target: unknown) => {
@@ -68,6 +73,7 @@ beforeEach(() => {
   transport.mutate.mockReset().mockResolvedValue(host())
   transport.detection.mockClear()
   transport.auto.mockReset().mockResolvedValue(true)
+  transport.undo.mockReset().mockResolvedValue(false)
   transport.native.mockReset().mockResolvedValue(true)
 })
 
@@ -120,9 +126,11 @@ describe('host launch settings form', () => {
     save(after)
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-        "Codex's separate permission was reset."
+        'Moved 1 agent to Ask for approval',
+        expect.any(Object)
       )
     )
+    expect(vi.mocked(toast.success).mock.calls[0]?.[1]?.action).toBeUndefined()
     expect(transport.mutate).toHaveBeenLastCalledWith(
       { environmentId: 'ssh-host', pairingRevision: 17 },
       { type: 'permission', choice: 'ask' },
@@ -191,11 +199,74 @@ describe('host launch settings form', () => {
         await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2))
         await waitFor(() =>
           expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-            "Codex's separate permission was reset."
+            `Moved 1 agent to ${outcome === 'saved' ? 'Ask for approval' : 'Approve for me'}`,
+            expect.any(Object)
           )
         )
         expect(transport.mutate.mock.calls[1][1]).toEqual({ type: 'permission', choice: 'auto' })
       }
+    }
+  )
+
+  it.each([false, true])(
+    'uses authoritative reset entries and offers exact Undo only on capable hosts: %s',
+    async (supported) => {
+      transport.undo.mockResolvedValue(supported)
+      transport.read.mockResolvedValue(
+        projectAgentLaunchSettings({
+          agentPermissionDefault: 'ask',
+          agentPermissionOverrides: { codex: 'ask' }
+        })
+      )
+      const after = projectAgentLaunchSettings({ agentPermissionDefault: 'full-access' })
+      transport.mutate
+        .mockResolvedValueOnce({
+          settings: after,
+          permissionResets: [{ agent: 'gemini', previousChoice: 'ask' }]
+        })
+        .mockResolvedValue(after)
+      const view = render(pane(17))
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Permissions', exact: true })).toHaveProperty(
+          'disabled',
+          false
+        )
+      )
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
+      await user.click(await screen.findByRole('menuitemradio', { name: /Full access/ }))
+      await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+      expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Moved 1 agent to Full access')
+      const options = vi.mocked(toast.success).mock.calls[0]?.[1]
+      const description = options?.description
+      const details = render(typeof description === 'function' ? description() : description)
+      expect(details.container.textContent).toBe(
+        `${supported ? 'Gemini' : 'Codex'} · was Ask for approval`
+      )
+      const action = options?.action
+      if (supported) {
+        if (
+          !action ||
+          typeof action !== 'object' ||
+          !('onClick' in action) ||
+          typeof action.onClick !== 'function'
+        ) {
+          throw new Error('Missing Undo action')
+        }
+        const undo = action.onClick
+        render(<button onClick={(event) => undo(event)}>Undo reset</button>)
+        await user.click(screen.getByRole('button', { name: 'Undo reset' }))
+        await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2))
+        expect(transport.mutate.mock.calls[1][1]).toEqual({
+          type: 'permission',
+          agent: 'gemini',
+          choice: 'ask'
+        })
+      } else {
+        expect(action).toBeUndefined()
+      }
+      view.unmount()
+      expect(toast.dismiss).toHaveBeenCalledWith(options?.id)
     }
   )
 

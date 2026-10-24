@@ -1,3 +1,4 @@
+import { agentPermissionResetEntries } from '../../../../shared/agent-launch-permission-updates'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   AgentLaunchSettings,
@@ -13,10 +14,11 @@ import {
   readHostAgentLaunchSettings,
   hostSupportsAutoPermissions,
   hostSupportsNativeChatPermissions,
+  hostSupportsPermissionResetUndo,
   type AgentLaunchSettingsOwner
 } from './agent-launch-settings-transport'
 import { Button } from '../ui/button'
-import { agentPermissionResetNotice } from './agent-permission-reset-notice'
+import { useAgentPermissionResetNotice } from './agent-permission-reset-notice'
 import { translate } from '@/i18n/i18n'
 
 type ReadState =
@@ -26,6 +28,7 @@ type ReadState =
       settings: AgentLaunchSettings
       autoSupported: boolean
       nativeChatPermissionsSupported: boolean
+      permissionResetUndoSupported: boolean
     }
 
 export function HostAgentLaunchSettings({
@@ -45,6 +48,7 @@ export function HostAgentLaunchSettings({
     () => ({ kind: 'runtime' as const, environmentId }),
     [environmentId]
   )
+  const notifyReset = useAgentPermissionResetNotice()
   const controllerRef = useRef<AbortController | null>(null)
   const currentRead = useRef<ReadState>({ kind: 'loading' })
   const [read, publishRead] = useState(currentRead.current)
@@ -60,15 +64,27 @@ export function HostAgentLaunchSettings({
     controllerRef.current = controller
     setRead({ kind: 'loading' })
     try {
-      const [settings, autoSupported, nativeChatPermissionsSupported] = await Promise.all([
+      const [
+        settings,
+        autoSupported,
+        nativeChatPermissionsSupported,
+        permissionResetUndoSupported
+      ] = await Promise.all([
         readHostAgentLaunchSettings(owner, controller.signal),
         hostSupportsAutoPermissions(owner),
-        hostSupportsNativeChatPermissions(owner)
+        hostSupportsNativeChatPermissions(owner),
+        hostSupportsPermissionResetUndo(owner)
       ])
       if (!controller.signal.aborted) {
         setRead(
           settings
-            ? { kind: 'ready', settings, autoSupported, nativeChatPermissionsSupported }
+            ? {
+                kind: 'ready',
+                settings,
+                autoSupported,
+                nativeChatPermissionsSupported,
+                permissionResetUndoSupported
+              }
             : { kind: 'unsupported' }
         )
       }
@@ -94,26 +110,37 @@ export function HostAgentLaunchSettings({
         if (controller.signal.aborted || latest.kind !== 'ready') {
           throw new Error('agent_launch_settings_unavailable')
         }
-        const notifyReset = agentPermissionResetNotice(
+        const fallbackResets = agentPermissionResetEntries(
           latest.settings.agentPermission
             ? {
                 agentPermissionDefault: latest.settings.agentPermission.default,
                 agentPermissionOverrides: latest.settings.agentPermission.overrides
               }
-            : null,
+            : {},
           mutation
         )
         setSaveFailed(false)
         try {
-          const settings = await mutateHostAgentLaunchSettings(owner, mutation, controller.signal)
+          const result = await mutateHostAgentLaunchSettings(owner, mutation, controller.signal)
           if (!controller.signal.aborted) {
             setRead({
-              kind: 'ready',
-              settings,
-              autoSupported: latest.autoSupported,
-              nativeChatPermissionsSupported: latest.nativeChatPermissionsSupported
+              ...latest,
+              settings: result.settings
             })
-            notifyReset()
+            const resets = latest.permissionResetUndoSupported
+              ? (result.permissionResets ?? [])
+              : fallbackResets
+            notifyReset(
+              resets,
+              mutation,
+              latest.permissionResetUndoSupported
+                ? async () => {
+                    for (const { agent, previousChoice } of resets) {
+                      await mutate({ type: 'permission', agent, choice: previousChoice })
+                    }
+                  }
+                : undefined
+            )
           }
         } catch {
           if (!controller.signal.aborted) {

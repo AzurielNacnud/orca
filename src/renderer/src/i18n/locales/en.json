@@ -438,10 +438,13 @@
       }
     },
     "agents": {
-      "permissionResetSingle": "{{agent}}'s separate permission was reset.",
-      "permissionResetMany": "Separate permissions were reset for {{agents}}.",
-      "permissionResetOthers_one": "{{count}} other agent",
-      "permissionResetOthers_other": "{{count}} other agents",
+      "permissionResetMoved_one": "Moved {{count}} agent to {{mode}}",
+      "permissionResetMoved_other": "Moved {{count}} agents to {{mode}}",
+      "permissionResetUndo": "Undo",
+      "permissionResetWas": "was {{mode}}",
+      "permissionResetOwn": "its own settings",
+      "permissionResetMore_one": "and {{count}} more",
+      "permissionResetMore_other": "and {{count}} more",
       "permissionsTitle": "Permissions",
       "permissionsChoiceExplanation": "What every agent may do without asking. You can set one agent differently below.",
       "permissionEachOwn": "Each agent's own settings",

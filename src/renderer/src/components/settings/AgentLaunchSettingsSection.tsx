@@ -1,11 +1,15 @@
 import { toast } from 'sonner'
 import { getAgentLabel } from '@/lib/agent-catalog'
 import type { TuiAgent } from '../../../../shared/tui-agent'
-import { wholeAgentEnvironmentUpdates } from '../../../../shared/agent-launch-permission-updates'
+import {
+  agentPermissionResetEntries,
+  wholeAgentEnvironmentUpdates
+} from '../../../../shared/agent-launch-permission-updates'
 import { useRef } from 'react'
 import { useAppStore } from '@/store'
 import {
   agentLaunchSettingsMutationUpdates,
+  type AgentPermissionResetEntry,
   projectAgentLaunchSettings,
   type AgentLaunchSettingsMutation
 } from '../../../../shared/agent-launch-settings'
@@ -20,7 +24,7 @@ import { SettingsHostScopeUnavailableNotice } from './SettingsHostScopePicker'
 import type { SettingsHostScope } from './settings-host-scope'
 import { runtimeTargetEnvironmentId } from '@/runtime/runtime-client-target'
 import { translate } from '@/i18n/i18n'
-import { agentPermissionResetNotice } from './agent-permission-reset-notice'
+import { useAgentPermissionResetNotice } from './agent-permission-reset-notice'
 
 export function AgentLaunchSettingsSection({
   settings,
@@ -72,6 +76,7 @@ function LocalAgentLaunchSettings({
   updateSettings: (updates: Partial<GlobalSettings>) => void | Promise<void>
   renderPermissions: AgentPermissionsRenderer
 }): React.JSX.Element {
+  const notifyReset = useAgentPermissionResetNotice()
   const tail = useRef<Promise<void> | null>(null)
   const apply = (
     agent: TuiAgent | undefined,
@@ -105,14 +110,21 @@ function LocalAgentLaunchSettings({
     return write
   }
   const mutate = (mutation: AgentLaunchSettingsMutation): Promise<void> => {
-    let notifyReset = (): void => {}
+    let resets: AgentPermissionResetEntry[] = []
     return apply(
       mutation.type !== 'default' && 'agent' in mutation ? mutation.agent : undefined,
       (current, platform) => {
-        notifyReset = agentPermissionResetNotice(current, mutation)
-        return agentLaunchSettingsMutationUpdates(current, mutation, platform)
+        const updates = agentLaunchSettingsMutationUpdates(current, mutation, platform)
+        resets = agentPermissionResetEntries(current, mutation, { ...current, ...updates })
+        return updates
       }
-    ).then(() => notifyReset())
+    ).then(() =>
+      notifyReset(resets, mutation, async () => {
+        for (const { agent, previousChoice } of resets) {
+          await mutate({ type: 'permission', agent, choice: previousChoice })
+        }
+      })
+    )
   }
   const saveEnvironment = (agent: TuiAgent, requested: Record<string, string>): Promise<void> =>
     apply(agent, (current, platform) =>

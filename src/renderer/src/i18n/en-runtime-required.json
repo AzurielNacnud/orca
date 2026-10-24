@@ -3455,8 +3455,12 @@
   },
   "settings": {
     "agents": {
-      "permissionResetOthers_one": "{{count}} other agent",
-      "permissionResetOthers_other": "{{count}} other agents"
+      "permissionResetMoved_one": "Moved {{count}} agent to {{mode}}",
+      "permissionResetMoved_other": "Moved {{count}} agents to {{mode}}",
+      "permissionResetWas": "was {{mode}}",
+      "permissionResetOwn": "its own settings",
+      "permissionResetMore_one": "and {{count}} more",
+      "permissionResetMore_other": "and {{count}} more"
     },
     "browser": {
       "clientHostedRemote": {
