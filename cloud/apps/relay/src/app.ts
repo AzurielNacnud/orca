@@ -476,11 +476,16 @@ export function createRelayApp(
         plan = await operations.reservePlacement.plan(identity, {
           reconnect: Boolean(body.data.reconnect),
           region: targetRegion,
-          regionCorrection: body.data.regionCorrection !== undefined
+          regionCorrection: body.data.regionCorrection !== undefined,
+          preferred: config.regionalPlacementEnabled !== false && requestedRegion !== undefined
         })
       } catch (error) {
         if (!(error instanceof ReservePaceError)) throw error
-        plan = { kind: 'retry', retryAfterSeconds: error.retryAfterSeconds, reason: 'paced' }
+        plan = {
+          kind: 'retry',
+          retryAfterSeconds: error.retryAfterSeconds,
+          reason: error.drained ? 'paced-drained' : 'paced'
+        }
       }
       if (plan.kind === 'answer') {
         operations.recordAssignmentAdmission?.(plan.lane === 'sticky' ? 'sticky' : 'placement')
@@ -494,13 +499,7 @@ export function createRelayApp(
       }
       if (plan.kind === 'retry') {
         operations.recordRegionSelection?.({ targetRegion, fallback: false })
-        operations.recordAssignmentUnavailable?.(
-          plan.reason === 'map-incomplete'
-            ? 'reserve-map-incomplete'
-            : plan.reason === 'database'
-              ? 'reserve-database'
-              : 'reserve-paced'
-        )
+        operations.recordAssignmentUnavailable?.(RESERVE_RETRY_CAUSE[plan.reason])
         context.header('Retry-After', String(plan.retryAfterSeconds))
         return context.json({ error: 'assignment_temporarily_unavailable' }, 503)
       }
@@ -642,7 +641,7 @@ export function createRelayApp(
     } catch (error) {
       if (error instanceof ReservePaceError) {
         operations.recordRegionSelection?.({ targetRegion, fallback: false })
-        operations.recordAssignmentUnavailable?.('reserve-paced')
+        operations.recordAssignmentUnavailable?.(error.drained ? 'reserve-paced-drained' : 'reserve-paced')
         context.header('Retry-After', String(error.retryAfterSeconds))
         return context.json({ error: 'assignment_temporarily_unavailable' }, 503)
       }
@@ -1024,7 +1023,8 @@ export function createRelayApp(
       return context.json({ error: 'regional_rehome_trust_not_configured' }, 409)
     }
     try {
-      const source = await operations.assignments.cellDeploymentStatus(
+      // Runtime rows only, which a reserve-mode cell heartbeats as a database one does.
+      const { status: source } = await operations.assignments.reserveAwareCellDeploymentStatus(
         body.data.sourceCellId
       )
       // Any cell that can be drained can be a rehome source, in either
@@ -1791,14 +1791,36 @@ export function createRelayApp(
     const body = AdminCellStatusSchema.safeParse(await context.req.json().catch(() => null))
     if (!body.success) return context.json({ error: 'invalid_request' }, 400)
     try {
-      const status = await operations.assignments.cellDeploymentStatus(body.data.cellId)
-      return context.json({ v: 1, status })
+      // Without the opt-in a reserve-mode cell stays a 404, so an older script never reads its
+      // mirror rows as host counts.
+      if (body.data.view !== 'reserve-aware') {
+        const status = await operations.assignments.cellDeploymentStatus(body.data.cellId)
+        return context.json({ v: 1, status })
+      }
+      const result = await operations.assignments.reserveAwareCellDeploymentStatus(body.data.cellId)
+      if (result.admitMode === 'db') return context.json({ v: 1, status: { ...result.status, reserve: null } })
+      const view = operations.reservePlacement?.cellStatus(
+        body.data.cellId,
+        result.status.runtime?.cellIncarnation
+      ) ?? { ok: false, reason: 'placement-off' }
+      if (!view.ok) {
+        context.header('Retry-After', String(config.publicAssignmentRetryAfterSeconds))
+        return context.json({ error: 'reserve_status_unavailable', reason: view.reason }, 503)
+      }
+      return context.json({ v: 1, status: { ...result.status, perHost: null, reserve: view.reserve } })
     } catch (error) {
       return rejectAdminOperation(context, error, 404)
     }
   })
   return app
 }
+
+const RESERVE_RETRY_CAUSE = {
+  'map-incomplete': 'reserve-map-incomplete',
+  database: 'reserve-database',
+  paced: 'reserve-paced',
+  'paced-drained': 'reserve-paced-drained'
+} as const satisfies Record<(ReservePlan & { kind: 'retry' })['reason'], AssignmentUnavailableCause>
 
 const AdminHostWhereaboutsSchema = z
   .object({
@@ -2356,7 +2378,12 @@ const RegionalHostDrainSchema = z
   .strict()
 
 const AdminCellStatusSchema = z
-  .object({ v: z.literal(1), cellId: z.string().min(1).max(128) })
+  .object({
+    v: z.literal(1),
+    cellId: z.string().min(1).max(128),
+    // Opt-in: a director without it answers 400, which tells a script to keep today's refusal.
+    view: z.literal('reserve-aware').optional()
+  })
   .strict()
 
 function cellFenceAttemptEvidence(

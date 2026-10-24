@@ -1,5 +1,4 @@
-// The sends the host is handing to its child right now: their `dispatch{pending}` row is written
-// before the adapter is called, so the child holds them before it can report so (`heldSends`).
+// Count pending handovers and late-settlement writes as held until child/journal state catches up.
 // Nested late-settlement windows share the count without replacing the input that owns its result.
 
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -97,7 +96,7 @@ export async function whileStructuredAgentSessionHandingOver<T>(
   }
 }
 
-/** The same held window across the host's separate pending-row and provider-call steps. */
+/** Span separate pending-row/provider-call steps with the same held window. */
 export function beginStructuredAgentSessionHandover(
   journal: HandoverJournal,
   clientMessageId: string,

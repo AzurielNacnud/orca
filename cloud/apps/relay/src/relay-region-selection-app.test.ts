@@ -115,6 +115,48 @@ describe('Relay region selection counters', () => {
     ])
   })
 
+  it('never counts a rehome as a fallback, and gives a rehomed new session no region window', async () => {
+    const recordRegionSelection = vi.fn()
+    const exchangeRegionCorrection = vi.fn()
+    const plan = vi.fn(async () => ({
+      kind: 'answer',
+      lane: 'rehome',
+      assignment: usAssignment({ cellId: 'asia-c1', region: 'asia-east2' })
+    }))
+    const response = await assign(
+      { recordRegionSelection, plan, exchangeRegionCorrection },
+      { reconnect: true, regionCorrection: { v: 1, action: 'issue-window' } }
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).not.toHaveProperty('regionCorrection')
+    expect(exchangeRegionCorrection).not.toHaveBeenCalled()
+    expect(plan).toHaveBeenCalledWith(
+      { userId: 'user-1', relayHostId: HOST },
+      { reconnect: true, region: 'asia-east2', regionCorrection: true, preferred: true }
+    )
+    expect(recordRegionSelection.mock.calls).toEqual([
+      [{ targetRegion: 'asia-east2', selectedRegion: 'asia-east2', fallback: false }]
+    ])
+  })
+
+  it('tells the plan a region is the host’s own only when placement follows it', async () => {
+    const plan = vi.fn(async () => ({ kind: 'database' }))
+    const placed = vi.fn(async () => usAssignment())
+    await assign({ recordRegionSelection: vi.fn(), plan, assign: placed }, { reconnect: true }, { regionalPlacementEnabled: false })
+    await assign({ recordRegionSelection: vi.fn(), plan, assign: placed }, { reconnect: true, preferredRegion: undefined })
+    // Asking for the default region while regional placement is off is not a preference either.
+    await assign(
+      { recordRegionSelection: vi.fn(), plan, assign: placed },
+      { reconnect: true, preferredRegion: 'us-central1' },
+      { regionalPlacementEnabled: false }
+    )
+    const unpreferred = { reconnect: true, region: 'us-central1', regionCorrection: false, preferred: false }
+    expect(plan).toHaveBeenNthCalledWith(1, expect.anything(), unpreferred)
+    expect(plan).toHaveBeenNthCalledWith(2, expect.anything(), unpreferred)
+    expect(plan).toHaveBeenNthCalledWith(3, expect.anything(), unpreferred)
+  })
+
   it('does not count a migration report as a fallback', async () => {
     const recordRegionSelection = vi.fn()
     await assign(
@@ -151,9 +193,10 @@ async function assign(
     resolve?: Mock
     exchangeRegionCorrection?: Mock
   },
-  extra: Record<string, unknown> = {}
+  extra: Record<string, unknown> = {},
+  overrides: Partial<RelayConfig> = {}
 ): Promise<Response> {
-  const app = createRelayApp(config(), {
+  const app = createRelayApp({ ...config(), ...overrides }, {
     store: {} as never,
     assignments: {
       assign: operations.assign ?? vi.fn(),

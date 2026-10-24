@@ -1,5 +1,3 @@
-// What a gone child generation left unfinished in the journal, and whether its exit interrupted it.
-
 import {
   continuingStructuredAgentSessionInput,
   finalizingStructuredAgentSessionInput
@@ -35,7 +33,6 @@ export function captureUnfinishedStructuredAgentSessionWork(
   }
 }
 
-/** `exit`: see `unfinishedStructuredAgentSessionWorkWasInterrupted`. */
 export function hasUnfinishedStructuredAgentSessionWork(
   journal: DeadGenerationJournal,
   exit?: StructuredAgentSessionWatchedExit
@@ -70,7 +67,7 @@ export function unfinishedStructuredAgentSessionWorkWasInterrupted(
   ) {
     return true
   }
-  // A turn the exited child left `unverifiable` (its stream closed first) was running when it went.
+  // Stream closure may mark a turn unverifiable before the child’s exit arrives.
   if (watchedExitRevisions(currentSnapshot.items, exit, journal).length > 0) {
     return true
   }
@@ -98,9 +95,7 @@ function isUnfinishedItem(item: AgentJournalRenderItem): boolean {
   return requiresTerminalSettlement(item.body)
 }
 
-/** Work that means the provider was MID-RESPONSE. A pending approval or question is the provider
- *  waiting on the user, so dying while one sits there interrupted nothing — it still needs
- *  cancelling, but it must not claim a response was in progress. */
+/** Pending prompts wait on the user; cancel them without claiming the provider was mid-response. */
 export function isInProgressStructuredAgentSessionItem(item: AgentJournalRenderItem): boolean {
   return (
     readAgentJournalTurn(item.body)?.state === 'running' ||
@@ -127,7 +122,7 @@ function hasUnsettledSubmission(journal: DeadGenerationJournal): boolean {
   return submissions
     ? submissions.some(
         (submission) =>
-          // A queued message is not work in progress: nothing has it yet.
+          // Unhanded queued messages are not work in progress.
           !continuingStructuredAgentSessionInput(journal, submission.clientMessageId) &&
           !finalizingStructuredAgentSessionInput(journal, submission.clientMessageId) &&
           ((submission.dispatchState === 'pending' &&
