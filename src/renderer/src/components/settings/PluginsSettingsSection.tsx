@@ -42,6 +42,7 @@ export function PluginsSettingsSection({
   const [installKind, setInstallKind] = useState<'local-path' | 'git' | null>(null)
   const [sourcesOpen, setSourcesOpen] = useState(false)
   const [developmentOpen, setDevelopmentOpen] = useState(false)
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
   const [removePluginId, setRemovePluginId] = useState<string | null>(null)
   const [busyPluginKeys, setBusyPluginKeys] = useState<Set<string>>(() => new Set())
   const mountedRef = useRef(false)
@@ -131,6 +132,7 @@ export function PluginsSettingsSection({
     reset: resetSettingsWrites,
     toggleFeature,
     toggleSuggestions,
+    toggleFullAccess,
     updateDevPaths
   } = usePluginSettingsWrites({
     settings,
@@ -333,6 +335,10 @@ export function PluginsSettingsSection({
           featureEnabled={featureEnabled}
           suggestionsEnabled={settings.pluginFileTypeSuggestions !== false}
           onToggleSuggestions={() => void toggleSuggestions()}
+          fullAccessEnabled={settings.pluginFullAccessEnabled === true}
+          onToggleFullAccess={() => void toggleFullAccess()}
+          open={settingsMenuOpen}
+          onOpenChange={setSettingsMenuOpen}
           onAdd={setInstallKind}
           onSources={() => setSourcesOpen(true)}
           onDevelopment={() => setDevelopmentOpen(true)}
@@ -370,6 +376,7 @@ export function PluginsSettingsSection({
         sourcesOpen={sourcesOpen}
         setSourcesOpen={setSourcesOpen}
         page={page}
+        onOpenFullAccessSetting={() => setSettingsMenuOpen(true)}
         onOpenShortcuts={() =>
           useAppStore.getState().openSettingsTarget({ pane: 'shortcuts', repoId: null })
         }

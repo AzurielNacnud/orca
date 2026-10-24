@@ -100,7 +100,11 @@ export function registerPluginHandlers(
   }
 
   store.onSettingsChanged((updates) => {
-    if ('pluginSystemEnabled' in updates || 'devPluginPaths' in updates) {
+    if (
+      'pluginSystemEnabled' in updates ||
+      'pluginFullAccessEnabled' in updates ||
+      'devPluginPaths' in updates
+    ) {
       // Main owns plugin lifecycle. Renderer follow-up refreshes are UX only;
       // a crashed or remote caller must not leave old workers authoritative.
       void pluginService.refresh().catch((error) => {

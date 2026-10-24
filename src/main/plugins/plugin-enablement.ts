@@ -6,6 +6,7 @@ import type { Store } from '../persistence'
 import type { PluginService } from './plugin-service'
 import type { PluginConsentRequest } from '../../shared/plugins/approval/plugin-consent-request'
 import { verifyDeclarativePluginContent } from './plugin-declarative-content-integrity'
+import { isFullAccessBlocked, PLUGIN_FULL_ACCESS_OFF_ERROR } from './plugin-activation-policy'
 
 /**
  * Single write path for consent + enablement. Consent is recorded as
@@ -34,6 +35,12 @@ export async function applyPluginConsent(input: {
   // decision to capabilities or a worker trust tier the user did not review.
   if (input.decision === 'approve' && plugin.consentFingerprint !== input.reviewedFingerprint) {
     throw new Error(`plugin ${pluginKey} changed since its permissions were reviewed`)
+  }
+  if (
+    input.decision === 'approve' &&
+    isFullAccessBlocked(plugin, () => pluginService.options.isFullAccessAllowed())
+  ) {
+    throw new Error(PLUGIN_FULL_ACCESS_OFF_ERROR)
   }
   if (input.decision === 'approve') {
     // Why: IPC and serve callers can bypass the renderer dialog, so main must
@@ -67,8 +74,12 @@ export async function applyPluginEnablement(input: {
   originWebContentsId?: number
 }): Promise<void> {
   const { store, pluginService, pluginKey, enabled } = input
-  if (!pluginService.findValidPlugin(pluginKey)) {
+  const plugin = pluginService.findValidPlugin(pluginKey)
+  if (!plugin) {
     throw new Error(`cannot change enablement for unknown plugin ${pluginKey}`)
+  }
+  if (enabled && isFullAccessBlocked(plugin, () => pluginService.options.isFullAccessAllowed())) {
+    throw new Error(PLUGIN_FULL_ACCESS_OFF_ERROR)
   }
   const settings = store.getSettings()
   const disabled = new Set(normalizePluginIdList(settings.disabledPlugins))
