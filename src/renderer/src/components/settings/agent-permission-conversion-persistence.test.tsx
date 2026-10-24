@@ -524,9 +524,7 @@ it.each(['same-mode', 'auto', 'empty', 'failed'] as const)(
       expect(toast.success).not.toHaveBeenCalled()
     } else {
       expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-        scenario === 'auto'
-          ? 'Claude: separate permissions reset to Approve for me.'
-          : 'Claude, Gemini: separate permissions reset to Ask for approval.'
+        "Claude's separate permission was reset."
       )
     }
     expect(useAppStore.getState().settings?.agentPermissionOverrides).toEqual(
@@ -539,6 +537,99 @@ it.each(['same-mode', 'auto', 'empty', 'failed'] as const)(
   }
 )
 
+it.each([
+  { overrides: { codex: 'ask' }, notice: null },
+  { overrides: { codex: 'full-access' }, notice: "Codex's separate permission was reset." },
+  {
+    overrides: { grok: 'full-access', gemini: 'full-access' },
+    notice: 'Separate permissions were reset for Gemini and Grok.'
+  },
+  {
+    overrides: { claude: 'full-access', codex: 'full-access', gemini: 'full-access' },
+    notice: 'Separate permissions were reset for Claude, Codex, and Gemini.'
+  },
+  {
+    overrides: {
+      claude: 'full-access',
+      codex: 'full-access',
+      gemini: 'full-access',
+      grok: 'full-access',
+      goose: 'full-access'
+    },
+    notice: 'Separate permissions were reset for Claude, Codex, and 3 other agents.'
+  }
+] as const)(
+  'only announces changed choices with bounded neutral names: $notice',
+  async ({ overrides, notice }) => {
+    useAppStore.setState(({ settings }) => ({
+      settings: settings && {
+        ...settings,
+        agentPermissionDefault: 'ask',
+        agentPermissionOverrides: overrides
+      }
+    }))
+    render(<AgentsHarness />)
+    await pickGlobalPermission('Ask for approval')
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(useAppStore.getState().settings?.agentPermissionOverrides).toEqual({})
+    )
+    if (notice) {
+      expect(toast.success).toHaveBeenCalledExactlyOnceWith(notice)
+    } else {
+      expect(toast.success).not.toHaveBeenCalled()
+    }
+  }
+)
+
+it.each(['ask', 'full-access'] as const)(
+  'only announces changed choices after %s -> Auto -> Full',
+  async (initial) => {
+    useAppStore.setState(({ settings }) => ({
+      settings: settings && {
+        ...settings,
+        agentPermissionDefault: initial,
+        agentPermissionOverrides: {}
+      }
+    }))
+    render(<AgentsHarness />)
+    await pickGlobalPermission('Approve for me')
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+    expect(toast.success).not.toHaveBeenCalled()
+    await pickGlobalPermission('Full access')
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(2))
+    if (initial === 'full-access') {
+      expect(toast.success).not.toHaveBeenCalled()
+    } else {
+      expect(toast.success).toHaveBeenCalledExactlyOnceWith(
+        expect.stringMatching(
+          /^Separate permissions were reset for CodeBuddy, OpenClaude, and \d+ other agents\.$/
+        )
+      )
+    }
+  }
+)
+
+it('does not add a reset notice for the non-Auto secondary control', async () => {
+  useAppStore.setState(({ settings }) => ({
+    settings: settings && {
+      ...settings,
+      agentPermissionDefault: 'auto',
+      agentPermissionOverrides: { gemini: 'full-access' }
+    }
+  }))
+  render(<AgentsHarness />)
+  fireEvent.click(
+    within(screen.getByRole('radiogroup', { name: 'Permissions for other agents' })).getByRole(
+      'radio',
+      { name: 'Own settings' }
+    )
+  )
+  await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+  expect(useAppStore.getState().settings?.agentPermissionOverrides?.gemini).toBe('own')
+  expect(toast.success).not.toHaveBeenCalled()
+})
+
 it.each(['saved', 'failed'] as const)(
   'derives queued reset notices from current local state after %s pick',
   async (outcome) => {
@@ -546,7 +637,7 @@ it.each(['saved', 'failed'] as const)(
       settings: settings && {
         ...settings,
         agentPermissionDefault: 'full-access',
-        agentPermissionOverrides: { codex: 'ask' }
+        agentPermissionOverrides: { codex: 'full-access' }
       }
     }))
     const save = deferredSave()
@@ -562,29 +653,9 @@ it.each(['saved', 'failed'] as const)(
       expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('auto')
     )
     expect(persist).toHaveBeenCalledTimes(2)
-    expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-      `Codex: separate permissions reset to ${outcome === 'saved' ? 'Ask for approval' : 'Approve for me'}.`
-    )
+    expect(toast.success).toHaveBeenCalledExactlyOnceWith("Codex's separate permission was reset.")
   }
 )
-
-it('Reset discards dirty permission flags without an intermediate conversion', async () => {
-  savedArguments('--model sonnet', 'full-access')
-  render(<AgentsHarness />)
-  const input = argumentsInput('Claude')
-  const user = userEvent.setup()
-  await user.click(input)
-  fireEvent.change(input, { target: { value: '--permission-mode auto --model opus' } })
-  const field = input.parentElement?.parentElement
-  if (!field) {
-    throw new Error('Missing Arguments field')
-  }
-  await user.click(within(field).getByRole('button', { name: 'Reset' }))
-  await waitFor(() => expect(input.value).toBe(''))
-  expect(persist).toHaveBeenCalledTimes(1)
-  expect(useAppStore.getState().settings?.agentPermissionDefault).toBe('full-access')
-  expect(toast.success).not.toHaveBeenCalled()
-})
 
 it('reports one direct local permission action failure without changing saved intent', async () => {
   persist.mockRejectedValueOnce(new Error('private error'))

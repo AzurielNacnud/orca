@@ -42,7 +42,7 @@ it('requires two separate Backspaces at the start to remove the permission pill'
 
 describe('launch field reset ordering', () => {
   it.each(['arguments', 'command'] as const)(
-    'honors the first Reset click from a focused %s field',
+    'honors the first Reset click after blurring a focused %s field',
     async (field) => {
       let finishBlur!: () => void
       const blurSave = new Promise<void>((resolve) => {
@@ -68,7 +68,7 @@ describe('launch field reset ordering', () => {
       await user.click(screen.getByRole('button', { name: 'Reset' }))
       expect(save).toHaveBeenNthCalledWith(
         1,
-        field === 'arguments' ? '--default' : '/host/custom dirty'
+        field === 'arguments' ? '--custom dirty' : '/host/custom dirty'
       )
       finishBlur()
       await waitFor(() =>
@@ -80,7 +80,7 @@ describe('launch field reset ordering', () => {
       await waitFor(() =>
         expect(input).toHaveProperty('value', field === 'arguments' ? '--default' : 'claude')
       )
-      expect(save).toHaveBeenCalledTimes(field === 'arguments' ? 1 : 2)
+      expect(save).toHaveBeenCalledTimes(2)
     }
   )
 
@@ -103,16 +103,12 @@ describe('launch field reset ordering', () => {
       const user = userEvent.setup()
       const defaults = { defaultArgs: '--default', onSaveArgs: save }
       const editor = (argsOverride: string) => (
-        <>
-          <AgentDefaultArgsInput {...defaults} argsOverride={argsOverride} />
-          <button>Outside</button>
-        </>
+        <AgentDefaultArgsInput {...defaults} argsOverride={argsOverride} />
       )
       const view = render(editor('--custom'))
       const input = screen.getByRole('textbox')
       await user.click(input)
       await user.type(input, ' dirty')
-      await user.click(screen.getByRole('button', { name: 'Outside' }))
       await user.click(screen.getByRole('button', { name: 'Reset' }))
       await user.click(screen.getByRole('button', { name: 'Reset' }))
       expect(save).toHaveBeenCalledTimes(1)

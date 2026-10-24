@@ -46,7 +46,12 @@ export function HostAgentLaunchSettings({
     [environmentId]
   )
   const controllerRef = useRef<AbortController | null>(null)
-  const [read, setRead] = useState<ReadState>({ kind: 'loading' })
+  const currentRead = useRef<ReadState>({ kind: 'loading' })
+  const [read, publishRead] = useState(currentRead.current)
+  const setRead = useCallback((next: ReadState): void => {
+    currentRead.current = next
+    publishRead(next)
+  }, [])
   const [saveFailed, setSaveFailed] = useState(false)
   const mutationTail = useRef<Promise<void> | null>(null)
   const refresh = useCallback(async (): Promise<void> => {
@@ -72,42 +77,43 @@ export function HostAgentLaunchSettings({
         setRead({ kind: 'failed' })
       }
     }
-  }, [owner])
+  }, [owner, setRead])
   useEffect(() => {
     void refresh()
     return () => controllerRef.current?.abort()
   }, [refresh])
   const mutate = async (mutation: AgentLaunchSettingsMutation): Promise<void> => {
     const controller = controllerRef.current
-    if (!controller || controller.signal.aborted || read.kind !== 'ready') {
+    if (!controller || controller.signal.aborted) {
       throw new Error('agent_launch_settings_unavailable')
     }
-    const notifyReset = agentPermissionResetNotice(
-      read.settings.agentPermission
-        ? {
-            agentPermissionDefault: read.settings.agentPermission.default,
-            agentPermissionOverrides: read.settings.agentPermission.overrides
-          }
-        : null,
-      mutation
-    )
     const write = (mutationTail.current ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        if (controller.signal.aborted) {
+        const latest = currentRead.current
+        if (controller.signal.aborted || latest.kind !== 'ready') {
           throw new Error('agent_launch_settings_unavailable')
         }
+        const notifyReset = agentPermissionResetNotice(
+          latest.settings.agentPermission
+            ? {
+                agentPermissionDefault: latest.settings.agentPermission.default,
+                agentPermissionOverrides: latest.settings.agentPermission.overrides
+              }
+            : null,
+          mutation
+        )
         setSaveFailed(false)
         try {
           const settings = await mutateHostAgentLaunchSettings(owner, mutation, controller.signal)
           if (!controller.signal.aborted) {
-            notifyReset()
             setRead({
               kind: 'ready',
               settings,
-              autoSupported: read.autoSupported,
-              nativeChatPermissionsSupported: read.nativeChatPermissionsSupported
+              autoSupported: latest.autoSupported,
+              nativeChatPermissionsSupported: latest.nativeChatPermissionsSupported
             })
+            notifyReset()
           }
         } catch {
           if (!controller.signal.aborted) {

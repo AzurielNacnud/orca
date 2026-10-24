@@ -122,16 +122,14 @@ export function AgentDefaultArgsInput({
       <span className="text-xs text-muted-foreground">
         {translate('auto.components.settings.AgentsPane.cfb3f35775', 'Arguments')}
       </span>
-      <div
-        className="flex items-center gap-2"
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) {
-            commitArgs()
-          }
-        }}
-      >
+      <div className="flex items-center gap-2">
         <div
           className="flex min-h-7 min-w-0 flex-1 items-start gap-2 rounded-md border border-input px-3 py-0.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              commitArgs()
+            }
+          }}
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               inputRef.current?.focus()

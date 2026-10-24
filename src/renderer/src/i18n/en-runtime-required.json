@@ -3454,6 +3454,10 @@
     }
   },
   "settings": {
+    "agents": {
+      "permissionResetOthers_one": "{{count}} other agent",
+      "permissionResetOthers_other": "{{count}} other agents"
+    },
     "browser": {
       "clientHostedRemote": {
         "description": "Render remote workspace pages on this desktop; network traffic still goes through the remote host. Applies to new pages only.",

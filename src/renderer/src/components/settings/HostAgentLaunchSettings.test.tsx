@@ -2,7 +2,7 @@
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { StrictMode } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   projectAgentLaunchSettings,
@@ -81,7 +81,7 @@ describe('host launch settings form', () => {
     )
     const before = projectAgentLaunchSettings({
       agentPermissionDefault: 'ask',
-      agentPermissionOverrides: { codex: 'ask' }
+      agentPermissionOverrides: { codex: 'full-access' }
     })
     const after = projectAgentLaunchSettings({
       agentPermissionDefault: 'ask',
@@ -120,7 +120,7 @@ describe('host launch settings form', () => {
     save(after)
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledExactlyOnceWith(
-        'Codex: separate permissions reset to Ask for approval.'
+        "Codex's separate permission was reset."
       )
     )
     expect(transport.mutate).toHaveBeenLastCalledWith(
@@ -132,6 +132,72 @@ describe('host launch settings form', () => {
     await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(3))
     expect(toast.success).toHaveBeenCalledTimes(1)
   })
+
+  it.each(['saved', 'failed', 'aborted'] as const)(
+    'uses acknowledged projection for queued picks after %s first write',
+    async (outcome) => {
+      const before = projectAgentLaunchSettings({
+        agentPermissionDefault: 'full-access',
+        agentPermissionOverrides: { codex: 'full-access' }
+      })
+      const afterAsk = projectAgentLaunchSettings({
+        agentPermissionDefault: 'ask',
+        agentPermissionOverrides: {}
+      })
+      const afterAuto = projectAgentLaunchSettings({
+        agentPermissionDefault: 'auto',
+        agentPermissionOverrides: {}
+      })
+      transport.read.mockResolvedValue(before)
+      let accept!: (settings: AgentLaunchSettings) => void
+      let reject!: (error: Error) => void
+      transport.mutate
+        .mockReturnValueOnce(
+          new Promise<AgentLaunchSettings>((yes, no) => {
+            accept = yes
+            reject = no
+          })
+        )
+        .mockResolvedValueOnce(afterAuto)
+      const view = render(pane(17))
+      const user = userEvent.setup()
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Permissions', exact: true })).toHaveProperty(
+          'disabled',
+          false
+        )
+      )
+      const pick = async (name: string) => {
+        await user.click(screen.getByRole('button', { name: 'Permissions', exact: true }))
+        await user.click(await screen.findByRole('menuitemradio', { name: new RegExp(name) }))
+      }
+      await pick('Ask for approval')
+      await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(1))
+      await pick('Approve for me')
+      expect(transport.mutate).toHaveBeenCalledTimes(1)
+      expect(toast.success).not.toHaveBeenCalled()
+      const firstSignal: AbortSignal = transport.mutate.mock.calls[0][2]
+      if (outcome === 'aborted') {
+        view.rerender(pane(18))
+      }
+      await act(async () =>
+        outcome === 'failed' ? reject(new Error('offline')) : accept(afterAsk)
+      )
+      if (outcome === 'aborted') {
+        expect(firstSignal.aborted).toBe(true)
+        expect(transport.mutate).toHaveBeenCalledTimes(1)
+        expect(toast.success).not.toHaveBeenCalled()
+      } else {
+        await waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2))
+        await waitFor(() =>
+          expect(toast.success).toHaveBeenCalledExactlyOnceWith(
+            "Codex's separate permission was reset."
+          )
+        )
+        expect(transport.mutate.mock.calls[1][1]).toEqual({ type: 'permission', choice: 'auto' })
+      }
+    }
+  )
 
   it('shows resolved launch defaults in a collapsed legacy host row', async () => {
     transport.read.mockResolvedValue(projectAgentLaunchSettings({ agentDefaultArgs: {} }))
