@@ -17,6 +17,15 @@ import type { WorkspacePort, WorkspacePortScanResult } from '../../../shared/wor
 import { toast } from 'sonner'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import { reselectWorkspaceKeepingHost } from './active-workspace-host'
+import {
+  focusHttpLinkPage,
+  isHttpLinkBackgroundOpen,
+  openLocalHttpLinkTab,
+  prepareRemoteHttpLinkTab,
+  resolveHttpLinkBrowserPlacement,
+  type HttpLinkBrowserRequestFields,
+  type HttpLinkBrowserTabState
+} from './http-link-browser-placement'
 
 export type OpenHttpLinkOptions = {
   worktreeId?: string | null
@@ -37,27 +46,27 @@ export type HttpLinkSourceOwner =
   | { kind: 'ssh'; connectionId: string }
   | { kind: 'unknown' }
 
-type StoreAccessor = () => ProjectCatalogReadState & {
-  settings?: Partial<
-    Pick<
-      GlobalSettings,
-      | 'openLinksInApp'
-      | 'openLinksInAppModifierInverts'
-      | 'activeRuntimeEnvironmentId'
-      | 'localhostWorktreeLabelsEnabled'
-    >
-  > | null
-  setActiveWorktree: (worktreeId: string, executionHostId?: ExecutionHostId) => void
-  activeWorktreeId?: string | null
-  activeWorkspaceExecutionHostId?: ExecutionHostId | null
-  createBrowserTab: (worktreeId: string, url: string, opts: { activate: boolean }) => unknown
-  worktreesByRepo?: Record<string, LocalhostLinkWorktree[]>
-  allWorktrees?: () => LocalhostLinkWorktree[]
-  workspacePortScan?: { result: WorkspacePortScanResult } | null
-  workspacePortScansByKey?: Record<string, WorkspacePortScanResult>
-}
+type StoreAccessor = () => ProjectCatalogReadState &
+  HttpLinkBrowserTabState & {
+    settings?: Partial<
+      Pick<
+        GlobalSettings,
+        | 'openLinksInApp'
+        | 'openLinksInAppModifierInverts'
+        | 'activeRuntimeEnvironmentId'
+        | 'localhostWorktreeLabelsEnabled'
+      >
+    > | null
+    setActiveWorktree: (worktreeId: string, executionHostId?: ExecutionHostId) => void
+    activeWorktreeId?: string | null
+    activeWorkspaceExecutionHostId?: ExecutionHostId | null
+    worktreesByRepo?: Record<string, LocalhostLinkWorktree[]>
+    allWorktrees?: () => LocalhostLinkWorktree[]
+    workspacePortScan?: { result: WorkspacePortScanResult } | null
+    workspacePortScansByKey?: Record<string, WorkspacePortScanResult>
+  }
 
-type WorkspaceHttpLinkBrowserRequest = {
+type WorkspaceHttpLinkBrowserRequest = HttpLinkBrowserRequestFields & {
   workspaceId: string
   url: string
   intent: { kind: 'url' }
@@ -65,7 +74,10 @@ type WorkspaceHttpLinkBrowserRequest = {
   expectedSshConnectionId?: string
 }
 
-type WorkspaceHttpLinkBrowserOpener = (request: WorkspaceHttpLinkBrowserRequest) => Promise<void>
+/** Resolves to the page id when the page renders on this desktop, else null. */
+type WorkspaceHttpLinkBrowserOpener = (
+  request: WorkspaceHttpLinkBrowserRequest
+) => Promise<string | null>
 
 type LocalhostLinkWorktree = { id: string } & Partial<WorkspaceProjectOwner>
 
@@ -151,23 +163,28 @@ export function openHttpLink(url: string, opts: OpenHttpLinkOptions = {}): void 
       effectiveSourceOwner?.kind === 'ssh' ||
       (!effectiveSourceOwner && remoteRuntimeActive))
   ) {
-    if (workspaceHttpLinkBrowserOpener) {
+    if (workspaceHttpLinkBrowserOpener && state) {
+      const fields = prepareRemoteHttpLinkTab(state, worktreeId)
       void workspaceHttpLinkBrowserOpener({
         workspaceId: worktreeId,
         url,
         intent: { kind: 'url' },
+        ...fields,
         ...(effectiveSourceOwner?.kind === 'runtime'
           ? { expectedRuntimeEnvironmentId: effectiveSourceOwner.runtimeEnvironmentId }
           : effectiveSourceOwner?.kind === 'ssh'
             ? { expectedSshConnectionId: effectiveSourceOwner.connectionId }
             : {})
-      }).catch((error) => {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : translate('auto.lib.workspace.browser.tab.open.urlFailed', 'Unable to open URL.')
-        )
-      })
+      }).then(
+        (pageId) => focusHttpLinkPage(fields.focusOnCreate === false ? null : pageId),
+        (error) => {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : translate('auto.lib.workspace.browser.tab.open.urlFailed', 'Unable to open URL.')
+          )
+        }
+      )
     }
     return
   }
@@ -177,18 +194,20 @@ export function openHttpLink(url: string, opts: OpenHttpLinkOptions = {}): void 
     // history entry — the user isn't changing worktrees, they're opening a tab
     // in the one they're already in. activateAndRevealWorktree is reserved for
     // file-link jumps that genuinely switch worktrees.
-    if (!isFloatingWorkspaceId(worktreeId)) {
+    if (!isHttpLinkBackgroundOpen(state) && !isFloatingWorkspaceId(worktreeId)) {
       // Why: the floating workspace uses a synthetic worktree id. Promoting it
       // to the global activeWorktreeId deselects the real repo workspace.
       reselectWorkspaceKeepingHost(state, worktreeId)
     }
     const localhostRoute = localhostLabelRouteForHttpLink(url, state, sourceOwner)
     if (!localhostRoute) {
-      state.createBrowserTab(worktreeId, url, { activate: true })
+      openLocalHttpLinkTab(state, worktreeId, url)
       return
     }
+    // Why placed now: the clicked pane is the active group only until the user clicks elsewhere.
+    const placement = resolveHttpLinkBrowserPlacement(state, worktreeId)
     void openLabeledLocalhostLink(url, localhostRoute, (labeledUrl) => {
-      state.createBrowserTab(worktreeId, labeledUrl, { activate: true })
+      openLocalHttpLinkTab(storeAccessor?.() ?? state, worktreeId, labeledUrl, placement)
     })
     return
   }
@@ -284,16 +303,13 @@ function localhostLabelRouteForTerminalLink(
     return null
   }
   const worktree = findWorktreeById(state, port.owner.worktreeId)
-  const projectId = getProjectHostSetupLookup(
-    getProjectHostSetupProjectionFromState(state).setups
-  ).projectId({
+  const projection = getProjectHostSetupProjectionFromState(state)
+  const projectId = getProjectHostSetupLookup(projection.setups).projectId({
     ...worktree,
     repoId: port.owner.repoId
   })
   const project = projectId
-    ? (getProjectHostSetupProjectionFromState(state).projects.find(
-        (entry) => entry.id === projectId
-      ) ?? null)
+    ? (projection.projects.find((entry) => entry.id === projectId) ?? null)
     : null
   const projectSource = project ?? repo
   return {

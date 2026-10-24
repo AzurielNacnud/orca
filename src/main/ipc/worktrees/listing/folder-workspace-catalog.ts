@@ -108,21 +108,6 @@ export function buildFolderDetectedWorktrees(store: Store, repo: Repo): Detected
   )
 }
 
-export function listVisibleFolderWorkspaces(store: Store, repo: Repo): Worktree[] {
-  const writeMeta = folderMetaWriter(store, repo)
-  return buildFolderDetectedWorktrees(store, repo)
-    .filter((worktree) => worktree.visible)
-    .map((worktree) => {
-      const meta = store.getWorktreeMeta(worktree.id)
-      const ownershipUpdates = getProjectHostSetupMetaUpdates(store, repo, meta)
-      const repairedMeta =
-        meta && Object.keys(ownershipUpdates).length === 0
-          ? meta
-          : writeMeta(worktree.id, ownershipUpdates)
-      return mergeFolderWorkspace(repo, worktree.id, repairedMeta)
-    })
-}
-
 export function buildDisconnectedDetectedWorktrees(
   store: Store,
   repo: Repo,

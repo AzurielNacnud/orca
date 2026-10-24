@@ -32,6 +32,7 @@ function createTestStore(repos: Repo[]) {
   )
   store.setState({
     repos,
+    endpointProjectHostSetups: [],
     endpointProjects: repos.map((repo) => ({
       id: repo.id,
       displayName: repo.displayName,
@@ -104,6 +105,8 @@ describe('local detected agent context lifecycle', () => {
     await store.getState().refreshDetectedAgents()
     expect(readNativeDetectedAgents(store.getState())).toEqual(['grok'])
     expect(store.getState().detectedAgentIds).toEqual(['codex'])
+    const inventory = store.getState().readLocalAgentInventory(FLOATING_TERMINAL_WORKTREE_ID)
+    expect(inventory).toEqual({ ids: ['grok'], state: 'successful' })
     store.setState({ endpointProjects: [] })
     refreshAgents.mockRejectedValueOnce(new Error('native refresh failed'))
     await expect(store.getState().refreshDetectedAgents()).resolves.toEqual(['grok'])

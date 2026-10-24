@@ -5,7 +5,6 @@ import {
 } from '../../shared/cross-platform-path'
 export { managedWorktreeDirectories } from '../../shared/worktree/ownership'
 
-/** Absolute paths in insertion order, deduplicated by the comparison key. */
 export class ScopePathSet {
   private readonly seen = new Set<string>()
   private readonly entries: string[] = []
@@ -23,8 +22,7 @@ export class ScopePathSet {
     this.entries.push(trimmed)
   }
 
-  // The index matches by prefix, so a contained path is one more SQL range for
-  // no extra rows.
+  // Prefix matching makes contained paths redundant SQL ranges.
   folded(): string[] {
     return this.entries.filter(
       (candidate) =>

@@ -100,8 +100,11 @@ function remove(args: Record<string, unknown>): Promise<RemoveWorktreeResult> {
 type ListedRow = { id: string; removing?: true }
 
 async function listRepoRows(): Promise<ListedRow[]> {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: worktrees:list resolves the repo's Worktree rows.
-  return (await handlers['worktrees:list'](null, { repoId: 'repo-1' })) as ListedRow[]
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a repo-scoped worktrees:listDetected resolves { worktrees: Worktree rows }.
+  const result = (await handlers['worktrees:listDetected'](null, { repoId: 'repo-1' })) as {
+    worktrees: ListedRow[]
+  }
+  return result.worktrees
 }
 
 function blockGitRemove(): {

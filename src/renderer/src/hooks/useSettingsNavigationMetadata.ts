@@ -20,9 +20,12 @@ import {
 } from '@/lib/windows-terminal-capabilities'
 import { defaultScopeHost } from '@/lib/default-creation-host'
 import { useProjectHostSetupProjection } from '@/store/selectors'
+import {
+  useChatSettingsTypedPermissions,
+  useStructuredAgentSessionHostQueuesMessages
+} from '@/runtime/structured-agent-session-host-capability'
 import type { ProjectGroupingModel } from '../../../shared/project-section-grouping'
 import { useAppStore } from '@/store'
-import { useStructuredAgentSessionHostQueuesMessages } from '@/runtime/structured-agent-session-host-capability'
 import type { Repo } from '../../../shared/repo-types'
 import {
   buildCapabilitySettingsSections,
@@ -44,6 +47,7 @@ export function buildSettingsNavigationMetadata({
   isWebClient,
   nativeChatEnabled = false,
   hostQueuesMessages = false,
+  typedChatPermissions = false,
   managedBrowserCreationEnabled = !isWebClient,
   mobileEmulatorCreationEnabled = !isWebClient,
   isDev = import.meta.env.DEV,
@@ -58,6 +62,7 @@ export function buildSettingsNavigationMetadata({
   isWebClient: boolean
   nativeChatEnabled?: boolean
   hostQueuesMessages?: boolean
+  typedChatPermissions?: boolean
   managedBrowserCreationEnabled?: boolean
   mobileEmulatorCreationEnabled?: boolean
   isDev?: boolean
@@ -87,6 +92,7 @@ export function buildSettingsNavigationMetadata({
     isWebClient,
     nativeChatEnabled,
     hostQueuesMessages,
+    typedChatPermissions,
     managedBrowserCreationEnabled,
     mobileEmulatorCreationEnabled,
     isDev,
@@ -131,6 +137,7 @@ export function useSettingsNavigationMetadata(): SettingsNavSection[] {
     })
   )
   const nativeChatEnabled = settings?.experimentalNativeChat === true
+  const typedChatPermissions = useChatSettingsTypedPermissions()
   const hostQueuesMessages = useStructuredAgentSessionHostQueuesMessages({ kind: 'local' })
   const isMac = isMacUserAgent()
   const isWindows = isWindowsUserAgent()
@@ -177,6 +184,7 @@ export function useSettingsNavigationMetadata(): SettingsNavSection[] {
         isWebClient,
         nativeChatEnabled,
         hostQueuesMessages,
+        typedChatPermissions,
         managedBrowserCreationEnabled,
         mobileEmulatorCreationEnabled,
         isDev: import.meta.env.DEV,
@@ -193,6 +201,7 @@ export function useSettingsNavigationMetadata(): SettingsNavSection[] {
       isWebClient,
       nativeChatEnabled,
       hostQueuesMessages,
+      typedChatPermissions,
       managedBrowserCreationEnabled,
       mobileEmulatorCreationEnabled,
       isLinearConnected,

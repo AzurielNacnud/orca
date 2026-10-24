@@ -5,7 +5,6 @@ import type { GlobalSettings } from '../../shared/global-settings-types'
 import { readAllWorktreeMetaForHost } from '../persistence/host-qualified-worktree-meta'
 import type { SessionSearchScopeCatalog } from './session-search-scope-catalog'
 
-// Only what the catalog reads, so a partial store satisfies it.
 export type SessionSearchScopeStore = {
   getRepos(): readonly (SessionSearchScopeCatalog['repos'][number] & {
     connectionId?: string | null

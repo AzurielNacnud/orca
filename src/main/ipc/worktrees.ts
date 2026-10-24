@@ -30,8 +30,6 @@ registerDetectedWorktreeScanInvalidation()
 let disposeSparseCheckoutCacheInvalidation: (() => void) | undefined
 
 const WORKTREE_HANDLER_CHANNELS = [
-  'worktrees:listAll',
-  'worktrees:list',
   'worktrees:listRetiredNames',
   'worktrees:listDetected',
   'worktrees:listKnownForExecutionHost',

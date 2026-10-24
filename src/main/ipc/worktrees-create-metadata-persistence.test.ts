@@ -13,7 +13,8 @@ import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 import {
   ORIGIN_HEAD_COMPONENT,
   ORIGIN_REMOTE_URL,
-  makeWorktreeMeta
+  makeWorktreeMeta,
+  expectDetectedWorktreeListResult
 } from './worktrees-test-fixtures'
 import type { WorktreeRuntimeStub } from './worktrees-test-runtime-stub'
 import {
@@ -22,8 +23,6 @@ import {
 } from '../../shared/worktree/host-qualified-identity'
 
 const WORKTREE_HANDLER_CHANNELS = [
-  'worktrees:listAll',
-  'worktrees:list',
   'worktrees:listRetiredNames',
   'worktrees:listDetected',
   'worktrees:listKnownForExecutionHost',
@@ -170,7 +169,9 @@ describe('registerWorktreeHandlers', () => {
       id === liveId ? ({ instanceId: 'x' } as never) : undefined
     )
 
-    handlers['worktrees:persistSortOrder'](null, { orderedIds: [liveId, staleId] })
+    handlers['worktrees:persistSortOrder'](null, {
+      orderedIds: [liveId, staleId]
+    })
 
     const orderedTargets = store.setWorktreeMeta.mock.calls.map((call) => call[0].id)
     expect(orderedTargets).toContain(liveId)
@@ -184,7 +185,9 @@ describe('registerWorktreeHandlers', () => {
       sortOrder: id === firstId ? 200 : 100
     }))
 
-    handlers['worktrees:persistSortOrder'](null, { orderedIds: [firstId, secondId] })
+    handlers['worktrees:persistSortOrder'](null, {
+      orderedIds: [firstId, secondId]
+    })
 
     expect(store.setWorktreeMeta).not.toHaveBeenCalled()
   })
@@ -199,12 +202,18 @@ describe('registerWorktreeHandlers', () => {
         isPinned: true,
         orcaCreatedAt: 123,
         orcaCreationSource: 'desktop',
-        orcaCreationWorkspaceLayout: { path: '/workspace', nestWorkspaces: false }
+        orcaCreationWorkspaceLayout: {
+          path: '/workspace',
+          nestWorkspaces: false
+        }
       }
     })
 
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
-      hostWorktreeTarget({ id: 'repo-1::/workspace/feature-wt', hostId: 'local' }),
+      hostWorktreeTarget({
+        id: 'repo-1::/workspace/feature-wt',
+        hostId: 'local'
+      }),
       { comment: 'keep me', isPinned: true }
     )
     expect(result).toMatchObject({ comment: 'keep me', isPinned: true })
@@ -219,7 +228,10 @@ describe('registerWorktreeHandlers', () => {
     })
 
     expect(store.setWorktreeMeta).toHaveBeenCalledExactlyOnceWith(
-      hostWorktreeTarget({ id: 'repo-1::/workspace/feature-wt', hostId: 'ssh:build-box' }),
+      hostWorktreeTarget({
+        id: 'repo-1::/workspace/feature-wt',
+        hostId: 'ssh:build-box'
+      }),
       { comment: 'remote note' }
     )
     expect(result).toMatchObject({ comment: 'remote note' })
@@ -298,8 +310,12 @@ describe('registerWorktreeHandlers', () => {
         updates: { isUnread: true }
       })
 
-      const rows = await handlers['worktrees:list'](null, { repoId: folderRepo.id })
-      expect(rows).not.toContainEqual(expect.objectContaining({ id: workspaceId }))
+      const result = expectDetectedWorktreeListResult(
+        await handlers['worktrees:listDetected'](null, {
+          repoId: folderRepo.id
+        })
+      )
+      expect(result.worktrees).not.toContainEqual(expect.objectContaining({ id: workspaceId }))
       expect(table[workspaceId]).toBeUndefined()
     })
 
@@ -327,7 +343,10 @@ describe('registerWorktreeHandlers', () => {
         updates: { lastActivityAt: 2 }
       })
 
-      expect(table[workspaceId]).toMatchObject({ displayName: 'Feature work', lastActivityAt: 2 })
+      expect(table[workspaceId]).toMatchObject({
+        displayName: 'Feature work',
+        lastActivityAt: 2
+      })
     })
   })
 
@@ -340,8 +359,14 @@ describe('registerWorktreeHandlers', () => {
     })
 
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
-      hostWorktreeTarget({ id: 'repo-1::/workspace/feature-wt', hostId: 'local' }),
-      expect.objectContaining({ displayName: 'Agent label', displayNameIsPinned: true })
+      hostWorktreeTarget({
+        id: 'repo-1::/workspace/feature-wt',
+        hostId: 'local'
+      }),
+      expect.objectContaining({
+        displayName: 'Agent label',
+        displayNameIsPinned: true
+      })
     )
   })
 
@@ -399,7 +424,10 @@ describe('registerWorktreeHandlers', () => {
     })
 
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
-      hostWorktreeTarget({ id: 'repo-1::/workspace/improve-dashboard', hostId: 'local' }),
+      hostWorktreeTarget({
+        id: 'repo-1::/workspace/improve-dashboard',
+        hostId: 'local'
+      }),
       expect.objectContaining({
         displayName: 'Fix: dashboards for PRs'
       })
@@ -430,7 +458,10 @@ describe('registerWorktreeHandlers', () => {
 
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
       hostWorktreeTarget({ id: 'repo-1::/workspace/feature', hostId: 'local' }),
-      expect.objectContaining({ displayName: 'feature', displayNameIsPinned: true })
+      expect.objectContaining({
+        displayName: 'feature',
+        displayNameIsPinned: true
+      })
     )
   })
 
@@ -456,7 +487,10 @@ describe('registerWorktreeHandlers', () => {
     })
 
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
-      hostWorktreeTarget({ id: 'repo-1::/workspace/improve-dashboard', hostId: 'local' }),
+      hostWorktreeTarget({
+        id: 'repo-1::/workspace/improve-dashboard',
+        hostId: 'local'
+      }),
       expect.objectContaining({
         linkedIssue: 123,
         linkedPR: 456,
@@ -493,7 +527,10 @@ describe('registerWorktreeHandlers', () => {
     })
 
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
-      hostWorktreeTarget({ id: 'repo-1::/workspace/improve-dashboard', hostId: 'local' }),
+      hostWorktreeTarget({
+        id: 'repo-1::/workspace/improve-dashboard',
+        hostId: 'local'
+      }),
       expect.objectContaining({
         createdWithAgent: 'codex'
       })
@@ -563,7 +600,10 @@ describe('registerWorktreeHandlers', () => {
     // Exact object, not objectContaining: `remoteCreated` must stay absent until
     // something actually mints the remote.
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
-      hostWorktreeTarget({ id: 'repo-1::/workspace/improve-dashboard', hostId: 'local' }),
+      hostWorktreeTarget({
+        id: 'repo-1::/workspace/improve-dashboard',
+        hostId: 'local'
+      }),
       expect.objectContaining({
         pushTarget: {
           remoteName: 'pr-prateek-orca',
@@ -595,7 +635,9 @@ describe('registerWorktreeHandlers', () => {
       remoteCreated: true
     }
     store.getAllWorktreeMeta.mockReturnValue({
-      'repo-1::/workspace/previous-fix': makeWorktreeMeta({ pushTarget: existingPushTarget })
+      'repo-1::/workspace/previous-fix': makeWorktreeMeta({
+        pushTarget: existingPushTarget
+      })
     })
     store.setWorktreeMeta.mockImplementation((_target: HostWorktreeTarget, meta) => meta)
     gitExecFileAsyncMock.mockImplementation(async (args: string[]) => {
@@ -603,7 +645,10 @@ describe('registerWorktreeHandlers', () => {
         return { stdout: 'pr-contributor-orca\n', stderr: '' }
       }
       if (args[0] === 'remote' && args[1] === 'get-url') {
-        return { stdout: 'https://github.com/contributor/orca.git\n', stderr: '' }
+        return {
+          stdout: 'https://github.com/contributor/orca.git\n',
+          stderr: ''
+        }
       }
       return { stdout: '', stderr: '' }
     })
@@ -623,7 +668,10 @@ describe('registerWorktreeHandlers', () => {
       expect.any(Object)
     )
     expect(store.setWorktreeMeta).toHaveBeenCalledWith(
-      hostWorktreeTarget({ id: 'repo-1::/workspace/improve-dashboard', hostId: 'local' }),
+      hostWorktreeTarget({
+        id: 'repo-1::/workspace/improve-dashboard',
+        hostId: 'local'
+      }),
       expect.objectContaining({
         pushTarget: {
           remoteName: 'pr-contributor-orca',

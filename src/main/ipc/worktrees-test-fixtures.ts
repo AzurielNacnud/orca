@@ -1,4 +1,4 @@
-import type { GitWorktreeInfo } from '../../shared/worktree/types'
+import type { DetectedWorktreeListResult, GitWorktreeInfo } from '../../shared/worktree/types'
 import { reviewHeadRemoteRefComponent } from '../../shared/review-head-tracking-ref'
 import { listWorktreesMock, setPlatform } from './worktrees-test-module-mocks'
 import { store } from './worktrees-test-ipc-surface'
@@ -70,4 +70,22 @@ export function mockSelectedWslProjectRuntime(): void {
       updatedAt: 0
     }
   ])
+}
+
+function isDetectedWorktreeListResult(value: unknown): value is DetectedWorktreeListResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'authoritative' in value &&
+    typeof value.authoritative === 'boolean' &&
+    'worktrees' in value &&
+    Array.isArray(value.worktrees)
+  )
+}
+
+export function expectDetectedWorktreeListResult(value: unknown): DetectedWorktreeListResult {
+  if (!isDetectedWorktreeListResult(value)) {
+    throw new Error(`Expected a detected worktree list result, got ${JSON.stringify(value)}`)
+  }
+  return value
 }

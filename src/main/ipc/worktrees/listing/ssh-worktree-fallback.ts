@@ -203,13 +203,3 @@ export function buildDetectedGitWorktrees(
   })
   return projectWorktreeLineageWithHostPeers(store, repo, detected)
 }
-
-export function stampAndMergeVisibleDetectedWorktree(
-  store: Store,
-  repo: Repo,
-  detected: DetectedWorktree,
-  allMetaOverride?: Record<string, WorktreeMeta>
-) {
-  const meta = resolveWorktreeMetaWithDiscoveryBackfill(store, repo, detected.id, allMetaOverride)
-  return mergeWorktree(repo.id, detected, meta, repo.displayName)
-}

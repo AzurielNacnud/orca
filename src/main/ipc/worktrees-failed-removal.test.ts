@@ -1,5 +1,5 @@
 // Desktop IPC for a delete that failed after Git dropped the registration: the leftover stays in
-// `worktrees:list` with the error; Delete refuses while it is on disk and finishes once it is gone. Git and the disk are mocked;
+// `worktrees:listDetected` with the error; Delete refuses while it is on disk and finishes once it is gone. Git and the disk are mocked;
 // runtime-failed-local-worktree-removal.test.ts runs the real thing.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -11,7 +11,7 @@ import {
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
 import { makeWorktreeMeta, mockKnownFeatureWorktree } from './worktrees-test-fixtures'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
-import type { Worktree } from '../../shared/worktree/types'
+import type { DetectedWorktree, DetectedWorktreeListResult } from '../../shared/worktree/types'
 import { finishUnregisteredWorktreeRemoval } from '../git/worktree-removal'
 import { worktreeCheckoutExists } from '../worktree-removal-table'
 import type * as WorktreeRemovalModule from '../git/worktree-removal'
@@ -124,10 +124,12 @@ function remove(args: Record<string, unknown>): Promise<RemoveWorktreeResult> {
   return handlers['worktrees:remove'](null, args) as Promise<RemoveWorktreeResult>
 }
 
-async function listFeature(): Promise<Worktree | undefined> {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: worktrees:list resolves the repo's Worktree rows.
-  const rows = (await handlers['worktrees:list'](null, { repoId: 'repo-1' })) as Worktree[]
-  return rows.find((row) => row.id === featureId)
+async function listFeature(): Promise<DetectedWorktree | undefined> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a repo-scoped worktrees:listDetected resolves a DetectedWorktreeListResult.
+  const result = (await handlers['worktrees:listDetected'](null, {
+    repoId: 'repo-1'
+  })) as DetectedWorktreeListResult
+  return result.worktrees.find((row) => row.id === featureId)
 }
 
 /** Git fails partway and drops the registration, as `git worktree remove --force` does. */

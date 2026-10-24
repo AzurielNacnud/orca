@@ -517,7 +517,7 @@ describe('registerWorktreeHandlers – Windows path handling', () => {
       isMainWorktree: false
     }
     // Two calls: (1) worktrees:create finds the new worktree,
-    // (2) worktrees:list enumerates worktrees again.
+    // (2) worktrees:listDetected enumerates worktrees again.
     listWorktreesMock.mockResolvedValueOnce([worktreeEntry]).mockResolvedValueOnce([worktreeEntry])
     store.setWorktreeMeta.mockReturnValue({
       lastActivityAt: 123,
@@ -550,18 +550,18 @@ describe('registerWorktreeHandlers – Windows path handling', () => {
       linkedIssue: 123,
       linkedPR: 456
     })
-    const listed = await handlers['worktrees:list'](null, {
+    const listed = await handlers['worktrees:listDetected'](null, {
       repoId: 'repo-1'
     })
 
-    expect(listed).toMatchObject([
-      {
+    expect(listed).toHaveProperty('worktrees', [
+      expect.objectContaining({
         id: 'repo-1::C:/workspaces/improve-dashboard',
         displayName: 'Improve Dashboard',
         linkedIssue: 123,
         linkedPR: 456,
         lastActivityAt: 123
-      }
+      })
     ])
   })
 
