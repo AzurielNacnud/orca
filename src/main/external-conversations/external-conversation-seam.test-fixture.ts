@@ -7,7 +7,6 @@ import { ExternalConversationSeam } from './external-conversation-seam'
 import type { SessionRows } from './external-conversation-session-capture'
 import { fakeLinkStore } from './external-conversation.test-fixture'
 
-/** A seam over fake records, receipts, workspace removals and hook session reports. */
 export function harness(
   settings: Partial<GlobalSettings> = {},
   records = fakeLinkStore(),

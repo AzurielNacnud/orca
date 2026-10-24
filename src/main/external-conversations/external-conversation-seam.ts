@@ -5,17 +5,28 @@ import type { AgentStatusIpcPayload } from '../../shared/agent-status-ipc-payloa
 import type { ExternalConversationLink } from '../../shared/external-conversation-link'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { admitConnectorAgent } from './connector-agents'
+import { cancelConversation, type CancelTerminal } from './external-conversation-cancel'
 import { ConversationChain } from './external-conversation-chain'
-import { ConversationEvents, type ConversationWatchListener } from './external-conversation-events'
-import { ConversationPrompts, type PromptTerminal } from './external-conversation-prompts'
+import {
+  ConversationEvents,
+  HOST_CLOCK,
+  type ConversationWatchListener
+} from './external-conversation-events'
+import { ConversationPrompts } from './external-conversation-prompts'
 import type { DeliveryReceipts } from './external-conversation-delivery-receipts'
 import {
   findLink,
+  requireLink,
   writeLink,
   type ExternalConversationLinkStore,
   type LinkedConversation
 } from './external-conversation-links'
-import { bindPane, deliverFollowUp, type FollowUpTerminal } from './external-conversation-send'
+import {
+  bindPane,
+  deliverFollowUp,
+  sameBinding,
+  type FollowUpTerminal
+} from './external-conversation-send'
 import { reopenLinkedAgent, type ReopenTerminal } from './external-conversation-reopen'
 import { LinkedSessionCapture, type SessionRows } from './external-conversation-session-capture'
 import type { AgentPromptExpectedBinding } from '../runtime/runtime-terminal-contracts'
@@ -34,13 +45,12 @@ import {
   type Delivery
 } from './external-conversation-types'
 
-/** What the seam drives on its host: the launch path, and the linked terminals and their reopen. */
 export type ExternalConversationHost = {
   launcher: ConversationLauncher
   terminal: ConversationTerminal
 }
 
-export type ConversationTerminal = FollowUpTerminal & ReopenTerminal & PromptTerminal
+export type ConversationTerminal = FollowUpTerminal & ReopenTerminal & CancelTerminal
 
 export function runtimeConversationHost(runtime: OrcaRuntimeService): ExternalConversationHost {
   return { launcher: runtimeConversationLauncher(runtime), terminal: runtime }
@@ -49,13 +59,10 @@ export function runtimeConversationHost(runtime: OrcaRuntimeService): ExternalCo
 export type ExternalConversationSeamDeps = {
   store: ExternalConversationLinkStore
   readSettings: () => AgentStatusHooksSettings
-  /** Outlives the seam: a re-enable must not take this process's running deliveries for leftovers. */
+  /** Re-enabling must not settle this process's running deliveries as abandoned leftovers. */
   receipts: DeliveryReceipts
-  /** Worktree removals; returns the release. */
   onWorkspaceRemoved: (listener: (worktreeId: string) => void) => () => void
-  /** The hook rows linked agents' sessions are read from. */
   sessionRows: SessionRows
-  /** The hook store's provider sessions by pane, on every change; returns the release. */
   onProviderSessionsChanged: (
     listener: (sessions: readonly { paneKey: string; sessionId: string }[]) => void
   ) => () => void
@@ -67,22 +74,14 @@ export type ExternalConversationSeamDeps = {
 
 type StartInput = Omit<ConversationLaunchInput, 'agent'> & { agent: string }
 
-/**
- * The connector seam for one enabled period. Turning connectors off disposes it: queued work
- * settles `connectors_disabled` at once and running work stops at its next boundary. Turning them
- * on builds a fresh one.
- */
+/** One enabled period: disabling settles queued work and aborts running work at its next boundary. */
 export class ExternalConversationSeam {
   private readonly abort = new AbortController()
   private readonly chain = new ConversationChain(this.abort.signal)
-  /** Conversations this period started, so a second start for one shares its creation. */
+  // Only starts from this enabled period can prove their launch outcome.
   private readonly startedHere = new Set<string>()
-  /** Conversations with work sent here, by the workspace their link was on. */
   private readonly linked = new Map<string, { key: ConversationKey; worktreeId: string }>()
-  /**
-   * The process each lane admitted first, by a launch or a send; its queued work goes there or
-   * nowhere. Null: a launch published no process this lane can prove, so queued work goes nowhere.
-   */
+  // Bind each lane to its first admitted process; null means no published process could be proven.
   private readonly admitted = new WeakMap<AbortSignal, AgentPromptExpectedBinding | null>()
   private readonly sessions: LinkedSessionCapture
   private readonly prompts: ConversationPrompts
@@ -94,9 +93,9 @@ export class ExternalConversationSeam {
   constructor(private readonly deps: ExternalConversationSeamDeps) {
     this.sessions = new LinkedSessionCapture(deps.store, deps.sessionRows)
     this.prompts = new ConversationPrompts(deps.readSettings, deps.readHookRow)
-    // A removed workspace may keep its PTY registered a while; its held and queued sends end now.
-    // The event names no host, so a same-path twin's removal is told apart by the link surviving.
+    // Cancel removed-workspace lanes; surviving links distinguish same-path twins on other hosts.
     this.releaseRemovals = deps.onWorkspaceRemoved((worktreeId) => {
+      this.events?.forgetUnlinked()
       for (const [id, { key, worktreeId: linkedTo }] of this.linked) {
         if (linkedTo === worktreeId && !findLink(this.deps.store, key)) {
           this.linked.delete(id)
@@ -107,11 +106,10 @@ export class ExternalConversationSeam {
     this.releaseSessions = deps.onProviderSessionsChanged((sessions) =>
       this.sessions.sessionsChanged(sessions)
     )
-    // Subscribed first, so a session reported while the snapshot is read is not missed.
+    // Subscribe before snapshotting so sessions reported during restore cannot be missed.
     this.sessions.restore()
   }
 
-  /** Deferred work passes this to every effect, so nothing starts or writes after a disable. */
   get signal(): AbortSignal {
     return this.abort.signal
   }
@@ -124,7 +122,7 @@ export class ExternalConversationSeam {
   }
 
   pendingPrompt(host: ExternalConversationHost, key: ConversationKey): PendingPrompt | null {
-    return this.prompts.pending(host.terminal, this.requireLink(key).link)
+    return this.prompts.pending(host.terminal, requireLink(this.deps.store, key).link)
   }
 
   answer(
@@ -136,11 +134,20 @@ export class ExternalConversationSeam {
     if (this.abort.signal.aborted) {
       return Promise.resolve(refused('connectors_disabled'))
     }
-    return this.prompts.answer(host.terminal, this.requireLink(key).link, {
+    return this.prompts.answer(host.terminal, requireLink(this.deps.store, key).link, {
       promptId,
       optionId,
       signal: this.abort.signal
     })
+  }
+
+  /** Receipted like a send, so a retried delivery never cancels twice. */
+  cancel(host: ExternalConversationHost, key: ConversationKey, id: string): Promise<Delivery> {
+    const { prompts, chain, events } = this
+    const seam = { ...this.deps, prompts, chain, events }
+    return this.deps.receipts.run(key, id, 'connector.cancel', [], () =>
+      cancelConversation(host.terminal, seam, key, this.abort.signal)
+    )
   }
 
   /** A snapshot of every linked conversation first, then its events; returns the release. */
@@ -151,24 +158,12 @@ export class ExternalConversationSeam {
     this.events ??= new ConversationEvents({
       store: this.deps.store,
       readHookRow: this.deps.readHookRow,
+      readBinding: (paneKey) => bindPane(host.terminal, paneKey)?.binding ?? null,
       onAgentPaneChange: this.deps.onAgentPaneChange,
       pendingPrompt: (link) => this.prompts.pending(host.terminal, link),
-      setTimer: (run, delayMs) => {
-        const timer = setTimeout(run, delayMs)
-        timer.unref?.()
-        return { cancel: () => clearTimeout(timer) }
-      },
-      now: Date.now
+      ...HOST_CLOCK
     })
     return this.events.watch(listener)
-  }
-
-  private requireLink(key: ConversationKey): LinkedConversation {
-    const linked = findLink(this.deps.store, key)
-    if (!linked) {
-      throw new Error('external_conversation_not_found')
-    }
-    return linked
   }
 
   async start(
@@ -190,7 +185,7 @@ export class ExternalConversationSeam {
           }
           const linked = findLink(this.deps.store, key)
           if (linked) {
-            // A link from before this period cannot say what became of its launch.
+            // A prior enabled period's link cannot prove the launch outcome.
             return this.startedHere.has(conversationId(key))
               ? this.deliver(host.terminal, key, linked, deliveryId, input.prompt, signal)
               : { outcome: 'unknown', reason: 'launch_outcome_unknown' }
@@ -206,7 +201,7 @@ export class ExternalConversationSeam {
               this.startedHere.add(conversationId(key))
               this.sessions.capture(key, paneKey)
             },
-            // Before link resolution or prompt delivery settle, so no follower adopts a successor.
+            // Capture publication before followers run so they cannot adopt a successor process.
             (paneKey) => {
               this.admitted.set(
                 signal,
@@ -253,7 +248,7 @@ export class ExternalConversationSeam {
     const linked = this.sessions.capture(key, found.link.paneKey) ?? found
     this.linked.set(id, { key, worktreeId: linked.workspace.worktreeId })
     const pane = bindPane(terminal, linked.link.paneKey)
-    // A lane that already reached a process may only ever write to that one.
+    // Once a lane admits a process, queued writes must never reach a replacement.
     const laneAdmitted = this.admitted.has(signal)
     const admitted = laneAdmitted ? this.admitted.get(signal) : pane?.binding
     if (pane && admitted && sameBinding(pane.binding, admitted)) {
@@ -263,17 +258,12 @@ export class ExternalConversationSeam {
         return delivery
       }
     }
-    // The admitted process is gone or replaced: queued work must not reach its successor.
     return laneAdmitted
       ? this.lost(id, signal)
       : this.reopen(terminal, key, linked, deliveryId, text, signal)
   }
 
-  /**
-   * The lane's first write found no agent: the lifecycle's safe resume reopens the conversation in
-   * its workspace, or refuses while the old pane may still hold it (an SSH host out of contact
-   * included). The reopened process becomes the lane's, so work queued behind follows it.
-   */
+  /** A lane with no admitted process may safely resume the linked session; queued work then binds to that process. */
   private async reopen(
     terminal: ConversationTerminal,
     key: ConversationKey,
@@ -330,7 +320,7 @@ export class ExternalConversationSeam {
     })
   }
 
-  /** Settles this conversation's queue before it advances; a later send opens a new lane. */
+  /** Cancel the queue before advancing; later sends create a fresh lane. */
   private lost(
     id: string,
     laneSignal: AbortSignal,
@@ -339,8 +329,4 @@ export class ExternalConversationSeam {
     this.chain.cancel(id, reason, laneSignal)
     return refused(reason)
   }
-}
-
-function sameBinding(a: AgentPromptExpectedBinding, b: AgentPromptExpectedBinding): boolean {
-  return a.ptyId === b.ptyId && a.processIncarnation === b.processIncarnation
 }

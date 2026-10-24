@@ -63,7 +63,6 @@ describe('installExternalConversations', () => {
     const folders = vi.spyOn(store, 'getFolderWorkspaces')
     const rows = vi.spyOn(host, 'getAgentStatusRowsForPane')
     const connectors = installExternalConversations(store, host)
-    // Nothing is read until the host's first `current()`.
     expect(getSettings).not.toHaveBeenCalled()
     expect(connectors.current()).toBeNull()
     update({ experimentalConnectors: false })
@@ -174,7 +173,6 @@ describe('installExternalConversations', () => {
         return () => reports.delete(listener)
       }
     }
-    // What each runtime host does at startup, before any connector call.
     const connectors = installExternalConversations(store, host)
     connectors.current()
     const cleared = { ...SESSION, id: 'claude-session-after-clear' }
