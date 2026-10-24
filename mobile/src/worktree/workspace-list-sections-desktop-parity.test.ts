@@ -241,6 +241,9 @@ it('keeps published desktop affiliation through phone parsing when a setup has n
     expect(verdict.value.repos.map((row) => row.id)).toEqual(['a'])
     expect(verdict.value.setups.map((row) => row.repoId)).toEqual(['a', 'z'])
     const phone = buildProjectSectionCatalog(verdict.value, [], null, 'manual')
+    if (!phone.grouping) {
+      throw new Error('No served project grouping')
+    }
     expect(
       getProjectGroupingForRepo('a', repoMap, buildProjectGroupingIndex(phone.grouping)).key
     ).toBe(desktop.key)
@@ -266,6 +269,9 @@ it('keeps published desktop affiliation through phone parsing when a setup has n
     throw new Error('old catalog refused')
   }
   const phone = buildProjectSectionCatalog(old.value, [], null, 'manual')
+  if (!phone.grouping) {
+    throw new Error('No served project grouping')
+  }
   expect(
     getProjectGroupingForRepo('a', repoMap, buildProjectGroupingIndex(phone.grouping)).key
   ).toBe('project:repo:a')

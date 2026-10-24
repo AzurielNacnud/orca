@@ -484,15 +484,16 @@ describe('local preflight context', () => {
   })
 
   it('uses the target worktree runtime for local agent checks', () => {
+    const repos: AppState['repos'] = [
+      { ...TEST_REPO, id: 'repo-1', path: 'C:\\Users\\alice\\active' },
+      { ...TEST_REPO, id: 'repo-2', path: 'C:\\Users\\alice\\target' }
+    ]
     const state: PreflightState = {
       ...makeState({
         repoPath: 'C:\\Users\\alice\\active',
         worktreePath: 'C:\\Users\\alice\\active'
       }),
-      repos: [
-        { ...TEST_REPO, id: 'repo-1', path: 'C:\\Users\\alice\\active' },
-        { ...TEST_REPO, id: 'repo-2', path: 'C:\\Users\\alice\\target' }
-      ] satisfies AppState['repos'],
+      repos,
       worktreesByRepo: {
         'repo-1': [
           makeWorktree({
@@ -677,26 +678,27 @@ describe('local preflight context', () => {
   })
 
   it('uses the requested worktree repo owner before resolving a local project runtime', () => {
+    const repos: AppState['repos'] = [
+      {
+        ...TEST_REPO,
+        id: 'repo-1',
+        path: 'C:\\Users\\alice\\repo',
+        executionHostId: 'local'
+      },
+      {
+        ...TEST_REPO,
+        id: 'repo-ssh',
+        path: '/remote/repo',
+        connectionId: 'builder',
+        executionHostId: 'ssh:builder'
+      }
+    ]
     const state: PreflightState = {
       ...makeState({
         repoPath: 'C:\\Users\\alice\\repo',
         worktreePath: 'C:\\Users\\alice\\repo'
       }),
-      repos: [
-        {
-          ...TEST_REPO,
-          id: 'repo-1',
-          path: 'C:\\Users\\alice\\repo',
-          executionHostId: 'local'
-        },
-        {
-          ...TEST_REPO,
-          id: 'repo-ssh',
-          path: '/remote/repo',
-          connectionId: 'builder',
-          executionHostId: 'ssh:builder'
-        }
-      ] satisfies AppState['repos'],
+      repos,
       worktreesByRepo: {
         'repo-1': [
           makeWorktree({

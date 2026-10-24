@@ -69,7 +69,20 @@ afterEach(async () => {
 })
 
 it('bounds actual panel-to-IPC canonical preparation and native cwd seeks at N and 10N', async () => {
-  const observations = []
+  const observations: {
+    size: number
+    catalog: number
+    admissions: number
+    compilations: number
+    projections: number
+    claims: number
+    claimFacts: number
+    aliases: number
+    namespace: number
+    preparations: number
+    executions: number
+    intervalBytes: number
+  }[] = []
   for (const size of [8, 80]) {
     root = await realpath(await mkdtemp(join(tmpdir(), 'sta10541-native-trigger-')))
     const repos: Repo[] = []
