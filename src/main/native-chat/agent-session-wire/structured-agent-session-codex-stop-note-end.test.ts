@@ -14,6 +14,8 @@ import { codexStructuredPermissionPolicy } from '../../codex/codex-structured-pe
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
+import { agentSessionSendSubmission as submission } from '../../../shared/agent-session-wire'
+import { AGENT_JOURNAL_THREAD_SCOPE as turnScope } from '../../../shared/agent-session-journal-types'
 // Codex interrupt replies precede turn-end frames; preserve note projection across both deliveries.
 
 import {
@@ -452,7 +454,7 @@ it.each(['config', 'order', 'initial'] as const)(
     expect(answered).toBe(false)
     turns.start()
     turns.echo(id)
-    expect((await settled)?.value.submission).toMatchObject({
+    expect(submission((await settled)?.value)).toMatchObject({
       dispatchState: 'accepted',
       fence: replacement.fence
     })
@@ -547,6 +549,7 @@ it.each([
           clientMessageId: 'other-carrier',
           state: 'pending',
           fence: 1,
+          turnScope,
           carries: [stopped]
         })
         await journal.resolveDispatch({
@@ -737,7 +740,7 @@ it('keeps an actual sent envelope when Stop precedes its Promise delivery and th
     expect(frameEnded).toBe(false)
     lost.reject(new CodexAppServerTimeoutError('reply lost after the write'))
     await stopping
-    expect((await host.waitForSendSettlement(SESSION, id))?.value.submission).toMatchObject({
+    expect(submission((await host.waitForSendSettlement(SESSION, id))?.value)).toMatchObject({
       dispatchState: 'unknown'
     })
     expect(starts()).toHaveLength(1)
@@ -804,6 +807,7 @@ export function codexInputFinalizationFixture() {
     config,
     turns,
     permissionSend,
+    submission,
     stop,
     pick,
     row,

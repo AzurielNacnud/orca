@@ -1,5 +1,6 @@
 import type { codexInputFinalizationFixture } from './structured-agent-session-codex-stop-note-end.test'
 import { expect, it, vi } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE as turnScope } from '../../../shared/agent-session-journal-types'
 import {
   continuingStructuredAgentSessionInput,
   finalizingStructuredAgentSessionInput
@@ -33,8 +34,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
   ] as const)(
     'keeps input unwritten across %s at final admission with %i earlier cards',
     async (boundary, population) => {
-      const { host, adapter, codex, config, permissionSend, stop, starts, measureInputWork } =
-        current()
+      const { host, adapter, codex, config, permissionSend, stop, ...fixture } = current()
       const { sessions, conversationDelivery, serialize } = host.collaboratorsForTests()
       const journal = sessions.get(SESSION)!.journal
       const closing = boundary.includes('close')
@@ -65,7 +65,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         }
       })
       await host.flushStreamedEvents(SESSION)
-      const measured = population > 0 ? measureInputWork('close', population) : undefined
+      const measured = population > 0 ? fixture.measureInputWork('close', population) : undefined
       let later = ''
       const paused = Promise.withResolvers<unknown>()
       const held = Promise.withResolvers<void>()
@@ -144,18 +144,18 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         if (!boundary.endsWith('exit')) {
           await vi.waitFor(() => expect(signal?.aborted && frameEnded).toBe(true))
         }
-        expect(starts()).toHaveLength(0)
+        expect(fixture.starts()).toHaveLength(0)
         expect(continuingStructuredAgentSessionInput(journal, id)).toBe(false)
         expect(finalizingStructuredAgentSessionInput(journal, id)).toBe(true)
         expect(answeredBeforeRelease).not.toHaveBeenCalled()
         held.resolve()
         await blocking
         await stopping
-        const answered = (await settled)?.value.submission
+        const answered = fixture.submission((await settled)?.value)
         await vi.waitFor(() => expect(journal.submission(id)?.dispatchState).toBe('rejected'))
         expect(answered).toMatchObject({
           dispatchState: 'rejected',
-          fence: closing ? current().conversationFence() : 1
+          fence: closing ? fixture.conversationFence() : 1
         })
         expect(answered).toEqual(journal.submission(id))
         expect(answered?.reason).toMatch(
@@ -190,14 +190,14 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
             options: { model: 'model-C' }
           })
         }
-        expect(starts()).toHaveLength(0)
-        await current().waitForInputFinalization(journal, id)
+        expect(fixture.starts()).toHaveLength(0)
+        await fixture.waitForInputFinalization(journal, id)
       } finally {
         paused.resolve(config)
         held.resolve()
         await blocking
         await stopping
-        await current().waitForInputFinalization(journal, id)
+        await fixture.waitForInputFinalization(journal, id)
         await measured?.()
       }
     }
@@ -286,7 +286,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
           )
         }
         await vi.waitFor(() => expect(signal?.aborted && frameEnded).toBe(true))
-        const answered = (await waiting)?.value.submission
+        const answered = current().submission((await waiting)?.value)
         expect(answered).toMatchObject({
           dispatchState: 'rejected',
           fence: 1,
@@ -398,7 +398,7 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
             fence,
             handoverRecorded: true
           })
-          await journal.resolveDispatch({ clientMessageId, state: 'pending', fence })
+          await journal.resolveDispatch({ clientMessageId, state: 'pending', fence, turnScope })
         }
       })
     }
@@ -594,10 +594,10 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
         vi.mocked(journal.resolveDispatch).mockRestore()
         await fixture.assertInputRecoveredAfterSnapshot(id)
       } else {
-        expect((await waiting)?.value.submission.dispatchState).toBe(
+        expect(fixture.submission((await waiting)?.value)?.dispatchState).toBe(
           result === 'terminal' ? 'accepted' : 'unknown'
         )
-        expect((await waiting)?.value.submission).toEqual(journal.submission(id))
+        expect(fixture.submission((await waiting)?.value)).toEqual(journal.submission(id))
         if (persistence) {
           expect(writes).toBe(result === 'fallback' ? 2 : 1)
         }
@@ -784,12 +784,12 @@ export function registerCodexInputFinalization(current: typeof codexInputFinaliz
           rejection: { kind: boundary === 'starting-exit' ? 'providerStartFailed' : 'cancelled' },
           options: { personality: 'friendly' }
         })
-        expect((await waiting)?.value.submission).toEqual(journal.submission(id))
+        expect(current().submission((await waiting)?.value)).toEqual(journal.submission(id))
         expect(journal.itemBody(agentJournalSubmissionKey(id))).toEqual(originalBody)
         expect(journal.submission(id)?.reason).toMatch(
           boundary === 'starting-exit' ? /before/ : /provider_cancelled_before_start/
         )
-        expect(journal.submission(id)?.rejection?.neverReachedAgent).toBeUndefined()
+        expect(journal.submission(id)?.rejection).not.toHaveProperty('neverReachedAgent')
         expect(starts()).toHaveLength(0)
         expect(codex.connections).toHaveLength(boundary === 'retire' ? 1 : 2)
       } finally {

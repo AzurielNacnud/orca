@@ -172,7 +172,7 @@ export function beginStructuredAgentSessionInputHandover(
           }
           const child = deps.sessions.get(sessionId)?.child
           if (child) {
-            await waitForPromiseWithSignal(
+            await waitForPromiseWithSignal<unknown>(
               deps.readiness(sessionId, child)?.wait() ?? Promise.resolve(),
               signal
             )
