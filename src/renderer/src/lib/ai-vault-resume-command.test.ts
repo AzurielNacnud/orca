@@ -65,6 +65,7 @@ function makeState(args: {
       localWindowsRuntimeDefault: { kind: 'windows-host' },
       ...(args.terminalWindowsShell ? { terminalWindowsShell: args.terminalWindowsShell } : {}),
       agentDefaultArgs: { claude: '', codex: '' },
+      agentPermissionDefault: 'own',
       agentDefaultEnv: { claude: {}, codex: {} }
     },
     worktreesByRepo: {
@@ -212,6 +213,7 @@ describe('ai vault resume command runtime', () => {
 
   it('follows the live Windows shell for Cursor resume', () => {
     const state = makeState({ worktreePath: 'C:\\Users\\alice\\repo' })
+    state.settings.agentPermissionOverrides = { cursor: 'full-access' }
 
     expect(
       buildQueuedAiVaultResumeCommand({

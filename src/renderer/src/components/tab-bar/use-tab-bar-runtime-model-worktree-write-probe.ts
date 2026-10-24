@@ -16,6 +16,7 @@ export type TabBarProbeState = {
   activeRepoId: string | null
   activeWorktreeId: string | null
   endpointProjects: unknown[]
+  endpointProjectHostSetups: unknown[]
   repos: unknown[]
   worktreesByRepo: Record<string, unknown[]>
   sshConnectionStates: Map<string, unknown>
@@ -48,6 +49,7 @@ export async function createTabBarProbeStore(): Promise<TabBarProbeStore> {
       activeRepoId: null,
       activeWorktreeId: null,
       endpointProjects: [],
+      endpointProjectHostSetups: [],
       repos: [],
       worktreesByRepo: {},
       sshConnectionStates: new Map(),

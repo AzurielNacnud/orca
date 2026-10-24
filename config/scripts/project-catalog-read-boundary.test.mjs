@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { resolve, join, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { expect, it } from 'vitest'
+import { resolveOxcCliInvocation } from './oxc-cli-invocation.mjs'
 
 it('enforces five raw catalog forms with the actual config and narrow file exceptions', () => {
   const config = JSON.parse(readFileSync(resolve('.oxlintrc.json'), 'utf8'))
@@ -39,9 +40,17 @@ it('enforces five raw catalog forms with the actual config and narrow file excep
       const target = join(folder, file)
       mkdirSync(dirname(target), { recursive: true })
       writeFileSync(target, content)
+      const invocation = resolveOxcCliInvocation('oxlint', 'oxlint')
       const result = spawnSync(
-        resolve('node_modules/.bin/oxlint'),
-        ['--config', join(folder, 'config.json'), '--format', 'json', file],
+        invocation.command,
+        [
+          ...invocation.prefixArgs,
+          '--config',
+          join(folder, 'config.json'),
+          '--format',
+          'json',
+          file
+        ],
         { cwd: folder, encoding: 'utf8' }
       )
       expect(result.error).toBeUndefined()

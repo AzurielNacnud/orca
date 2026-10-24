@@ -207,6 +207,7 @@ describe('useComposerState integrated lifecycle', () => {
         terminalWindowsShell: 'powershell.exe',
         localWindowsRuntimeDefault: { kind: 'windows-host' as const },
         agentDefaultArgs: { claude: '', codex: '' },
+        agentPermissionDefault: 'own',
         agentDefaultEnv: { claude: {}, codex: {} }
       }
       useAppStore.setState({

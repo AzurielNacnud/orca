@@ -22,6 +22,8 @@ function makeRepos(id: string, path: string): AppState['repos'] {
 
 function makeWslState(distro: string): AppState {
   return {
+    endpointProjects: [],
+    endpointProjectHostSetups: [],
     activeRepoId: 'repo-1',
     activeWorktreeId: null,
     repos: makeRepos('repo-1', `\\\\wsl.localhost\\${distro}\\home\\alice\\repo`),
@@ -31,6 +33,8 @@ function makeWslState(distro: string): AppState {
 
 function makeWindowsProjectState(projectId: string): AppState {
   return {
+    endpointProjects: [],
+    endpointProjectHostSetups: [],
     activeRepoId: projectId,
     activeWorktreeId: null,
     repos: makeRepos(projectId, `C:\\Users\\alice\\${projectId}`),

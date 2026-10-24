@@ -49,6 +49,9 @@ function createTestStore() {
   return create<AppState>()(
     (...a) =>
       ({
+        repos: [],
+        endpointProjects: [],
+        endpointProjectHostSetups: [],
         ...createPreflightSlice(...a),
         ...createRuntimeStatusSlice(...a)
       }) as AppState
@@ -247,10 +250,10 @@ describe('createPreflightSlice', () => {
         runtime: {
           kind: 'wsl',
           hostPlatform: 'wsl',
-          projectId: 'repo-1',
+          projectId: 'repo:repo-1',
           distro: 'Ubuntu',
           reason: 'project-override',
-          cacheKey: 'repo-1:wsl:Ubuntu'
+          cacheKey: 'repo:repo-1:wsl:Ubuntu'
         }
       },
       wslDistro: 'Ubuntu'

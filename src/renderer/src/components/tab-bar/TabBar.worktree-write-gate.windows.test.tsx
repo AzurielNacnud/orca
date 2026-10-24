@@ -59,6 +59,7 @@ describe('TabBar worktree-write gate (Windows client)', () => {
     ;(await createTabBarProbeStore()).setState({
       worktreesByRepo: {},
       endpointProjects: [],
+      endpointProjectHostSetups: [],
       repos: []
     })
   })
