@@ -85,7 +85,9 @@ export const CLIENT_UI_METHODS = [
     name: 'settings.mutateAgentLaunch',
     permission: 'settings-write',
     params: AgentLaunchSettingsMutation,
-    handler: (params, { runtime }) => runtime.mutateClientAgentLaunchSettings(params)
+    handler: async (params, { runtime }) => ({
+      settings: await runtime.mutateClientAgentLaunchSettings(params)
+    })
   }),
   defineMethod({
     name: 'settings.get',

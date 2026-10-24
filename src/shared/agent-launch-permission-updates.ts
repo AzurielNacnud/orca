@@ -6,8 +6,7 @@ import {
 } from './agent-launch-environment-updates'
 import type {
   AgentLaunchSettingsMutation,
-  AgentLaunchSettingsSource,
-  AgentPermissionResetEntry
+  AgentLaunchSettingsSource
 } from './agent-launch-settings'
 import {
   composeAgentLaunchProfile,
@@ -33,35 +32,15 @@ import type { TuiAgent } from './tui-agent'
 // Agent launch settings writes against the stored permission, including the shapes older clients
 // send, which treat the permission flag as part of the Arguments text.
 
-export function agentPermissionResetEntries(
-  before: AgentLaunchSettingsSource,
-  mutation: AgentLaunchSettingsMutation,
-  applied?: AgentLaunchSettingsSource
-): AgentPermissionResetEntry[] {
-  if (
-    mutation.type !== 'permission' ||
-    mutation.agent ||
-    mutation.withoutAuto ||
-    mutation.choice === 'default'
-  ) {
-    return []
-  }
-  const after = applied ?? applyAllAgentsPermission(before, mutation.choice)
-  return PERMISSION_CHOICE_AGENTS.flatMap((agent) => {
-    const previousChoice = before.agentPermissionOverrides?.[agent]
-    return previousChoice !== undefined &&
-      previousChoice !== resolveAgentPermission(agent, after).choice
-      ? [{ agent, previousChoice }]
-      : []
-  })
-}
-
 export function permissionUpdates(
   settings: AgentLaunchSettingsSource,
   mutation: Extract<AgentLaunchSettingsMutation, { type: 'permission' }>
 ): AgentLaunchSettingsSource {
   const { agent, choice } = mutation
   if (agent) {
+    if (choice !== 'default' && !agentPermissionChoices(agent).includes(choice)) {
+      throw new Error('This agent does not offer that permission')
+    }
     return applyAgentPermissionOverrides(settings, [agent], choice)
   }
   if (choice === 'default') {
