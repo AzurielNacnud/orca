@@ -58,7 +58,7 @@ export function NativeChatThreadGoalBanner(props: {
   runningTurn: { startedAt: number | null } | null
   onChange: (change: AgentSessionThreadGoalChange) => void
 }): React.JSX.Element | null {
-  const { goal, pending, onChange } = props
+  const { goal, onChange } = props
   const [expanded, setExpanded] = useState(false)
   const { runningTurn } = props
   const now = useNow(1_000, props.isVisible && goal.status === 'active' && runningTurn !== null)
@@ -108,7 +108,7 @@ export function NativeChatThreadGoalBanner(props: {
             ) : statusChange === 'active' ? (
               <GoalAction
                 label={translate('components.native-chat.goal.resume', 'Resume goal')}
-                disabled={pending || props.startsHeld === true}
+                disabled={props.startsHeld === true}
                 onClick={() => onChange({ kind: 'status', status: 'active' })}
               >
                 <Play className="size-3.5" />

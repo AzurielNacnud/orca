@@ -1,6 +1,4 @@
 import { expect, it, vi } from 'vitest'
-import { changeCodexThreadGoal } from '../../codex/codex-structured-thread-goal'
-import type { CodexSession } from '../../codex/codex-structured-session-state'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   CALLER,
@@ -185,44 +183,3 @@ it.each(['append', 'wait'] as const)(
     }
   }
 )
-
-it('finishes stopped activation compensation before a newer goal can run', async () => {
-  const { host } = hostTestState()
-  const activation = Promise.withResolvers<unknown>()
-  const request = vi.fn().mockReturnValueOnce(activation.promise).mockResolvedValue({ goal: null })
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: goal changes read only threadId and connection.request.
-  const session = { threadId: 'thread-1', connection: { request } } as unknown as Pick<
-    CodexSession,
-    'threadId' | 'connection'
-  >
-  let signal: AbortSignal | undefined
-  host.deps.adapter.changeThreadGoal = (input) => {
-    signal = input.signal
-    return changeCodexThreadGoal(session, input.change, input.replacesGoal, undefined, input.signal)
-  }
-  await attach()
-  const first = { kind: 'set' as const, objective: 'First goal' }
-  const old = host
-    .changeThreadGoal(CALLER, {
-      envelope: envelope('agentSession.threadGoal', { change: first }),
-      change: first
-    })
-    .catch((error: unknown) => error)
-  await vi.waitFor(() => expect(request).toHaveBeenCalledOnce())
-  const stopped = host.cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
-  await vi.waitFor(() => expect(signal?.aborted).toBe(true))
-  const next = { kind: 'set' as const, objective: 'Newer goal' }
-  const newer = host.changeThreadGoal(CALLER, {
-    envelope: envelope('agentSession.threadGoal', { change: next }),
-    change: next
-  })
-  activation.resolve({ goal: { status: 'active' } })
-  expect(await old).toBeInstanceOf(Error)
-  expect(await stopped).toMatchObject({ ok: true })
-  expect(await newer).toMatchObject({ ok: true })
-  expect(request.mock.calls.map(([, params]) => params)).toEqual([
-    { threadId: 'thread-1', objective: 'First goal', status: 'active', origin: 'user' },
-    { threadId: 'thread-1', status: 'paused', origin: 'automatic' },
-    { threadId: 'thread-1', objective: 'Newer goal', status: 'active', origin: 'user' }
-  ])
-})

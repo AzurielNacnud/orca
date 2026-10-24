@@ -60,17 +60,5 @@ export async function changeCodexThreadGoal(
     }
     throw error
   }
-  if (
-    signal?.aborted &&
-    (change.kind === 'set' || (change.kind === 'status' && change.status === 'active'))
-  ) {
-    // Host serialization keeps compensation inside this operation, before a newer goal can run.
-    await session.connection.request(
-      'thread/goal/set',
-      { threadId: session.threadId, status: 'paused', origin: 'automatic' },
-      { timeoutMs }
-    )
-    throwIfSignalAborted(signal)
-  }
   return { ok: true }
 }

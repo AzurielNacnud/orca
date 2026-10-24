@@ -84,36 +84,6 @@ describe('codex thread goal requests', () => {
     expect(request).toHaveBeenCalledOnce()
   })
 
-  it.each([
-    { kind: 'set', objective: 'Ship it' },
-    { kind: 'status', status: 'active' }
-  ] as const)(
-    'pauses a $kind activation stopped while its final write is in flight',
-    async (change) => {
-      const activation = Promise.withResolvers<unknown>()
-      const pause = Promise.withResolvers<unknown>()
-      const authority = new AbortController()
-      const request = vi
-        .fn()
-        .mockReturnValueOnce(activation.promise)
-        .mockReturnValueOnce(pause.promise)
-      const result = changeCodexThreadGoal(session(request), change, false, 5_000, authority.signal)
-      const settled = vi.fn()
-      void result.then(settled, settled)
-      authority.abort(new Error('stopped'))
-      activation.resolve({ goal: { status: 'active' } })
-      await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2))
-      expect(request).toHaveBeenLastCalledWith(
-        'thread/goal/set',
-        { threadId: THREAD, status: 'paused', origin: 'automatic' },
-        { timeoutMs: 5_000 }
-      )
-      expect(settled).not.toHaveBeenCalled()
-      pause.resolve({ goal: { status: 'paused' } })
-      await expect(result).rejects.toThrow('stopped')
-    }
-  )
-
   it('reports a cleared previous goal when replacement is refused', async () => {
     const request = vi
       .fn()
