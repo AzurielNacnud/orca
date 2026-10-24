@@ -79,7 +79,7 @@ function sshState(remotePlatform: 'linux' | 'win32'): SshConnectionState {
 type HostCase = {
   name: string
   client: NodeJS.Platform
-  repo: { path: string; connectionId?: string; executionHostId?: string }
+  repo: Pick<Repo, 'path' | 'connectionId' | 'executionHostId'>
   ssh?: Map<string, SshConnectionState>
   runtime?: Map<string, RuntimeEnvironmentStatus>
   expected: NodeJS.Platform

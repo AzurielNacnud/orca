@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type * as NewWorkspace from '@/lib/new-workspace'
 import { getDefaultSettings } from '../../../shared/constants'
+import type { GlobalSettings } from '../../../shared/global-settings-types'
+import type { AppState } from '@/store/types'
 
 vi.mock('@/lib/new-workspace', async (importOriginal) => ({
   ...(await importOriginal<typeof NewWorkspace>()),
@@ -202,7 +204,7 @@ describe('useComposerState integrated lifecycle', () => {
       useAppStore.setState(useAppStore.getInitialState(), true)
       const repo: Repo = { id: 'b', path: 'C:/app-b', displayName: 'B', badgeColor: '', addedAt: 1 }
       const catalog = projectHostSetupProjectionFromRepos([repo])
-      const settings = {
+      const settings: GlobalSettings = {
         ...getDefaultSettings('/tmp'),
         terminalWindowsShell: 'powershell.exe',
         localWindowsRuntimeDefault: { kind: 'windows-host' as const },
@@ -258,7 +260,7 @@ describe('useComposerState integrated lifecycle', () => {
         for (const windows of [false, true]) {
           if (windows) {
             act(() =>
-              useAppStore.setState((state) => ({
+              useAppStore.setState((state): Partial<AppState> => ({
                 endpointProjects: state.endpointProjects.map((project) => ({
                   ...project,
                   localWindowsRuntimePreference: { kind: 'windows-host' }

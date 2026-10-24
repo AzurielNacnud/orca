@@ -26,7 +26,9 @@ function makeState(args: {
   worktreePath: string
   localWindowsRuntimePreference?: RuntimePreference
   terminalWindowsShell?: string
-}): Extract<AiVaultResumeCommandState, { endpointProjects: unknown }> {
+}): Extract<AiVaultResumeCommandState, { endpointProjects: unknown }> & {
+  settings: NonNullable<AiVaultResumeCommandState['settings']>
+} {
   return {
     activeRepoId: 'repo-1',
     activeWorktreeId: 'repo-1::worktree-1',
