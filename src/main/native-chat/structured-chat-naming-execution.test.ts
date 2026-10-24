@@ -1,7 +1,6 @@
 import { cancelLocalGeneration } from '../text-generation/source-control-generation-lanes'
 import { AgentSessionJournal } from './agent-session-journal/journal-store'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
-import { hostTestAttachParams } from './agent-session-wire/structured-agent-session-host-test-data'
 import { structuredChatNamingDeps } from '../runtime/structured-chat-naming-runtime'
 import { getDefaultSettings } from '../../shared/constants'
 import { setStructuredAgentSessionHost } from './agent-session-wire/structured-agent-session-registry'
@@ -17,6 +16,7 @@ import {
   hostTestState
 } from './agent-session-wire/structured-agent-session-host-test-harness'
 import {
+  hostTestAttachParams,
   HOST_TEST_SESSION,
   hostTestMessage
 } from './agent-session-wire/structured-agent-session-host-test-data'

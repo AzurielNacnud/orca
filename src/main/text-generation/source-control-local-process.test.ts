@@ -1,6 +1,9 @@
 import * as supervisedStop from '../provider-process/supervised-child-process-stop'
 import { createMockDiscoveryChild } from './commit-message-text-generation-test-harness'
-import { MAX_SOURCE_CONTROL_AGENT_OUTPUT_BYTES } from './source-control-generation-limits'
+import {
+  MAX_SOURCE_CONTROL_AGENT_OUTPUT_BYTES,
+  SOURCE_CONTROL_GENERATION_TIMEOUT_MS
+} from './source-control-generation-limits'
 import { cancelLocalGeneration } from './source-control-generation-lanes'
 import { generateConversationName } from './conversation-name-generation-request'
 import { EventEmitter } from 'node:events'
@@ -10,7 +13,6 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { rootOnlyProviderClosePolicy } from '../provider-process/provider-process-close'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
-import { SOURCE_CONTROL_GENERATION_TIMEOUT_MS } from './source-control-generation-limits'
 import { discoverModelsLocal } from './commit-message-model-discovery'
 import { cancelGenerateCommitMessageLocal } from './commit-message-text-generation'
 import { spawnSourceControlAgent } from './source-control-agent-launch'
